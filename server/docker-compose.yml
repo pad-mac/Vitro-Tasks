@@ -1,0 +1,32 @@
+# Run from the server/ folder:  VITRO_TOKEN=<long secret> POSTGRES_PASSWORD=<secret> docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vitro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: vitro
+    volumes:
+      - vitro-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitro"]
+      interval: 5s
+      retries: 10
+  sync:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://vitro:${POSTGRES_PASSWORD}@db:5432/vitro
+      VITRO_TOKEN: ${VITRO_TOKEN:?set VITRO_TOKEN}
+      PORT: "8787"
+    ports:
+      # Bound to localhost: put a TLS reverse proxy (Caddy, nginx) in front.
+      - "127.0.0.1:8787:8787"
+volumes:
+  vitro-db:
