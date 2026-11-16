@@ -458,6 +458,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--panel); }
 .qa-chip.p3 { color: var(--p3); border-color: var(--p3); }
 .qa-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--text); animation: pop var(--fast); }
 
+/* With the detail pane open the header gets tight: drop the Group/Sort captions. */
+.app.has-detail .select-label { display: none; }
+
 @media (max-width: 1080px) {
   .select-label { display: none; }
   .segmented button { padding: 0 7px; }
