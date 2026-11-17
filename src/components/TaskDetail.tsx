@@ -380,7 +380,7 @@ export function Composer() {
     <FloatingPanel anchor={shown.anchor} onClose={close} className="task-popup composer" closing={closing}>
       <div className="detail detail-popup">
         <header className="detail-head">
-          <span className="composer-date sheen-text">
+          <span className="composer-date accent-text">
             <Icon name="calendar" size={14} /> {range || "No date"}
           </span>
           <span className="push" />

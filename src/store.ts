@@ -14,6 +14,7 @@ import {
   type FoundUpdate,
 } from "./lib/platform";
 import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
+import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
 import {
   SMART_DEFAULTS,
   listVisibility,
@@ -54,7 +55,7 @@ export type MenuTarget =
   | { kind: "window"; id: string; x: number; y: number };
 
 export type EditMode = "popup" | "pane";
-export type CalMode = "month" | "week";
+export type CalMode = "month" | "week" | "multiweek";
 
 /** Default highlight: brushed silver. */
 export const DEFAULT_HIGHLIGHT = "#b4b9bf";
@@ -108,6 +109,10 @@ interface State {
   highlight: string;
   shortcuts: Shortcuts;
   calMode: CalMode;
+  /** Rows shown in the multi-week calendar. */
+  calWeeks: number;
+  /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
+  calMonthLike: "month" | "multiweek";
   /** Bumped to make the calendar jump to today. */
   calTodayTick: number;
   /** This window shows only one view layer (opened from the title bar). */
@@ -122,6 +127,10 @@ interface State {
 
   init(): Promise<void>;
   reload(): Promise<void>;
+  /** All data as Vitro CSV. */
+  exportCsv(): Promise<string>;
+  importCsv(text: string): Promise<ImportResult>;
+  importTickTick(text: string, includeCompleted: boolean): Promise<ImportResult>;
   setView(view: ViewRef): void;
   select(id: string | null, anchor?: Anchor | null): void;
   openComposer(base: Partial<Task>, anchor: Anchor): void;
@@ -137,6 +146,7 @@ interface State {
   setHighlight(color: string): Promise<void>;
   setShortcuts(s: Shortcuts): Promise<void>;
   setCalMode(m: CalMode): void;
+  setCalWeeks(n: number): void;
   goCalToday(): void;
   editMode(view: ViewRef): EditMode;
   setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
@@ -184,6 +194,15 @@ export function computePrefs(view: ViewRef, lists: List[], settings: Record<stri
   }
 }
 
+export interface ImportResult {
+  lists: number;
+  sections: number;
+  tasks: number;
+  /** Rows that were already there (and not older). */
+  skipped: number;
+  notes?: { repeating: number; tags: string[]; reminders: number };
+}
+
 let db: Db;
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let syncing = false;
@@ -204,6 +223,31 @@ export const useStore = create<State>((set, get) => {
     if (!get().syncConfig) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => void get().syncNow(), delay);
+  }
+
+  /**
+   * Writes imported rows. "missing" adds only rows that are not there yet
+   * (importing the same backup twice changes nothing); "newer" also replaces
+   * rows whose imported version is newer than the local one.
+   */
+  async function writeImport(data: Partial<Record<EntityName, Row[]>>, mode: "missing" | "newer"): Promise<ImportResult> {
+    const res: ImportResult = { lists: 0, sections: 0, tasks: 0, skipped: 0 };
+    for (const name of ["lists", "sections", "tasks", "settings"] as EntityName[]) {
+      for (const row of data[name] ?? []) {
+        const local = await db.all<{ updated_at: number; deleted: number }>(`SELECT updated_at, deleted FROM ${name} WHERE id = $1`, [row.id as string]);
+        const have = local.length > 0 && local[0].deleted === 0;
+        if (have && (mode === "missing" || Number(row.updated_at) <= local[0].updated_at)) {
+          res.skipped++;
+          continue;
+        }
+        await put(db, name, { ...row, deleted: 0 });
+        if (name !== "settings") res[name]++;
+      }
+    }
+    await get().reload();
+    void announceChange();
+    scheduleSync(300);
+    return res;
   }
 
   function replace<T extends { id: string }>(rows: T[], row: T): T[] {
@@ -233,6 +277,8 @@ export const useStore = create<State>((set, get) => {
     highlight: DEFAULT_HIGHLIGHT,
     shortcuts: parseShortcuts(null),
     calMode: "month",
+    calWeeks: 4,
+    calMonthLike: "month",
     calTodayTick: 0,
     detached: detachedLayer(),
     version: "",
@@ -255,6 +301,9 @@ export const useStore = create<State>((set, get) => {
         const sidebarWidth = Number(await getMeta(db, "sidebar_width")) || SIDEBAR_DEFAULT;
         const shortcuts = parseShortcuts(await getMeta(db, "shortcuts"));
         const calMode = ((await getMeta(db, "cal_mode")) as CalMode | null) ?? "month";
+        const calWeeks = Math.max(2, Math.min(6, Number(await getMeta(db, "cal_weeks")) || 4));
+        const calMonthLike = (await getMeta(db, "cal_month_like")) === "multiweek" ? "multiweek" : "month";
+        set({ calWeeks, calMonthLike });
         set({ theme, shortcut, syncConfig, showDetails, highlight, sidebarWidth, shortcuts, calMode, sync: { status: syncConfig ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
@@ -270,6 +319,27 @@ export const useStore = create<State>((set, get) => {
       } catch (e) {
         set({ fatal: e instanceof Error ? e.message : String(e) });
       }
+    },
+
+    async exportCsv() {
+      const [lists, sections, tasks, settings] = await Promise.all([
+        loadAll<Row>(db, "lists"),
+        loadAll<Row>(db, "sections"),
+        loadAll<Row>(db, "tasks"),
+        loadAll<Row>(db, "settings"),
+      ]);
+      return writeVitroCsv({ lists, sections, tasks, settings });
+    },
+
+    async importCsv(text) {
+      const data = readVitroCsv(text);
+      return writeImport(data, "newer");
+    },
+
+    async importTickTick(text, includeCompleted) {
+      const r = readTickTick(text, { lists: get().lists }, { includeCompleted, colors: LIST_COLORS });
+      const res = await writeImport({ lists: r.lists as unknown as Row[], sections: r.sections as unknown as Row[], tasks: r.tasks as unknown as Row[] }, "missing");
+      return { ...res, notes: r.notes };
     },
 
     async reload() {
@@ -337,6 +407,15 @@ export const useStore = create<State>((set, get) => {
     setCalMode(calMode) {
       set({ calMode });
       void setMeta(db, "cal_mode", calMode);
+      if (calMode !== "week") {
+        set({ calMonthLike: calMode });
+        void setMeta(db, "cal_month_like", calMode);
+      }
+    },
+    setCalWeeks(n) {
+      const calWeeks = Math.max(2, Math.min(6, n));
+      set({ calWeeks });
+      void setMeta(db, "cal_weeks", String(calWeeks));
     },
     goCalToday() {
       set({ calTodayTick: get().calTodayTick + 1 });

@@ -49,6 +49,12 @@ fn set_quick_add_shortcut(app: AppHandle, shortcut: String) -> Result<(), String
     register_shortcut(&app, &shortcut)
 }
 
+/// Writes an export to the path the user picked in the save dialog.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| format!("could not write {path}: {e}"))
+}
+
 #[tauri::command]
 fn show_main_window(app: AppHandle) {
     show_main(&app);
@@ -66,9 +72,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             set_quick_add_shortcut,
-            show_main_window
+            show_main_window,
+            write_text_file
         ])
         .setup(|app| {
             let handle = app.handle().clone();

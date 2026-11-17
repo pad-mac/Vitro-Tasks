@@ -75,6 +75,48 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
+/**
+ * Saves text to a file the user picks. Returns the path (desktop) or the file
+ * name (browser download), or null when cancelled.
+ */
+export async function saveTextFile(defaultName: string, text: string): Promise<string | null> {
+  if (!isTauri()) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return defaultName;
+  }
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const path = await save({ defaultPath: defaultName, filters: [{ name: "CSV", extensions: ["csv"] }] });
+  if (!path) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("write_text_file", { path, contents: text });
+  return path;
+}
+
+/** Tells the main window to show a task (used by quick add's Ctrl+Enter). */
+export async function requestOpenTask(taskId: string, listId: string | null): Promise<void> {
+  if (!isTauri()) return;
+  const { emitTo } = await import("@tauri-apps/api/event");
+  await emitTo("main", "vitro:open-task", { taskId, listId });
+}
+
+export async function onOpenTask(handler: (p: { taskId: string; listId: string | null }) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<{ taskId: string; listId: string | null }>("vitro:open-task", (e) => handler(e.payload));
+}
+
+/** Fits the quick add window to its content (the list suggestions make it taller). */
+export async function setQuickAddHeight(px: number): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().setSize(new LogicalSize(680, Math.round(px)));
+}
+
 export type Layer = "tasks" | "calendar";
 
 /** The view layer a detached window shows, or null in the main window. */

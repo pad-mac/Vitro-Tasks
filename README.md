@@ -16,12 +16,13 @@ Every task has two independent dates:
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
 | Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
-| Calendar | Month and week. Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. |
-| Tasks | Priority (flag), hard deadline (hourglass, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. |
+| Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. |
+| Tasks | Priority (flag), hard deadline (target symbol, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. |
 | Right-click | Own menus for tasks (date with a full picker, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
 | Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. Right-click Tasks or Calendar to open that view in its own frameless window (drag it by its top area, close it with Alt+F4 or right-click on the top area). Works down to 300 px wide: the lists become a drawer, the board shows one lane, the side pane fills the window. |
 | Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
-| Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). |
+| Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). `Enter` adds the task; `Ctrl+Enter` adds it and opens it in the app, inside the list (or Inbox) it went to. |
+| Import / export | Settings → Data. Export writes every list, section, task and view setting to one CSV file that can be imported again. Import also reads a TickTick backup CSV (see below). |
 | Sync | Optional. Local first, last write wins per task. |
 
 Drag a task onto a list in the sidebar to move it there.
@@ -36,17 +37,35 @@ Works in the quick add bar and in every "Add task" field.
 | `14:30` | planned time |
 | `^fri`, `^24.12.` | deadline |
 | `!low`, `!med`, `!high` (or `!1` `!2` `!3`) | priority |
-| `#research` | list, matched by the start of its name |
+| `#research` | list; typing `#` shows matching lists, pick one with the arrow keys and `Enter` or `Tab` |
 
 Example: `Draft chapter wed ^30.11. !high #research`
 
 ### Keys
 
-`Ctrl+Tab` switch Tasks / Calendar · `1` Tasks · `2` Calendar · `A` add task · `W` / `M` week / month · `T` today in the calendar · `S` sidebar · `E` popup / side pane editing · `Esc` close
+`Ctrl+Tab` switch Tasks / Calendar · `1` Tasks · `2` Calendar · `A` add task · `W` / `M` week / month (or multi-week, if that was used last) · `T` today in the calendar · `S` sidebar · `E` popup / side pane editing · `Esc` close
 
 All of them can be changed under Settings → Shortcuts. Single-key shortcuts do nothing while you are typing.
 
-Settings → Appearance also sets the highlight colour, shown as a brushed-metal finish (silver by default).
+Settings → Appearance also sets the highlight colour (silver by default), shown as a quiet pearl finish with a thin iridescent edge.
+
+### Importing from TickTick
+
+In TickTick: Settings → Account → Generate backup. In Vitro Tasks: Settings → Data → Import from TickTick.
+
+| TickTick | Vitro Tasks |
+| --- | --- |
+| Folder / list | List / sublist (an existing list with the same name is reused) |
+| Inbox | Inbox |
+| Kanban column | Section |
+| Checklist items | Subtasks (done items stay done) |
+| Subtasks | Subtasks |
+| Start / due date, all-day or timed | Planned date, time or span of days |
+| Tag `deadline` | Deadline on the same date (the planned date stays) |
+| Priority low / medium / high | Priority low / medium / high |
+| Completed, won't do | Completed, won't do (completed tasks can be left out) |
+
+Repeat rules, reminders and other tags are not carried over; the import tells you how many there were. Importing the same backup again only adds what is new.
 
 ## Install
 
@@ -91,4 +110,4 @@ Layout: `src/` UI and data layer · `src/shared/schema.ts` data model · `src-ta
 
 ## Not in this version
 
-Recurring tasks, reminders, tags, focus timer, manual drag ordering inside a list, import from other apps, and accounts for more than one person on a server.
+Recurring tasks, reminders, tags, focus timer, manual drag ordering inside a list, and accounts for more than one person on a server.

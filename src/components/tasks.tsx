@@ -1,10 +1,11 @@
 // Building blocks shared by the list, board, timeline and calendar views.
-import { useState, type DragEvent, type MouseEvent } from "react";
+import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
+import { SuggestList, useListSuggest } from "./ListSuggest";
 import { Check, Icon, Rich } from "./ui";
 
 export const DRAG_TYPE = "application/x-vitro-task";
@@ -74,14 +75,19 @@ export function useCreateTask() {
 export function AddBar({ base, placeholder = "Add task" }: { base: Partial<Task>; placeholder?: string }) {
   const [value, setValue] = useState("");
   const create = useCreateTask();
+  const input = useRef<HTMLInputElement>(null);
+  const suggest = useListSuggest(value, setValue, input);
   return (
     <div className="add-bar">
       <Icon name="plus" size={14} />
       <input
+        ref={input}
         value={value}
         placeholder={`${placeholder}   ·   tomorrow 14:00   ^fri   !high   #list`}
+        {...suggest.inputProps}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
+          if (suggest.onKeyDown(e)) return;
           if (e.key === "Enter" && value.trim()) {
             void create(value, base);
             setValue("");
@@ -89,6 +95,7 @@ export function AddBar({ base, placeholder = "Add task" }: { base: Partial<Task>
           if (e.key === "Escape") (e.target as HTMLInputElement).blur();
         }}
       />
+      <SuggestList s={suggest} className="add-suggest" />
     </div>
   );
 }

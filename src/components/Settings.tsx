@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { isTauri } from "../lib/platform";
+import { todayKey } from "../lib/dates";
+import { isTauri, saveTextFile } from "../lib/platform";
+import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
-import { DEFAULT_HIGHLIGHT, useStore, type Theme } from "../store";
+import { DEFAULT_HIGHLIGHT, useStore, type ImportResult, type Theme } from "../store";
 import { Icon } from "./ui";
 
 const HIGHLIGHTS: [string, string][] = [
@@ -13,6 +15,106 @@ const HIGHLIGHTS: [string, string][] = [
   ["Sage", "#98ad95"],
   ["Lavender", "#aaa0c8"],
 ];
+
+function DataSection() {
+  const exportCsv = useStore((s) => s.exportCsv);
+  const importCsv = useStore((s) => s.importCsv);
+  const importTickTick = useStore((s) => s.importTickTick);
+  const [includeDone, setIncludeDone] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const run = async (fn: () => Promise<string | null>) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const text = await fn();
+      if (text) setMessage({ text });
+    } catch (e) {
+      setMessage({ text: e instanceof Error ? e.message : String(e), error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const summary = (r: ImportResult) => {
+    const parts = [`${r.lists} list${r.lists === 1 ? "" : "s"}`, `${r.sections} section${r.sections === 1 ? "" : "s"}`, `${r.tasks} task${r.tasks === 1 ? "" : "s"}`];
+    let text = `Imported ${parts.join(", ")}.`;
+    if (r.skipped) text += ` ${r.skipped} already here, left as they are.`;
+    if (r.notes) {
+      const lost: string[] = [];
+      if (r.notes.repeating) lost.push(`${r.notes.repeating} repeat rules`);
+      if (r.notes.reminders) lost.push(`${r.notes.reminders} reminders`);
+      if (r.notes.tags.length) lost.push(`tags (${r.notes.tags.join(", ")})`);
+      if (lost.length) text += ` Not carried over: ${lost.join(", ")}.`;
+    }
+    return text;
+  };
+  const pick = (onText: (text: string) => Promise<string | null>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void run(async () => onText(await file.text()));
+  };
+
+  return (
+    <section>
+      <span className="micro">Data</span>
+      <div className="data-row">
+        <div>
+          <b>Export</b>
+          <p className="form-hint">All lists, sections, tasks (completed ones too) and view settings as one CSV file that can be imported again.</p>
+        </div>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const path = await saveTextFile(`vitro-tasks-${todayKey()}.csv`, await exportCsv());
+              return path ? `Saved ${path}` : null;
+            })
+          }
+        >
+          <Icon name="download" size={14} /> Export CSV
+        </button>
+      </div>
+      <div className="data-row">
+        <div>
+          <b>Import</b>
+          <p className="form-hint">A Vitro Tasks export. Rows that are already here stay unless the file has a newer version.</p>
+        </div>
+        <label className={`btn ${busy ? "is-disabled" : ""}`}>
+          <Icon name="upload" size={14} /> Import CSV
+          <input type="file" accept=".csv,text/csv" hidden disabled={busy} onChange={pick(async (text) => {
+            if (isTickTickBackup(text)) return summary(await importTickTick(text, includeDone));
+            if (!isVitroCsv(text)) throw new Error("This file is neither a Vitro Tasks export nor a TickTick backup.");
+            return summary(await importCsv(text));
+          })} />
+        </label>
+      </div>
+      <div className="data-row">
+        <div>
+          <b>Import from TickTick</b>
+          <p className="form-hint">
+            The backup CSV from TickTick (Settings → Account → Generate backup). Folders become lists with sublists, columns become sections,
+            checklists become subtasks, the tag “deadline” becomes a deadline. Importing the same backup again only adds what is new.
+          </p>
+          <label className="check-row">
+            <input type="checkbox" checked={includeDone} onChange={(e) => setIncludeDone(e.target.checked)} /> Include completed tasks
+          </label>
+        </div>
+        <label className={`btn ${busy ? "is-disabled" : ""}`}>
+          <Icon name="upload" size={14} /> Choose backup
+          <input type="file" accept=".csv,text/csv" hidden disabled={busy} onChange={pick(async (text) => {
+            if (!isTickTickBackup(text)) throw new Error("This is not a TickTick backup CSV.");
+            return summary(await importTickTick(text, includeDone));
+          })} />
+        </label>
+      </div>
+      {busy && <p className="form-hint">Working…</p>}
+      {message && <p className={message.error ? "form-error" : "form-ok"}>{message.text}</p>}
+    </section>
+  );
+}
 
 function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
   const shortcuts = useStore((s) => s.shortcuts);
@@ -47,7 +149,7 @@ function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
   return (
     <div className="shortcut-row">
       <span>{label}</span>
-      <button type="button" className={`kbd-btn ${recording ? "is-recording" : ""}`} onClick={() => setRecording(!recording)}>
+      <button type="button" className={`kbd-btn ${recording ? "is-recording pearl" : ""}`} onClick={() => setRecording(!recording)}>
         {recording ? "Press keys…" : shortcuts[id] ? <kbd>{shortcuts[id]}</kbd> : <span className="faint">None</span>}
       </button>
     </div>
@@ -112,7 +214,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
               <Icon name="plus" size={12} />
             </label>
           </div>
-          <p className="form-hint">Selected days, times and other highlights take this colour as a brushed metal finish.</p>
+          <p className="form-hint">Selected days, times and other highlights take this colour as a quiet pearl finish.</p>
         </section>
 
         <section>
@@ -146,6 +248,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
             <code>!high</code> priority · <code>#list</code>
           </p>
         </section>
+
+        <DataSection />
 
         <section>
           <span className="micro">Updates</span>

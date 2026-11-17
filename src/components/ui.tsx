@@ -18,45 +18,128 @@ import { richParts } from "../lib/rich";
 
 // ---------- Icons ----------
 
-// 16px grid, 1.4 stroke.
+// 16px grid, 1.4 stroke, round caps and joins, corner radius 1.8 on boxes.
+// Every icon is built from straight lines, circles and rounded rectangles so
+// the set stays geometric and even.
 const PATHS: Record<string, ReactNode> = {
   list: <path d="M3 4.5h10M3 8h10M3 11.5h10" />,
-  board: <path d="M3 3h3v10H3zM10 3h3v6h-3z M6.5 3h3v8h-3z" />,
-  timeline: <path d="M2.5 4.5h6M6 8h7.5M4 11.5h5" strokeWidth="2" />,
-  calendar: <path d="M2.5 4h11v9.5h-11zM2.5 6.8h11M5.5 2.2v3M10.5 2.2v3" />,
-  tasks: <path d="M2.5 2.5h11v11h-11zM5 8.2l2.1 2.1L11 6" />,
+  board: (
+    <>
+      <rect x="2.5" y="2.5" width="3" height="11" rx="1.2" />
+      <rect x="6.5" y="2.5" width="3" height="8" rx="1.2" />
+      <rect x="10.5" y="2.5" width="3" height="5.5" rx="1.2" />
+    </>
+  ),
+  timeline: <path d="M2.5 4.5h6M6 8h7.5M4 11.5h5" />,
+  calendar: (
+    <>
+      <rect x="2.5" y="3.5" width="11" height="10" rx="1.8" />
+      <path d="M2.5 6.8h11M5.5 2.2v2.6M10.5 2.2v2.6" />
+    </>
+  ),
+  tasks: (
+    <>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.8" />
+      <path d="M5.3 8.1l1.9 1.9 3.6-3.9" />
+    </>
+  ),
   plus: <path d="M8 3v10M3 8h10" />,
   x: <path d="M4 4l8 8M12 4l-8 8" />,
   check: <path d="M3.5 8.5l3 3 6-7" />,
   chevron: <path d="M6 4l4 4-4 4" />,
-  clock: <path d="M8 2.2a5.8 5.8 0 1 0 0 11.6A5.8 5.8 0 0 0 8 2.2zM8 4.8V8l2.2 1.4" />,
-  // Hourglass: the hard deadline. Flags belong to priorities.
-  deadline: <path d="M4.5 2.3h7M4.5 13.7h7M5.4 2.3v1.9c0 1.5 2.6 2.4 2.6 3.8s-2.6 2.3-2.6 3.8v1.9M10.6 2.3v1.9c0 1.5-2.6 2.4-2.6 3.8s2.6 2.3 2.6 3.8v1.9" />,
-  trash: <path d="M3 4.5h10M6.2 4.5V3h3.6v1.5M4.3 4.5l.6 8.5h6.2l.6-8.5" />,
+  back: <path d="M10 3.5L5.5 8l4.5 4.5" />,
+  clock: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M8 5v3l2 1.3" />
+    </>
+  ),
+  // Target: the hard deadline. Flags belong to priorities.
+  deadline: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <circle cx="8" cy="8" r="2.6" />
+      <circle cx="8" cy="8" r=".6" fill="currentColor" />
+    </>
+  ),
+  trash: <path d="M3 4.5h10M6.3 4.5V3.3h3.4v1.2M4.4 4.5l.6 8.1a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.6-8.1" />,
   settings: <path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M10 3.4v3.2M6 9.4v3.2" />,
   sync: <path d="M13 6.5A5.2 5.2 0 0 0 3.6 5M3 9.5A5.2 5.2 0 0 0 12.4 11M3.2 2.6V5h2.4M12.8 13.4V11h-2.4" />,
-  inbox: <path d="M2.5 9l1.6-5.5h7.8L13.5 9v3.5h-11zM2.5 9h3.2l.8 1.5h3l.8-1.5h3.2" />,
-  sun: <path d="M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M12.4 3.6l-1 1M4.6 11.4l-1 1" />,
-  week: <path d="M2.5 3.5h11v9h-11zM5.25 3.5v9M8 3.5v9M10.75 3.5v9" />,
+  inbox: <path d="M2.5 9l1.5-5a.9.9 0 0 1 .9-.6h6.2a.9.9 0 0 1 .9.6l1.5 5v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM2.5 9h3l.8 1.5h3.4L10.5 9h3" />,
+  sun: (
+    <>
+      <circle cx="8" cy="8" r="2.7" />
+      <path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M12.3 3.7l-.9.9M4.6 11.4l-.9.9" />
+    </>
+  ),
+  week: (
+    <>
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1.8" />
+      <path d="M6.2 3.5v9M9.8 3.5v9" />
+    </>
+  ),
   layers: <path d="M8 2.5L2.5 5.5 8 8.5l5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3" />,
-  done: <path d="M8 2.2a5.8 5.8 0 1 0 0 11.6A5.8 5.8 0 0 0 8 2.2zM5.5 8.2l1.8 1.8 3.4-3.8" />,
-  dots: <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" strokeWidth="2.2" />,
+  done: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M5.6 8.2l1.7 1.7 3.2-3.5" />
+    </>
+  ),
+  dots: (
+    <>
+      <circle cx="3.5" cy="8" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="8" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="12.5" cy="8" r=".9" fill="currentColor" stroke="none" />
+    </>
+  ),
   sort: <path d="M4.5 3v10M2.5 11l2 2 2-2M9 4h4.5M9 8h3.2M9 12h2" />,
-  pin: <path d="M6 2.5h4l-.6 4 2.1 2.2H4.5l2.1-2.2zM8 8.7v5" />,
-  copy: <path d="M5.5 5.5h8v8h-8zM3 10.5h-.5v-8h8V3" />,
-  ban: <path d="M2.5 2.5h11v11h-11zM5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />,
-  move: <path d="M2.5 4.5h11v8h-11zM2.5 4.5l1-2h9l1 2M6.5 8.5h4M9 7l1.5 1.5L9 10" />,
-  subtask: <path d="M3 3v6.5h4M3 6h4M9 5h4.5v2.5H9zM9 9h4.5v2.5H9z" />,
+  pin: <path d="M6 2.5h4l-.5 3.8 2 2.2H4.5l2-2.2zM8 8.5v5" />,
+  copy: (
+    <>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.6" />
+      <path d="M10.5 3.6v-.1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.1" />
+    </>
+  ),
+  ban: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M4.1 11.9l7.8-7.8" />
+    </>
+  ),
+  move: (
+    <>
+      <path d="M2.5 5.2a1.3 1.3 0 0 1 1.3-1.3h2.6l1.3 1.4h4.5a1.3 1.3 0 0 1 1.3 1.3v5.1a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3z" />
+      <path d="M6.3 9.1h3.4M8.5 7.8l1.3 1.3-1.3 1.3" />
+    </>
+  ),
+  subtask: (
+    <>
+      <path d="M3.5 3v6.2a1.3 1.3 0 0 0 1.3 1.3H7M3.5 5.5H7" />
+      <rect x="8.5" y="4" width="5" height="3" rx="1" />
+      <rect x="8.5" y="9" width="5" height="3" rx="1" />
+    </>
+  ),
   edit: <path d="M3 13l.6-2.8 7.2-7.2 2.2 2.2-7.2 7.2zM9.6 4.2l2.2 2.2" />,
   download: <path d="M8 2.5v7.5M5 7.2l3 3 3-3M3 13.2h10" />,
+  upload: <path d="M8 10.5V3M5 5.8l3-3 3 3M3 13.2h10" />,
   winmin: <path d="M4 8h8" />,
-  winmax: <path d="M4.2 4.2h7.6v7.6H4.2z" />,
-  notes: <path d="M3 3.5h10v9H3zM5.2 6.2h5.6M5.2 8.4h5.6M5.2 10.4h3" />,
-  window: <path d="M2.5 3.5h11v9h-11zM2.5 6h11M10 8.5h1.8v1.8" />,
-  back: <path d="M10 3.5L5.5 8l4.5 4.5" />,
+  winmax: <rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1" />,
+  notes: (
+    <>
+      <rect x="3" y="2.5" width="10" height="11" rx="1.8" />
+      <path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" />
+    </>
+  ),
+  window: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.8" />
+      <path d="M2.5 6h11" />
+    </>
+  ),
 };
 
-// 20px grid with a thin stroke: for icons shown large (menus, toolbar toggles).
+// 20px grid with a 1.25 stroke: for icons shown larger (menus, toolbar
+// toggles). Same corner radius (2.2 here, 1.8 at 16 px) as the 16 px set.
 const PATHS20: Record<string, ReactNode> = {
   today: (
     <>
@@ -75,11 +158,11 @@ const PATHS20: Record<string, ReactNode> = {
     <>
       <rect x="3.2" y="4.4" width="13.6" height="12" rx="2.2" />
       <path d="M3.2 7.9h13.6M7 2.9v2.8M13 2.9v2.8" />
-      <circle cx="7" cy="11" r=".7" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="11" r=".7" fill="currentColor" stroke="none" />
-      <circle cx="13" cy="11" r=".7" fill="currentColor" stroke="none" />
-      <circle cx="7" cy="13.8" r=".7" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="13.8" r=".7" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="11" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="11" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="11" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="13.8" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="13.8" r=".75" fill="currentColor" stroke="none" />
     </>
   ),
   sidebar: (
@@ -88,16 +171,18 @@ const PATHS20: Record<string, ReactNode> = {
       <path d="M8 4v12" />
     </>
   ),
+  // Editing in the side pane: a window with a panel on its right.
   editpane: (
     <>
-      <rect x="2.8" y="4" width="14.4" height="12" rx="2.2" />
-      <path d="M11.6 4v12M13.4 7.4h2M13.4 9.6h2" />
+      <rect x="3" y="4" width="14" height="12" rx="2.2" />
+      <path d="M12 4v12" />
     </>
   ),
+  // Editing in a popup: a window with a card floating inside it.
   editpopup: (
     <>
-      <rect x="2.8" y="4" width="14.4" height="12" rx="2.2" strokeDasharray="2 2.2" />
-      <rect x="7" y="7.3" width="7.6" height="5.6" rx="1.4" />
+      <rect x="3" y="4" width="14" height="12" rx="2.2" />
+      <rect x="7" y="7.5" width="7" height="5" rx="1.2" />
     </>
   ),
 };
@@ -388,7 +473,7 @@ export function MiniCalendar({ value, onPick }: { value: string | null; onPick: 
           <button
             type="button"
             key={d}
-            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected sheen" : ""}`}
+            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected pearl" : ""}`}
             onClick={() => onPick(d)}
           >
             {+d.slice(8)}
@@ -415,14 +500,14 @@ function TimeColumns({ time, onPick }: { time: string | null; onPick: (t: string
     <div className="time-cols">
       <div className="time-col" ref={hours}>
         {Array.from({ length: 24 }, (_, i) => (
-          <button type="button" key={i} className={`time-cell ${i === h ? "is-selected sheen" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
+          <button type="button" key={i} className={`time-cell ${i === h ? "is-selected pearl" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
             {pad(i)}
           </button>
         ))}
       </div>
       <div className="time-col time-col-min">
         {MINUTES.map((x) => (
-          <button type="button" key={x} className={`time-cell ${x === m ? "is-selected sheen" : ""}`} onClick={() => onPick(`${pad(h ?? 9)}:${pad(x)}`)}>
+          <button type="button" key={x} className={`time-cell ${x === m ? "is-selected pearl" : ""}`} onClick={() => onPick(`${pad(h ?? 9)}:${pad(x)}`)}>
             :{pad(x)}
           </button>
         ))}

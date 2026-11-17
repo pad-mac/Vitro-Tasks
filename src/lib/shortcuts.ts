@@ -17,7 +17,7 @@ export const ACTIONS: { id: ActionId; label: string; def: string }[] = [
   { id: "goCalendar", label: "Go to Calendar", def: "2" },
   { id: "addTask", label: "Add task (where the add bar is shown)", def: "A" },
   { id: "calWeek", label: "Calendar: week view", def: "W" },
-  { id: "calMonth", label: "Calendar: month view", def: "M" },
+  { id: "calMonth", label: "Calendar: month (or multi-week, if used last)", def: "M" },
   { id: "calToday", label: "Calendar: jump to today", def: "T" },
   { id: "toggleSidebar", label: "Show or hide the list sidebar", def: "S" },
   { id: "toggleEditMode", label: "Switch popup / side pane editing", def: "E" },

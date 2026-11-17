@@ -170,6 +170,7 @@ function DayCell({
   day,
   entries,
   lanes,
+  hiddenSpans = 0,
   capacity,
   month,
   outside,
@@ -179,6 +180,7 @@ function DayCell({
   day: string;
   entries: DayEntry[];
   lanes: number;
+  hiddenSpans?: number;
   capacity: number;
   month: boolean;
   outside: boolean;
@@ -189,8 +191,8 @@ function DayCell({
   const moveEntry = useMoveEntry();
   const drop = useDropTarget((id, kind) => moveEntry(id, kind, day, month ? undefined : null));
   const room = Math.max(0, capacity - lanes);
-  const shown = entries.length > room ? entries.slice(0, Math.max(0, room - 1)) : entries;
-  const hidden = entries.length - shown.length;
+  const shown = entries.length + hiddenSpans > room ? entries.slice(0, Math.max(0, room - 1)) : entries;
+  const hidden = entries.length - shown.length + hiddenSpans;
   return (
     <div
       data-day={day}
@@ -254,14 +256,35 @@ function WeekRow({
     });
     return { spans, lanesAt };
   }, [tasks, start, end, n]);
+  const entriesByDay = useMemo(
+    () => days.map((d) => entriesForDay(tasks, d).filter((e) => !(e.kind === "planned" && isSpan(e.task)) && (month || !timeOf(e)))),
+    [tasks, days, month],
+  );
+  // Rows that do not fit: bars in the last row stay only where nothing on their
+  // days overflows; the rest of the overflow is counted in the "+N" row.
+  const { visible, shownLanes, hiddenSpans } = useMemo(() => {
+    const fits = (c: number) => lanesAt[c] + entriesByDay[c].length <= capacity;
+    const visible = spans.filter((s) => s.lane < capacity - 1 || (s.lane === capacity - 1 && Array.from({ length: s.c1 - s.c0 + 1 }, (_, k) => s.c0 + k).every(fits)));
+    const shownLanes = Array.from({ length: n }, () => 0);
+    const hiddenSpans = Array.from({ length: n }, () => 0);
+    for (const s of spans) {
+      const on = visible.includes(s);
+      for (let c = s.c0; c <= s.c1; c++) {
+        if (on) shownLanes[c] = Math.max(shownLanes[c], s.lane + 1);
+        else hiddenSpans[c]++;
+      }
+    }
+    return { visible, shownLanes, hiddenSpans };
+  }, [spans, lanesAt, entriesByDay, capacity, n]);
   return (
     <div className={`cal-week ${month ? "" : "is-allday"}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
       {days.map((d, i) => (
         <DayCell
           key={d}
           day={d}
-          entries={entriesForDay(tasks, d).filter((e) => !(e.kind === "planned" && isSpan(e.task)) && (month || !timeOf(e)))}
-          lanes={lanesAt[i]}
+          entries={entriesByDay[i]}
+          lanes={shownLanes[i]}
+          hiddenSpans={hiddenSpans[i]}
           capacity={capacity}
           month={month}
           outside={!!titleMonth && d.slice(0, 7) !== titleMonth}
@@ -269,7 +292,7 @@ function WeekRow({
           onExpand={onExpand}
         />
       ))}
-      {spans.map((s) => (
+      {visible.map((s) => (
         <SpanBar key={s.task.id} {...s} top={month ? 30 : 4} from={start} to={end} n={n} />
       ))}
     </div>
@@ -544,11 +567,11 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
 
 // ---------- Month ----------
 
-function MonthView({ top, tasks, titleMonth, onShift, onExpand }: { top: string; tasks: Task[]; titleMonth: string; onShift: (weeks: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
+function MonthView({ top, rows = 6, tasks, titleMonth, onShift, onExpand }: { top: string; rows?: number; tasks: Task[]; titleMonth: string; onShift: (weeks: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
   const [gridRef, height] = useElementHeight<HTMLDivElement>();
   const { range, handlers } = useDayRange();
   const wheel = useStepWheel(onShift, 90);
-  const capacity = Math.max(1, Math.floor((height / 6 - 32) / CHIP_H));
+  const capacity = Math.max(1, Math.floor((height / rows - 32) / CHIP_H));
   return (
     <div className="month">
       <div className="month-dow">
@@ -556,13 +579,23 @@ function MonthView({ top, tasks, titleMonth, onShift, onExpand }: { top: string;
           <span key={w}>{w}</span>
         ))}
       </div>
-      <div className="month-grid" ref={gridRef} onWheel={(e) => e.deltaY && !e.ctrlKey && !e.shiftKey && wheel(e.deltaY)} {...handlers}>
-        {Array.from({ length: 6 }, (_, i) => addDays(top, i * 7)).map((ws) => (
+      <div className="month-grid" ref={gridRef} style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }} onWheel={(e) => e.deltaY && !e.ctrlKey && !e.shiftKey && wheel(e.deltaY)} {...handlers}>
+        {Array.from({ length: rows }, (_, i) => addDays(top, i * 7)).map((ws) => (
           <WeekRow key={ws} start={ws} tasks={tasks} month titleMonth={titleMonth} capacity={capacity} range={range} onExpand={onExpand} />
         ))}
       </div>
     </div>
   );
+}
+
+/** "November 2026", "Nov – Dec 2026" or "Dec 2026 – Jan 2027" for a span of days. */
+function rangeTitle(from: string, to: string): string {
+  const [y1, m1] = from.split("-").map(Number);
+  const [y2, m2] = to.split("-").map(Number);
+  const short = (m: number) => MONTHS_LONG[m - 1].slice(0, 3);
+  if (y1 === y2 && m1 === m2) return `${MONTHS_LONG[m1 - 1]} ${y1}`;
+  if (y1 === y2) return `${short(m1)} – ${short(m2)} ${y1}`;
+  return `${short(m1)} ${y1} – ${short(m2)} ${y2}`;
 }
 
 /** Popup / side pane switch, shown next to the sort and options buttons. */
@@ -593,6 +626,12 @@ export function CalendarView() {
   // Month: Monday of the first visible row. Week: first visible day.
   const [top, setTop] = useState(() => startOfWeek(startOfMonth(today)));
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
+  // Multi-week: Monday of the first row; starts with the current week.
+  const [mwTop, setMwTop] = useState(() => startOfWeek(today));
+  const weeks = useStore((s) => s.calWeeks);
+  const setWeeks = useStore((s) => s.setCalWeeks);
+  const shortcuts = useStore((s) => s.shortcuts);
+  const calMonthLike = useStore((s) => s.calMonthLike);
   const [expanded, setExpanded] = useState<{ day: string; anchor: Anchor } | null>(null);
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
@@ -608,15 +647,17 @@ export function CalendarView() {
   );
 
   // The month the grid mostly shows: the one its middle day falls in.
-  const titleKey = mode === "month" ? addDays(top, 20) : addDays(weekStart, 3);
+  const titleKey = mode === "month" ? addDays(top, 20) : mode === "multiweek" ? addDays(mwTop, Math.floor((weeks * 7) / 2)) : addDays(weekStart, 3);
   const titleMonth = titleKey.slice(0, 7);
   const [ty, tm] = titleKey.split("-").map(Number);
   const step = (dir: number) => {
     if (mode === "month") setTop(startOfWeek(addMonths(`${titleMonth}-01`, dir)));
+    else if (mode === "multiweek") setMwTop(addDays(mwTop, dir * weeks * 7));
     else setWeekStart(addDays(weekStart, dir * n));
   };
   const goToday = () => {
     setTop(startOfWeek(startOfMonth(today)));
+    setMwTop(startOfWeek(today));
     setWeekStart(n === 7 ? startOfWeek(today) : today);
   };
   useEffect(() => {
@@ -629,7 +670,7 @@ export function CalendarView() {
     <div className="calendar" ref={rootRef}>
       <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
         <h1 data-tauri-drag-region={detached ? true : undefined}>
-          {MONTHS_LONG[tm - 1]} {ty}
+          {mode === "multiweek" ? rangeTitle(mwTop, addDays(mwTop, weeks * 7 - 1)) : `${MONTHS_LONG[tm - 1]} ${ty}`}
         </h1>
         <div className="head-tools">
           <button type="button" className="btn btn-square" title="New task today" onClick={(e) => openComposer({ start_date: today }, anchorOf(e.currentTarget))}>
@@ -639,7 +680,7 @@ export function CalendarView() {
             align="right"
             trigger={
               <span className="btn">
-                {mode === "month" ? "Month" : "Week"}
+                {mode === "month" ? "Month" : mode === "multiweek" ? `${weeks} Weeks` : "Week"}
                 <span className="down">
                   <Icon name="chevron" size={12} />
                 </span>
@@ -648,8 +689,23 @@ export function CalendarView() {
           >
             {(close) => (
               <div className="menu">
-                <MenuItem active={mode === "month"} onClick={() => { setMode("month"); close(); }}>Month</MenuItem>
-                <MenuItem active={mode === "week"} onClick={() => { setMode("week"); close(); }}>Week</MenuItem>
+                <MenuItem active={mode === "week"} onClick={() => { setMode("week"); close(); }}>
+                  Week <kbd className="menu-kbd">{shortcuts.calWeek}</kbd>
+                </MenuItem>
+                <MenuItem active={mode === "month"} onClick={() => { setMode("month"); close(); }}>
+                  Month <kbd className="menu-kbd">{calMonthLike === "month" ? shortcuts.calMonth : ""}</kbd>
+                </MenuItem>
+                <div className="cm-sep" />
+                <div className={`menu-item multiweek-item ${mode === "multiweek" ? "is-active" : ""}`}>
+                  <button type="button" className="menu-label mw-label" onClick={() => { setMode("multiweek"); close(); }}>
+                    Multi-Week {calMonthLike === "multiweek" && <kbd className="menu-kbd">{shortcuts.calMonth}</kbd>}
+                  </button>
+                  <span className="mw-stepper">
+                    <button type="button" aria-label="Fewer weeks" disabled={weeks <= 2} onClick={() => { setWeeks(weeks - 1); setMode("multiweek"); }}>−</button>
+                    <b>{weeks}</b>
+                    <button type="button" aria-label="More weeks" disabled={weeks >= 6} onClick={() => { setWeeks(weeks + 1); setMode("multiweek"); }}>+</button>
+                  </span>
+                </div>
               </div>
             )}
           </Popover>
@@ -676,6 +732,8 @@ export function CalendarView() {
       </header>
       {mode === "month" ? (
         <MonthView top={top} tasks={visible} titleMonth={titleMonth} onShift={(w) => setTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
+      ) : mode === "multiweek" ? (
+        <MonthView top={mwTop} rows={weeks} tasks={visible} titleMonth="" onShift={(w) => setMwTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
       ) : (
         <WeekView start={weekStart} n={n} tasks={visible} onShift={(d) => setWeekStart((s) => addDays(s, d))} onExpand={onExpand} />
       )}

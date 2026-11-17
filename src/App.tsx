@@ -8,7 +8,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
 import { TimelineView } from "./components/TimelineView";
 import { Icon, MenuItem, Popover } from "./components/ui";
-import { isTauri, windowAction } from "./lib/platform";
+import { isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
 import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type ViewRef } from "./lib/views";
 import type { GroupBy, SortBy, ViewMode } from "./shared/schema";
@@ -201,7 +201,6 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
           : `Synced${sync.last ? ` at ${new Date(sync.last).toLocaleTimeString()}` : ""}`;
   return (
     <header className="titlebar" data-tauri-drag-region>
-      <span className="logo" aria-label="Vitro Tasks" data-tauri-drag-region>V</span>
       <nav className="tb-nav">
         <button type="button" className={`tb-btn ${view.kind !== "calendar" ? "is-active" : ""}`} title="Tasks (right-click: open in a new window)" onClick={() => setView(lastTaskView)} onContextMenu={layerMenu("tasks")}>
           <Icon name="tasks" size={17} /> <span>Tasks</span>
@@ -212,7 +211,7 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
       </nav>
       <div className="tb-drag" data-tauri-drag-region />
       {(update.status === "available" || update.status === "installing") && (
-        <button type="button" className="tb-update" disabled={update.status === "installing"} onClick={() => void installUpdate()}>
+        <button type="button" className="tb-update pearl" disabled={update.status === "installing"} onClick={() => void installUpdate()}>
           <Icon name="download" size={14} />
           {update.status === "installing" ? `Updating… ${Math.round((update.progress ?? 0) * 100)}%` : `Update to ${update.version}`}
         </button>
@@ -259,9 +258,13 @@ function runAction(id: ActionId, narrow: boolean): boolean {
       return true;
     }
     case "calWeek":
-    case "calMonth":
       if (!inCalendar) return false;
-      s.setCalMode(id === "calWeek" ? "week" : "month");
+      s.setCalMode("week");
+      return true;
+    case "calMonth":
+      // M goes to whichever of Month and Multi-Week was used last.
+      if (!inCalendar) return false;
+      s.setCalMode(s.calMonthLike);
       return true;
     case "calToday":
       if (!inCalendar) return false;
@@ -297,6 +300,19 @@ export function App() {
   const shortcutError = useStore((s) => s.shortcutError);
   const narrow = useNarrow();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
+  useEffect(() => {
+    if (windowLabel() !== "main") return;
+    let off = () => {};
+    void onOpenTask(async ({ taskId, listId }) => {
+      const st = useStore.getState();
+      await st.reload();
+      st.setView(listId ? { kind: "list", id: listId } : { kind: "smart", id: "inbox" });
+      useStore.getState().select(taskId, null);
+    }).then((fn) => (off = fn));
+    return () => off();
+  }, []);
 
   useEffect(() => {
     // The app has its own menus; the webview's default one only stays for text fields.

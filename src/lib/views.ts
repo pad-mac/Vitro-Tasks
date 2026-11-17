@@ -232,7 +232,15 @@ export function groupTasks(
           b.key === "overdue" ? "overdue" : undefined,
         ),
       );
-      return groups.filter((g) => g.tasks.length || g.key === "today" || g.key === "tomorrow" || g.key === "none");
+      // Empty groups stay only where a task could land in this view (as drop targets):
+      // Today can only hold today's tasks, Next 7 Days nothing undated.
+      const keepEmpty =
+        view.kind === "smart" && view.id === "today"
+          ? ["today"]
+          : view.kind === "smart" && view.id === "next7"
+            ? ["today", "tomorrow"]
+            : ["today", "tomorrow", "none"];
+      return groups.filter((g) => g.tasks.length || keepEmpty.includes(g.key));
     }
     default:
       return [make("all", "", view.kind === "list" ? { list_id: view.id } : {}, () => true)];
