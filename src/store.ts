@@ -261,7 +261,10 @@ export const useStore = create<State>((set, get) => {
         foundUpdate = await findUpdate();
         set({ update: foundUpdate ? { status: "available", version: foundUpdate.version } : { status: "none" } });
       } catch (e) {
-        set({ update: { status: "error", message: e instanceof Error ? e.message : String(e) } });
+        const raw = e instanceof Error ? e.message : String(e);
+        // A release published without the signed feed answers with no usable JSON.
+        const message = /release JSON|404|not found/i.test(raw) ? "no update feed has been published yet" : raw;
+        set({ update: { status: "error", message } });
       }
     },
     async installUpdate() {

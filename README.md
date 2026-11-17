@@ -69,10 +69,9 @@ The token is a single shared secret, so one server serves one person.
 
 ## Releasing
 
-1. Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
-2. Push a tag `vX.Y.Z` that matches it. The Build workflow publishes the installer, its signature and `latest.json` to Releases; installed apps pick the update up from there.
+Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` and push to `main`. The Build workflow publishes a release `vX.Y.Z` with the installer whenever that version has no release yet; installed apps pick the update up from there.
 
-Updates are signed. The workflow needs the repository secret `TAURI_SIGNING_PRIVATE_KEY` (the private key belonging to the public key in `src-tauri/tauri.conf.json`). Without it the build still succeeds, but no `latest.json` is published and installed apps will not see the release.
+Updates are signed. The workflow needs the repository secret `TAURI_SIGNING_PRIVATE_KEY` (the private key belonging to the public key in `src-tauri/tauri.conf.json`). Without it the release is still published, but without `latest.json`, so installed apps will not see it. After adding the secret, run the workflow again (Actions → Build → Run workflow) to add the feed to the current release.
 
 ## Development
 
