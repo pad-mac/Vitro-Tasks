@@ -1,58 +1,95 @@
-import { useState } from "react";
-import { defaultsForView, subtasksOf, type Group, type ViewRef } from "../lib/views";
-import type { Task } from "../shared/schema";
-import { useStore } from "../store";
-import { TaskMeta, dragProps, useCreateTask, useDropTarget } from "./tasks";
-import { Check, Icon, InlineInput } from "./ui";
+import { useMemo, useState } from "react";
+import { defaultsForView, subgroupTasks, type Group, type Subgroup, type ViewRef } from "../lib/views";
+import type { SortBy, Task } from "../shared/schema";
+import { anchorOf, useStore } from "../store";
+import { TaskMeta, dragProps, useCreateTask, useDropTarget, useTaskMenu } from "./tasks";
+import { Check, Icon, InlineInput, MenuItem, Popover } from "./ui";
 
 function Card({ task, showList }: { task: Task; showList: boolean }) {
-  const tasks = useStore((s) => s.tasks);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
-  const subs = subtasksOf(tasks, task.id);
-  const doneSubs = subs.filter((s) => s.status === 1).length;
+  const showDetails = useStore((s) => s.showDetails);
+  const onMenu = useTaskMenu(task.id);
   return (
     <article
       className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
-      onClick={() => select(task.id)}
+      onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
+      onContextMenu={onMenu}
       {...dragProps(task.id)}
     >
       <div className="card-top">
-        <Check done={task.status === 1} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
         <span className="task-title">{task.title || <span className="faint">Untitled</span>}</span>
       </div>
-      {task.notes && <p className="card-notes">{task.notes}</p>}
-      {(task.start_date || task.deadline_date || showList || subs.length > 0) && (
-        <div className="card-foot">
-          <TaskMeta task={task} showList={showList} />
-          {subs.length > 0 && (
-            <span className="meta-subs mono">
-              {doneSubs}/{subs.length}
-            </span>
-          )}
-        </div>
-      )}
+      {showDetails && task.notes && <p className="card-notes">{task.notes}</p>}
+      <div className="card-foot">
+        <TaskMeta task={task} showList={showList} dotList />
+      </div>
     </article>
   );
 }
 
-function Column({ group, view }: { group: Group; view: ViewRef }) {
+function Lane({ sub, showListFor }: { sub: Subgroup; showListFor: (t: Task) => boolean }) {
+  const [closed, setClosed] = useState(false);
+  return (
+    <div className="lane">
+      {sub.label && (
+        <button type="button" className={`lane-head ${sub.tone ? `tone-${sub.tone}` : ""}`} onClick={() => setClosed(!closed)}>
+          <span className={`twist ${closed ? "" : "is-open"}`}><Icon name="chevron" size={12} /></span>
+          {sub.tone === "pinned" && <Icon name="pin" size={13} />}
+          <span className="lane-label">{sub.label}</span>
+          <span className="count">{sub.tasks.length}</span>
+        </button>
+      )}
+      {!closed && sub.tasks.map((t) => <Card key={t.id} task={t} showList={showListFor(t)} />)}
+    </div>
+  );
+}
+
+function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef; sort: SortBy; sectioned: boolean }) {
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const updateTask = useStore((s) => s.updateTask);
+  const updateSection = useStore((s) => s.updateSection);
+  const deleteSection = useStore((s) => s.deleteSection);
   const create = useCreateTask();
-  const canDrop = Object.keys(group.patch).length > 0 || group.key === "all";
+  const canDrop = Object.keys(group.patch).length > 0;
   const drop = useDropTarget((id) => {
     if (canDrop) void updateTask(id, group.patch);
   });
+  const subs = useMemo(() => subgroupTasks(group.tasks, sort), [group.tasks, sort]);
+  const isSection = sectioned && group.key !== "nosection";
   return (
     <section className={`column ${drop.over && canDrop ? "is-drop" : ""}`} {...drop.props}>
       <header className={`column-head ${group.tone === "overdue" ? "tone-overdue" : ""}`}>
-        <span className="group-label">{group.label || "Tasks"}</span>
-        <span className="count mono">{group.tasks.length}</span>
-        <button type="button" className="icon-btn push" title="Add task to this column" onClick={() => setAdding(true)}>
-          <Icon name="plus" size={14} />
+        {renaming ? (
+          <InlineInput
+            initial={group.label}
+            onCommit={(v) => {
+              void updateSection(group.key, { name: v });
+              setRenaming(false);
+            }}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : (
+          <span className="group-label">{group.label || "Tasks"}</span>
+        )}
+        <span className="count">{group.tasks.length}</span>
+        <span className="push" />
+        <button type="button" className="icon-btn" title="Add task to this column" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={16} />
         </button>
+        {isSection && (
+          <Popover align="right" title="Section options" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
+            {(close) => (
+              <div className="menu">
+                <MenuItem onClick={() => { setRenaming(true); close(); }}><Icon name="edit" size={15} /> Rename</MenuItem>
+                <MenuItem danger onClick={() => { void deleteSection(group.key); close(); }}><Icon name="trash" size={15} /> Delete</MenuItem>
+              </div>
+            )}
+          </Popover>
+        )}
       </header>
       <div className="column-body">
         {adding && (
@@ -67,23 +104,22 @@ function Column({ group, view }: { group: Group; view: ViewRef }) {
             />
           </div>
         )}
-        {group.tasks.map((t) => (
-          <Card key={t.id} task={t} showList={view.kind !== "list" || t.list_id !== view.id} />
+        {subs.map((s) => (
+          <Lane key={s.key} sub={s} showListFor={(t) => view.kind !== "list" || t.list_id !== view.id} />
         ))}
-        {!group.tasks.length && !adding && <div className="column-empty">Drop a task here</div>}
+        {!group.tasks.length && !adding && <div className="column-empty">No tasks</div>}
       </div>
     </section>
   );
 }
 
-export function KanbanView({ view, groups, sectioned }: { view: ViewRef; groups: Group[]; sectioned: boolean }) {
+export function KanbanView({ view, groups, sectioned, sort }: { view: ViewRef; groups: Group[]; sectioned: boolean; sort: SortBy }) {
   const addSection = useStore((s) => s.addSection);
   const [adding, setAdding] = useState(false);
-  
   return (
     <div className="kanban">
       {groups.map((g) => (
-        <Column key={g.key} group={g} view={view} />
+        <Column key={g.key} group={g} view={view} sort={sort} sectioned={sectioned} />
       ))}
       {sectioned && (
         <section className="column column-add">

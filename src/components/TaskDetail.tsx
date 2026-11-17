@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { deadlineCountdown, todayKey } from "../lib/dates";
+import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
+import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
-import { Check, DateField, Icon, MenuItem, Popover } from "./ui";
+import { Check, DateField, Flag, FloatingPanel, Icon, MenuItem, Popover } from "./ui";
 
 /** Text field that edits locally and saves shortly after typing stops, or on blur. */
 function useDraft(value: string, taskId: string, save: (v: string) => void) {
@@ -44,15 +45,64 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-export function TaskDetail({ task }: { task: Task }) {
+function ListPicker({ listId, onPick }: { listId: string | null; onPick: (id: string | null) => void }) {
   const lists = useStore((s) => s.lists);
+  const list = lists.find((l) => l.id === listId);
+  return (
+    <Popover
+      className="pop-up"
+      trigger={
+        <span className="foot-trigger">
+          {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={14} />}
+          {list?.name ?? "Inbox"}
+        </span>
+      }
+    >
+      {(close) => (
+        <div className="menu menu-scroll">
+          <MenuItem active={!listId} onClick={() => { onPick(null); close(); }}>
+            <Icon name="inbox" size={14} /> Inbox
+          </MenuItem>
+          {orderedLists(lists).map((l) => (
+            <MenuItem key={l.id} active={l.id === listId} onClick={() => { onPick(l.id); close(); }}>
+              <span style={{ paddingLeft: l.depth * 14 }} className="menu-label">
+                <i className="dot" style={{ background: l.color }} /> {l.name}
+              </span>
+            </MenuItem>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function PriorityPicker({ priority, onPick }: { priority: number; onPick: (p: number) => void }) {
+  return (
+    <Popover align="right" title={`Priority: ${PRIORITY_LABELS[priority]}`} trigger={<span className="icon-btn"><Flag priority={priority} /></span>}>
+      {(close) => (
+        <div className="menu">
+          {[3, 2, 1, 0].map((p) => (
+            <MenuItem key={p} active={p === priority} onClick={() => { onPick(p); close(); }}>
+              <Flag priority={p} size={15} /> {PRIORITY_LABELS[p]}
+            </MenuItem>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "popup" }) {
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
   const update = useStore((s) => s.updateTask);
   const toggle = useStore((s) => s.toggleTask);
   const addTask = useStore((s) => s.addTask);
   const del = useStore((s) => s.deleteTask);
+  const duplicate = useStore((s) => s.duplicateTask);
+  const wontDo = useStore((s) => s.setWontDo);
   const select = useStore((s) => s.select);
+  const focusSubtask = useStore((s) => s.focusSubtask);
   const [sub, setSub] = useState("");
   const today = todayKey();
 
@@ -60,48 +110,64 @@ export function TaskDetail({ task }: { task: Task }) {
   const notes = useDraft(task.notes, task.id, (v) => void update(task.id, { notes: v }));
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const subRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     autoGrow(titleRef.current);
     autoGrow(notesRef.current);
   }, [title.value, notes.value, task.id]);
+  useEffect(() => {
+    if (focusSubtask) subRef.current?.focus();
+  }, [focusSubtask, task.id]);
 
-  const list = lists.find((l) => l.id === task.list_id);
   const listSections = sections.filter((s) => s.list_id === task.list_id).sort((a, b) => a.position - b.position);
   const section = listSections.find((s) => s.id === task.section_id);
   const subs = subtasksOf(tasks, task.id);
   const parent = task.parent_id ? tasks.find((t) => t.id === task.parent_id) : null;
-  const overdue = task.status === 0 && task.deadline_date !== null && task.deadline_date < today;
+  const open = task.status === 0;
+  const overdue = open && task.deadline_date !== null && task.deadline_date < today;
 
   return (
-    <aside className="detail">
+    <aside className={`detail detail-${variant}`}>
       <header className="detail-head">
-        <Check done={task.status === 1} priority={task.priority} onToggle={() => void toggle(task.id)} />
-        <div className="prio-picker" role="radiogroup" aria-label="Priority">
-          {[0, 1, 2, 3].map((p) => (
-            <button
-              type="button"
-              key={p}
-              role="radio"
-              aria-checked={task.priority === p}
-              className={`prio p${p} ${task.priority === p ? "is-active" : ""}`}
-              title={`Priority: ${PRIORITY_LABELS[p]}`}
-              onClick={() => void update(task.id, { priority: p })}
-            >
-              {PRIORITY_LABELS[p]}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className={`icon-btn push ${task.pinned ? "is-on" : ""}`}
-          title={task.pinned ? "Unpin" : "Pin to top"}
-          onClick={() => void update(task.id, { pinned: task.pinned ? 0 : 1 })}
-        >
-          <Icon name="pin" size={14} />
-        </button>
-        <button type="button" className="icon-btn" title="Close" onClick={() => select(null)}>
-          <Icon name="x" size={14} />
-        </button>
+        <Check done={!open} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        <i className="vr" />
+        <DateField
+          ghost
+          date={task.start_date}
+          time={task.start_time}
+          placeholder="Date"
+          tone={open && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
+          onChange={(d, t) =>
+            void update(task.id, {
+              start_date: d,
+              start_time: d ? t : null,
+              ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
+            })
+          }
+        />
+        {task.start_date && (
+          <>
+            <span className="arrow">–</span>
+            <DateField
+              ghost
+              icon="clock"
+              date={task.end_date ?? (task.end_time ? task.start_date : null)}
+              time={task.end_time}
+              placeholder="End"
+              onChange={(d, t) => {
+                const ok = d !== null && d >= task.start_date!;
+                void update(task.id, { end_date: ok && d > task.start_date! ? d : null, end_time: ok ? t : null });
+              }}
+            />
+          </>
+        )}
+        <span className="push" />
+        <PriorityPicker priority={task.priority} onPick={(p) => void update(task.id, { priority: p })} />
+        {variant === "pane" && (
+          <button type="button" className="icon-btn" title="Close" onClick={() => select(null)}>
+            <Icon name="x" size={14} />
+          </button>
+        )}
       </header>
 
       <div className="detail-body">
@@ -110,109 +176,39 @@ export function TaskDetail({ task }: { task: Task }) {
             <span className="flip"><Icon name="chevron" size={12} /></span> {parent.title}
           </button>
         )}
-        <textarea ref={titleRef} className="detail-title" rows={1} placeholder="Title" {...title}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }} />
-
-        <dl className="fields">
-          <dt>Planned</dt>
-          <dd>
-            <DateField
-              date={task.start_date}
-              time={task.start_time}
-              placeholder="When to work on it"
-              tone={task.status === 0 && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
-              onChange={(d, t) =>
-                void update(task.id, {
-                  start_date: d,
-                  start_time: d ? t : null,
-                  ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
-                })
-              }
-            />
-            {task.start_date && (
-              <>
-                <span className="arrow">→</span>
-                <DateField
-                  date={task.end_date}
-                  time={task.end_time}
-                  placeholder="End"
-                  align="right"
-                  onChange={(d, t) =>
-                    void update(task.id, {
-                      end_date: d && d >= task.start_date! ? d : null,
-                      end_time: d && d >= task.start_date! ? t : null,
-                    })
-                  }
-                />
-              </>
-            )}
-          </dd>
-
-          <dt className="dt-deadline">Deadline</dt>
-          <dd>
-            <DateField
-              date={task.deadline_date}
-              time={task.deadline_time}
-              placeholder="When it must be done"
-              icon="flag"
-              tone="signal"
-              onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
-            />
-            {task.deadline_date && task.status === 0 && (
-              <span className={`countdown mono ${overdue ? "is-over" : ""}`}>{deadlineCountdown(task.deadline_date, today)}</span>
-            )}
-          </dd>
-
-          {!task.parent_id && (
-            <>
-              <dt>List</dt>
-              <dd>
-                <Popover
-                  trigger={
-                    <span className="field-trigger">
-                      {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={14} />}
-                      {list?.name ?? "Inbox"}
-                    </span>
-                  }
-                >
-                  {(close) => (
-                    <div className="menu menu-scroll">
-                      <MenuItem active={!task.list_id} onClick={() => { void update(task.id, { list_id: null }); close(); }}>Inbox</MenuItem>
-                      {orderedLists(lists).map((l) => (
-                        <MenuItem key={l.id} active={l.id === task.list_id} onClick={() => { void update(task.id, { list_id: l.id }); close(); }}>
-                          <span style={{ paddingLeft: l.depth * 14 }}><i className="dot" style={{ background: l.color }} /> {l.name}</span>
-                        </MenuItem>
-                      ))}
-                    </div>
-                  )}
-                </Popover>
-                {listSections.length > 0 && (
-                  <Popover trigger={<span className="field-trigger is-quiet">{section?.name ?? "No section"}</span>}>
-                    {(close) => (
-                      <div className="menu menu-scroll">
-                        <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
-                        {listSections.map((s) => (
-                          <MenuItem key={s.id} active={s.id === task.section_id} onClick={() => { void update(task.id, { section_id: s.id }); close(); }}>
-                            {s.name}
-                          </MenuItem>
-                        ))}
-                      </div>
-                    )}
-                  </Popover>
-                )}
-              </dd>
-            </>
+        <textarea
+          ref={titleRef}
+          className="detail-title"
+          rows={1}
+          placeholder="What would you like to do?"
+          {...title}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
+        />
+        <div className="deadline-row">
+          <DateField
+            date={task.deadline_date}
+            time={task.deadline_time}
+            placeholder="Add deadline"
+            icon="flag"
+            tone="signal"
+            onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
+          />
+          {task.deadline_date && open && (
+            <span className={`countdown ${overdue ? "is-over" : ""}`}>{deadlineCountdown(task.deadline_date, today)}</span>
           )}
-        </dl>
-
-        <textarea ref={notesRef} className="detail-notes" rows={3} placeholder="Notes" {...notes} />
+        </div>
+        <textarea ref={notesRef} className="detail-notes" rows={2} placeholder="Description" {...notes} />
 
         {!task.parent_id && (
           <section className="subtasks">
-            <span className="micro">Subtasks{subs.length ? ` · ${subs.filter((s) => s.status === 1).length}/${subs.length}` : ""}</span>
             {subs.map((s) => (
               <div key={s.id} className={`subtask ${s.status ? "is-done" : ""}`}>
-                <Check done={s.status === 1} priority={s.priority} onToggle={() => void toggle(s.id)} />
+                <Check done={s.status !== 0} wontDo={s.status === 2} priority={s.priority} onToggle={() => void toggle(s.id)} />
                 <span className="task-title" onClick={() => select(s.id)}>{s.title}</span>
                 <button type="button" className="icon-btn hover-reveal" title="Delete subtask" onClick={() => void del(s.id)}>
                   <Icon name="x" size={12} />
@@ -222,8 +218,9 @@ export function TaskDetail({ task }: { task: Task }) {
             <div className="subtask subtask-add">
               <Icon name="plus" size={14} />
               <input
+                ref={subRef}
                 value={sub}
-                placeholder="Add subtask"
+                placeholder="Add Subtask"
                 onChange={(e) => setSub(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && sub.trim()) {
@@ -238,11 +235,133 @@ export function TaskDetail({ task }: { task: Task }) {
       </div>
 
       <footer className="detail-foot">
-        <span className="micro mono">created {new Date(task.created_at).toISOString().slice(0, 10)}</span>
-        <button type="button" className="text-btn is-danger push" onClick={() => void del(task.id)}>
-          <Icon name="trash" size={14} /> Delete
-        </button>
+        {!task.parent_id && <ListPicker listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
+        {!task.parent_id && listSections.length > 0 && (
+          <Popover className="pop-up" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
+            {(close) => (
+              <div className="menu menu-scroll">
+                <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
+                {listSections.map((s) => (
+                  <MenuItem key={s.id} active={s.id === task.section_id} onClick={() => { void update(task.id, { section_id: s.id }); close(); }}>
+                    {s.name}
+                  </MenuItem>
+                ))}
+              </div>
+            )}
+          </Popover>
+        )}
+        <span className="push" />
+        <Popover className="pop-up" align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
+          {(close) => (
+            <div className="menu">
+              <MenuItem onClick={() => { void update(task.id, { pinned: task.pinned ? 0 : 1 }); close(); }}>
+                <Icon name="pin" size={15} /> {task.pinned ? "Unpin" : "Pin"}
+              </MenuItem>
+              <MenuItem onClick={() => { void duplicate(task.id); close(); }}>
+                <Icon name="copy" size={15} /> Duplicate
+              </MenuItem>
+              {open && (
+                <MenuItem onClick={() => { void wontDo(task.id); close(); }}>
+                  <Icon name="ban" size={15} /> Won't Do
+                </MenuItem>
+              )}
+              <MenuItem danger onClick={() => { void del(task.id); close(); }}>
+                <Icon name="trash" size={15} /> Delete
+              </MenuItem>
+            </div>
+          )}
+        </Popover>
       </footer>
     </aside>
+  );
+}
+
+/** The editor as a floating card next to whatever was clicked (board, timeline, calendar). */
+export function TaskPopup({ task }: { task: Task }) {
+  const anchor = useStore((s) => s.anchor);
+  const select = useStore((s) => s.select);
+  if (!anchor) return null;
+  return (
+    <FloatingPanel anchor={anchor} onClose={() => select(null)} className="task-popup">
+      <TaskDetail task={task} variant="popup" />
+    </FloatingPanel>
+  );
+}
+
+/** New-task card: opens after dragging over days or hours in the calendar. */
+export function Composer() {
+  const composer = useStore((s) => s.composer);
+  const close = useStore((s) => s.closeComposer);
+  const addTask = useStore((s) => s.addTask);
+  const lists = useStore((s) => s.lists);
+  const [draft, setDraft] = useState<Partial<Task>>({});
+  const [title, setTitle] = useState("");
+  useEffect(() => {
+    setDraft(composer?.base ?? {});
+    setTitle("");
+  }, [composer]);
+  if (!composer) return null;
+  const today = todayKey();
+  const d = { ...composer.base, ...draft };
+  const create = () => {
+    const p = parseQuick(title);
+    if (!p.title) return close();
+    const list = matchList(p.listQuery, lists);
+    void addTask({
+      ...d,
+      title: p.title,
+      ...(p.priority ? { priority: p.priority } : {}),
+      ...(p.deadline_date ? { deadline_date: p.deadline_date, deadline_time: p.deadline_time } : {}),
+      ...(p.start_time && !d.start_time ? { start_time: p.start_time } : {}),
+      ...(list ? { list_id: list.id } : {}),
+    });
+    close();
+  };
+  const range =
+    d.start_date &&
+    `${formatDateTime(d.start_date, d.start_time ?? null, today)}${
+      d.end_date ? ` – ${formatDateTime(d.end_date, d.end_time ?? null, today)}` : d.end_time ? ` – ${d.end_time}` : ""
+    }`;
+  return (
+    <FloatingPanel anchor={composer.anchor} onClose={close} className="task-popup composer">
+      <div className="detail detail-popup">
+        <header className="detail-head">
+          <span className="composer-date">
+            <Icon name="calendar" size={14} /> {range || "No date"}
+          </span>
+          <span className="push" />
+          <PriorityPicker priority={d.priority ?? 0} onPick={(p) => setDraft({ ...draft, priority: p })} />
+        </header>
+        <div className="detail-body">
+          <input
+            autoFocus
+            className="detail-title"
+            placeholder="What would you like to do?"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") create();
+            }}
+          />
+          <div className="deadline-row">
+            <DateField
+              date={d.deadline_date ?? null}
+              time={d.deadline_time ?? null}
+              placeholder="Add deadline"
+              icon="flag"
+              tone="signal"
+              onChange={(date, time) => setDraft({ ...draft, deadline_date: date, deadline_time: date ? time : null })}
+            />
+          </div>
+        </div>
+        <footer className="detail-foot">
+          <ListPicker listId={d.list_id ?? null} onPick={(id) => setDraft({ ...draft, list_id: id })} />
+          <span className="push" />
+          <button type="button" className="btn is-primary" disabled={!title.trim()} onClick={create}>
+            Add
+          </button>
+        </footer>
+      </div>
+    </FloatingPanel>
   );
 }

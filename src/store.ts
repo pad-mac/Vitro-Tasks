@@ -2,7 +2,15 @@ import { create } from "zustand";
 import { openDb, type Db } from "./db/driver";
 import { getMeta, loadAll, migrate, put, remove, setMeta, uid } from "./db/repo";
 import { getSyncConfig, setSyncConfig, syncOnce, type SyncConfig } from "./db/sync";
-import { announceChange, DEFAULT_SHORTCUT, onRemoteChange, setQuickAddShortcut } from "./lib/platform";
+import {
+  announceChange,
+  appVersion,
+  DEFAULT_SHORTCUT,
+  findUpdate,
+  onRemoteChange,
+  setQuickAddShortcut,
+  type FoundUpdate,
+} from "./lib/platform";
 import {
   SMART_DEFAULTS,
   listWithDescendants,
@@ -22,6 +30,28 @@ export interface SyncState {
   last?: number;
 }
 
+/** Screen rectangle a floating panel attaches to. */
+export interface Anchor {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export const anchorOf = (el: Element): Anchor => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+};
+
+export type MenuTarget = { kind: "task" | "list"; id: string; x: number; y: number };
+
+export interface UpdateState {
+  status: "idle" | "checking" | "none" | "available" | "installing" | "error";
+  version?: string;
+  progress?: number;
+  message?: string;
+}
+
 interface State {
   ready: boolean;
   fatal: string | null;
@@ -31,7 +61,18 @@ interface State {
   settings: Record<string, string>;
   view: ViewRef;
   selectedId: string | null;
+  /** Set when the task was opened from a card, bar or chip: edit in a popup there. */
+  anchor: Anchor | null;
+  /** New-task popup, e.g. after dragging over days in the calendar. */
+  composer: { anchor: Anchor; base: Partial<Task> } | null;
+  menu: MenuTarget | null;
+  renamingListId: string | null;
+  focusSubtask: boolean;
   showCompleted: boolean;
+  showDetails: boolean;
+  sidebarOpen: boolean;
+  version: string;
+  update: UpdateState;
   theme: Theme;
   shortcut: string;
   shortcutError: string | null;
@@ -41,8 +82,19 @@ interface State {
   init(): Promise<void>;
   reload(): Promise<void>;
   setView(view: ViewRef): void;
-  select(id: string | null): void;
+  select(id: string | null, anchor?: Anchor | null): void;
+  openComposer(base: Partial<Task>, anchor: Anchor): void;
+  closeComposer(): void;
+  openMenu(menu: MenuTarget | null): void;
+  setRenamingList(id: string | null): void;
+  addSubtaskTo(id: string): void;
   setShowCompleted(v: boolean): void;
+  setShowDetails(v: boolean): Promise<void>;
+  setSidebarOpen(v: boolean): void;
+  checkUpdate(): Promise<void>;
+  installUpdate(): Promise<void>;
+  duplicateTask(id: string): Promise<void>;
+  setWontDo(id: string): Promise<void>;
   setTheme(t: Theme): Promise<void>;
   setShortcut(s: string): Promise<void>;
 
@@ -85,6 +137,7 @@ export function computePrefs(view: ViewRef, lists: List[], settings: Record<stri
 let db: Db;
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let syncing = false;
+let foundUpdate: FoundUpdate | null = null;
 
 const nextPos = (rows: { position: number }[]) => rows.reduce((m, r) => Math.max(m, r.position), 0) + 1;
 
@@ -116,7 +169,16 @@ export const useStore = create<State>((set, get) => {
     settings: {},
     view: { kind: "smart", id: "today" },
     selectedId: null,
+    anchor: null,
+    composer: null,
+    menu: null,
+    renamingListId: null,
+    focusSubtask: false,
     showCompleted: false,
+    showDetails: true,
+    sidebarOpen: true,
+    version: "",
+    update: { status: "idle" },
     theme: "system",
     shortcut: DEFAULT_SHORTCUT,
     shortcutError: null,
@@ -130,7 +192,9 @@ export const useStore = create<State>((set, get) => {
         const theme = ((await getMeta(db, "theme")) as Theme | null) ?? "system";
         const shortcut = (await getMeta(db, "quickadd_shortcut")) ?? DEFAULT_SHORTCUT;
         const syncConfig = await getSyncConfig(db);
-        set({ theme, shortcut, syncConfig, sync: { status: syncConfig ? "idle" : "off" } });
+        const showDetails = (await getMeta(db, "show_details")) !== "0";
+        set({ theme, shortcut, syncConfig, showDetails, sync: { status: syncConfig ? "idle" : "off" } });
+        void appVersion().then((version) => set({ version }));
         await get().reload();
         set({ ready: true });
         void onRemoteChange(() => void get().reload());
@@ -159,13 +223,70 @@ export const useStore = create<State>((set, get) => {
     },
 
     setView(view) {
-      set({ view, selectedId: null });
+      set({ view, selectedId: null, anchor: null, composer: null });
     },
-    select(id) {
-      set({ selectedId: id });
+    select(id, anchor = null) {
+      set({ selectedId: id, anchor: id ? anchor : null, composer: null, focusSubtask: false });
+    },
+    openComposer(base, anchor) {
+      set({ composer: { base, anchor }, selectedId: null, anchor: null });
+    },
+    closeComposer() {
+      set({ composer: null });
+    },
+    openMenu(menu) {
+      set({ menu });
+    },
+    setRenamingList(id) {
+      set({ renamingListId: id });
+    },
+    addSubtaskTo(id) {
+      set({ selectedId: id, anchor: null, composer: null, focusSubtask: true });
     },
     setShowCompleted(v) {
       set({ showCompleted: v });
+    },
+    async setShowDetails(v) {
+      set({ showDetails: v });
+      await setMeta(db, "show_details", v ? "1" : "0");
+    },
+    setSidebarOpen(v) {
+      set({ sidebarOpen: v });
+    },
+
+    async checkUpdate() {
+      if (get().update.status === "checking" || get().update.status === "installing") return;
+      set({ update: { status: "checking" } });
+      try {
+        foundUpdate = await findUpdate();
+        set({ update: foundUpdate ? { status: "available", version: foundUpdate.version } : { status: "none" } });
+      } catch (e) {
+        set({ update: { status: "error", message: e instanceof Error ? e.message : String(e) } });
+      }
+    },
+    async installUpdate() {
+      if (!foundUpdate || get().update.status === "installing") return;
+      const version = foundUpdate.version;
+      set({ update: { status: "installing", version, progress: 0 } });
+      try {
+        await foundUpdate.install((progress) => set({ update: { status: "installing", version, progress } }));
+      } catch (e) {
+        set({ update: { status: "error", version, message: e instanceof Error ? e.message : String(e) } });
+      }
+    },
+
+    async duplicateTask(id) {
+      const cur = get().tasks.find((t) => t.id === id);
+      if (!cur) return;
+      const { id: _id, updated_at: _u, created_at: _c, ...rest } = cur;
+      const copy = await get().addTask({ ...rest, title: cur.title, position: cur.position + 0.5 });
+      for (const child of get().tasks.filter((t) => t.parent_id === id)) {
+        const { id: _i, updated_at: _up, created_at: _cr, ...c } = child;
+        await get().addTask({ ...c, parent_id: copy.id });
+      }
+    },
+    async setWontDo(id) {
+      await get().updateTask(id, { status: 2, completed_at: Date.now() });
     },
     async setTheme(theme) {
       set({ theme });
@@ -234,7 +355,7 @@ export const useStore = create<State>((set, get) => {
     async toggleTask(id) {
       const cur = get().tasks.find((t) => t.id === id);
       if (!cur) return;
-      const done = cur.status === 0;
+      const done = cur.status === 0; // a done or won't-do task reopens
       await get().updateTask(id, { status: done ? 1 : 0, completed_at: done ? Date.now() : null });
       if (done) {
         for (const child of get().tasks.filter((t) => t.parent_id === id && t.status === 0)) {

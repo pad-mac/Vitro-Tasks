@@ -14,10 +14,13 @@ Every task has two independent dates:
 | Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. |
 | Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. |
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
-| Board | Columns follow the grouping. Dragging a card to another column changes that field. |
+| Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
-| Calendar | Month and week. Click a day to add, drag to reschedule. Deadlines appear as outlined entries. |
-| Tasks | Priority, notes, subtasks, pinning, completion. |
+| Calendar | Month and week. Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. |
+| Tasks | Priority, notes, subtasks, pinning, completion, won't do. Edited in the side pane (list view) or in a popup next to the task (board, timeline, calendar). |
+| Right-click | Own menus for tasks (date, deadline, priority, subtask, pin, won't do, move, duplicate, delete) and for lists. |
+| Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. |
+| Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
 | Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). |
 | Sync | Optional. Local first, last write wins per task. |
 
@@ -43,7 +46,7 @@ Example: `Draft chapter wed ^30.11. !high #research`
 
 ## Install
 
-Download the installer or the portable exe from the latest run under **Actions → Build → vitro-tasks-windows**, or from **Releases** once a version is tagged. The app uses the WebView2 runtime, which Windows 11 ships with; on Windows 10 the installer fetches it if it is missing.
+Download `VitroTasks-setup.exe` from the latest entry under **Releases**. `VitroTasks-portable.exe` runs without installing, but only the installed app can update itself. The app uses the WebView2 runtime, which Windows 11 ships with; on Windows 10 the installer fetches it if it is missing.
 
 Closing the window keeps the app in the tray so the shortcut keeps working. Quit from the tray icon.
 
@@ -64,6 +67,13 @@ How it works: every row carries `updated_at` and a `deleted` flag. The app sends
 
 The token is a single shared secret, so one server serves one person.
 
+## Releasing
+
+1. Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+2. Push a tag `vX.Y.Z` that matches it. The Build workflow publishes the installer, its signature and `latest.json` to Releases; installed apps pick the update up from there.
+
+Updates are signed. The workflow needs the repository secret `TAURI_SIGNING_PRIVATE_KEY` (the private key belonging to the public key in `src-tauri/tauri.conf.json`). Without it the build still succeeds, but no `latest.json` is published and installed apps will not see the release.
+
 ## Development
 
 ```
@@ -78,4 +88,4 @@ Layout: `src/` UI and data layer · `src/shared/schema.ts` data model · `src-ta
 
 ## Not in this version
 
-Recurring tasks, reminders, tags, manual drag ordering inside a list, import from other apps, and accounts for more than one person on a server.
+Recurring tasks, reminders, tags, focus timer, manual drag ordering inside a list, import from other apps, and accounts for more than one person on a server.

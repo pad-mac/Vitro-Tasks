@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entriesForDay, groupTasks, listWithDescendants, tasksForView, type Data } from "../src/lib/views";
+import { entriesForDay, groupTasks, listWithDescendants, subgroupTasks, tasksForView, type Data } from "../src/lib/views";
 import type { List, Section, Task } from "../src/shared/schema";
 
 const TODAY = "2026-11-16";
@@ -85,5 +85,29 @@ describe("entriesForDay", () => {
     expect(entriesForDay([span], "2026-11-17").map((e) => e.kind)).toEqual(["planned"]);
     expect(entriesForDay([span], "2026-11-18").map((e) => e.kind).sort()).toEqual(["deadline", "planned"]);
     expect(entriesForDay([span], "2026-11-19")).toEqual([]);
+  });
+});
+
+describe("subgroupTasks", () => {
+  it("splits a lane by date buckets with pinned tasks first", () => {
+    const lane = [
+      task({ id: "p", pinned: 1, start_date: "2026-12-01" }),
+      task({ id: "o", start_date: "2026-11-01" }),
+      task({ id: "l", start_date: "2026-12-24" }),
+      task({ id: "n" }),
+    ];
+    expect(subgroupTasks(lane, "date", TODAY).map((g) => `${g.label}:${ids(g.tasks)}`)).toEqual([
+      "Pinned:p", "Overdue:o", "Later:l", "No Date:n",
+    ]);
+  });
+  it("splits by priority, or not at all for manual order", () => {
+    const lane = [task({ id: "h", priority: 3 }), task({ id: "x" })];
+    expect(subgroupTasks(lane, "priority", TODAY).map((g) => g.label)).toEqual(["High", "None"]);
+    expect(subgroupTasks(lane, "manual", TODAY).map((g) => g.label)).toEqual([""]);
+  });
+  it("treats won't-do tasks as closed", () => {
+    const d: Data = { lists: [], sections: [], tasks: [task({ id: "w", status: 2 }), task({ id: "q" })] };
+    expect(ids(tasksForView({ kind: "smart", id: "all" }, d, false, TODAY))).toBe("q");
+    expect(ids(tasksForView({ kind: "smart", id: "completed" }, d, false, TODAY))).toBe("w");
   });
 });

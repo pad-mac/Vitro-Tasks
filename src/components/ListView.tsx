@@ -35,7 +35,7 @@ function GroupBlock({ group, view, sectioned }: { group: Group; view: ViewRef; s
               {group.label}
             </span>
           )}
-          <span className="count mono">{group.tasks.length}</span>
+          <span className="count">{group.tasks.length}</span>
           {isSection && (
             <Popover className="hover-reveal" trigger={<Icon name="dots" size={14} />} title="Section options">
               {(close) => (
@@ -69,8 +69,7 @@ export function ListView({ view, groups, sectioned }: { view: ViewRef; groups: G
         ))}
         {!total && !groups.some((g) => g.label) && (
           <div className="empty">
-            <span className="empty-mark mono">00</span>
-            <p>{completedView ? "Nothing completed yet." : "Nothing here. Type above to add a task."}</p>
+                        <p>{completedView ? "Nothing completed yet." : "Nothing here. Type above to add a task."}</p>
           </div>
         )}
         {sectioned &&

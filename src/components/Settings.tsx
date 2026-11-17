@@ -13,6 +13,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const sync = useStore((s) => s.sync);
   const saveSyncConfig = useStore((s) => s.saveSyncConfig);
   const syncNow = useStore((s) => s.syncNow);
+  const version = useStore((s) => s.version);
+  const update = useStore((s) => s.update);
+  const checkUpdate = useStore((s) => s.checkUpdate);
+  const installUpdate = useStore((s) => s.installUpdate);
   const [url, setUrl] = useState(syncConfig?.url ?? "");
   const [token, setToken] = useState(syncConfig?.token ?? "");
   const [keys, setKeys] = useState(shortcut);
@@ -42,7 +46,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
           <span className="micro">Quick add</span>
           <div className="form-row">
             <label htmlFor="shortcut">Global shortcut</label>
-            <input id="shortcut" className="mono" value={keys} onChange={(e) => setKeys(e.target.value)} placeholder="Ctrl+Space" />
+            <input id="shortcut" value={keys} onChange={(e) => setKeys(e.target.value)} placeholder="Ctrl+Space" />
             <button type="button" className="btn" disabled={!isTauri() || !keys.trim()} onClick={() => void setShortcut(keys.trim())}>
               Apply
             </button>
@@ -56,14 +60,37 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </section>
 
         <section>
+          <span className="micro">Updates</span>
+          <div className="form-actions">
+            <span className="sync-state">
+              Version {version || "…"}
+              {update.status === "checking" && " · checking…"}
+              {update.status === "none" && " · up to date"}
+              {update.status === "available" && ` · ${update.version} is available`}
+              {update.status === "installing" && ` · installing ${update.version} (${Math.round((update.progress ?? 0) * 100)}%)`}
+              {update.status === "error" && ` · check failed: ${update.message}`}
+            </span>
+            <button type="button" className="btn" disabled={!isTauri() || update.status === "checking" || update.status === "installing"} onClick={() => void checkUpdate()}>
+              Check for updates
+            </button>
+            {update.status === "available" && (
+              <button type="button" className="btn is-primary" onClick={() => void installUpdate()}>
+                Install and restart
+              </button>
+            )}
+          </div>
+          <p className="form-hint">Updates come from the releases of the Vitro-Tasks repository on GitHub and are checked automatically.</p>
+        </section>
+
+        <section>
           <span className="micro">Sync server</span>
           <div className="form-row">
             <label htmlFor="sync-url">Server URL</label>
-            <input id="sync-url" className="mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tasks.example.org" />
+            <input id="sync-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tasks.example.org" />
           </div>
           <div className="form-row">
             <label htmlFor="sync-token">Token</label>
-            <input id="sync-token" className="mono" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
+            <input id="sync-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
           </div>
           <div className="form-actions">
             <span className={`sync-state sync-${sync.status}`}>

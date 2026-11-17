@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { Anchor } from "../store";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -37,7 +38,29 @@ const PATHS: Record<string, ReactNode> = {
   sort: <path d="M4.5 3v10M2.5 11l2 2 2-2M9 4h4.5M9 8h3.2M9 12h2" />,
   eye: <path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8zM8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z" />,
   pin: <path d="M6 2.5h4l-.6 4 2.1 2.2H4.5l2.1-2.2zM8 8.7v5" />,
+  sidebar: <path d="M2.5 3.5h11v9h-11zM6 3.5v9M3.9 6h.8M3.9 8h.8" />,
+  sunrise: <path d="M2 12.5h12M4.2 12.5a3.8 3.8 0 0 1 7.6 0M8 4v2.2M3.4 7.4l1.2 1.2M12.6 7.4l-1.2 1.2M6.6 3.6L8 2.2l1.4 1.4" />,
+  plus7: <path d="M2.5 4h11v9.5h-11zM2.5 6.8h11M5.5 2.2v3M10.5 2.2v3M5 10h2M6 9v2M8.6 8.8h2.2l-1.4 3" />,
+  calx: <path d="M2.5 4h11v9.5h-11zM2.5 6.8h11M5.5 2.2v3M10.5 2.2v3M6.5 8.7l3 3M9.5 8.7l-3 3" />,
+  copy: <path d="M5.5 5.5h8v8h-8zM3 10.5h-.5v-8h8V3" />,
+  ban: <path d="M2.5 2.5h11v11h-11zM5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />,
+  move: <path d="M2.5 4.5h11v8h-11zM2.5 4.5l1-2h9l1 2M6.5 8.5h4M9 7l1.5 1.5L9 10" />,
+  subtask: <path d="M3 3v6.5h4M3 6h4M9 5h4.5v2.5H9zM9 9h4.5v2.5H9z" />,
+  edit: <path d="M3 13l.6-2.8 7.2-7.2 2.2 2.2-7.2 7.2zM9.6 4.2l2.2 2.2" />,
+  download: <path d="M8 2.5v7.5M5 7.2l3 3 3-3M3 13.2h10" />,
+  winmin: <path d="M4 8h8" />,
+  winmax: <path d="M4.2 4.2h7.6v7.6H4.2z" />,
+  notes: <path d="M3 3.5h10v9H3zM5.2 6.2h5.6M5.2 8.4h5.6M5.2 10.4h3" />,
 };
+
+/** Priority flag: filled in the priority colour, outlined for none. */
+export function Flag({ priority, size = 16 }: { priority: number; size?: number }) {
+  return (
+    <svg className={`icon flag-icon fp${priority}`} width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 14V2.5M4 3h7.5l-1.8 2.6L11.5 8H4" fill={priority ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
   return (
@@ -189,7 +212,17 @@ export function Select<T extends string>({
 
 // ---------- Checkbox ----------
 
-export function Check({ done, priority, onToggle }: { done: boolean; priority: number; onToggle: () => void }) {
+export function Check({
+  done,
+  priority,
+  onToggle,
+  wontDo,
+}: {
+  done: boolean;
+  priority: number;
+  onToggle: () => void;
+  wontDo?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -200,7 +233,7 @@ export function Check({ done, priority, onToggle }: { done: boolean; priority: n
         onToggle();
       }}
     >
-      {done && <Icon name="check" size={12} />}
+      {done && <Icon name={wontDo ? "x" : "check"} size={11} />}
     </button>
   );
 }
@@ -253,6 +286,7 @@ export function DateField({
   tone,
   icon = "calendar",
   align,
+  ghost,
 }: {
   date: string | null;
   time: string | null;
@@ -261,6 +295,8 @@ export function DateField({
   tone?: "signal" | "overdue";
   icon?: string;
   align?: "left" | "right";
+  /** Borderless text style, used in the editor header. */
+  ghost?: boolean;
 }) {
   const today = todayKey();
   return (
@@ -268,9 +304,9 @@ export function DateField({
       align={align}
       className="date-field"
       trigger={
-        <span className={`date-trigger ${date ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""}`}>
+        <span className={`date-trigger ${date ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""} ${ghost ? "is-ghost" : ""}`}>
           <Icon name={icon} size={14} />
-          <span className={date ? "mono" : ""}>{date ? formatDateTime(date, time, today) : placeholder}</span>
+          <span>{date ? formatDateTime(date, time, today) : placeholder}</span>
         </span>
       }
     >
@@ -348,5 +384,81 @@ export function InlineInput({
         }
       }}
     />
+  );
+}
+
+// ---------- Floating panel ----------
+
+/**
+ * A panel attached to a rectangle on screen (a card, a calendar entry, a
+ * right-click position). Opens beside the anchor, flips to the other side when
+ * there is no room, and closes on an outside press or Escape.
+ */
+export function FloatingPanel({
+  anchor,
+  onClose,
+  children,
+  className = "",
+  placement = "side",
+}: {
+  anchor: Anchor;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+  placement?: "side" | "below";
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const place = () => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const gap = 8;
+    let left: number;
+    let top: number;
+    if (placement === "below") {
+      left = anchor.x;
+      top = anchor.y + anchor.h;
+      if (top + h > innerHeight - gap) top = Math.max(gap, anchor.y - h);
+    } else {
+      left = anchor.x + anchor.w + gap;
+      if (left + w > innerWidth - gap) left = anchor.x - w - gap;
+      if (left < gap) left = Math.max(gap, Math.min(innerWidth - w - gap, anchor.x));
+      top = anchor.y - 12;
+    }
+    left = Math.max(gap, Math.min(innerWidth - w - gap, left));
+    top = Math.max(gap, Math.min(innerHeight - h - gap, top));
+    setPos((p) => (p && p.left === left && p.top === top ? p : { left, top }));
+  };
+  useLayoutEffect(place);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      // Presses inside another floating layer (a menu opened from here) don't close this one.
+      if (!ref.current?.contains(t) && !t.closest(".floating")) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className={`floating ${className}`}
+      // Transparent, not hidden, for the first frame so fields inside can take focus.
+      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, opacity: pos ? undefined : 0 }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {children}
+    </div>
   );
 }

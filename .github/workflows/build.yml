@@ -49,20 +49,47 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - run: npx tauri build
+      - name: Check that the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app version $version"; exit 1
+          fi
+      - name: Build
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npx tauri build
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building without the update signature; installed apps will not see this build as an update."
+            npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
       - name: Collect files
         shell: bash
         run: |
           mkdir out
           cp src-tauri/target/release/bundle/nsis/*-setup.exe "out/VitroTasks-setup.exe"
           cp src-tauri/target/release/vitro-tasks.exe "out/VitroTasks-portable.exe"
+          sig=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe.sig 2>/dev/null | head -n 1 || true)
+          if [ -n "$sig" ]; then
+            cp "$sig" "out/VitroTasks-setup.exe.sig"
+            # The feed the app reads: releases/latest/download/latest.json
+            node scripts/update-feed.mjs "out/VitroTasks-setup.exe.sig" "${GITHUB_REF_NAME}" > out/latest.json
+            cat out/latest.json
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: vitro-tasks-windows
-          path: out/*.exe
+          path: out/*
           if-no-files-found: error
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/*.exe
+          files: out/*
+          generate_release_notes: true

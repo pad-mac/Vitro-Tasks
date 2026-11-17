@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { SMART_VIEWS, childLists, countOpen, type SmartId, type ViewRef } from "../lib/views";
 import type { List } from "../shared/schema";
-import { LIST_COLORS, useStore } from "../store";
+import { useStore } from "../store";
 import { useDropTarget } from "./tasks";
-import { Icon, InlineInput, MenuItem, Popover } from "./ui";
+import { Icon, InlineInput } from "./ui";
 
 const SMART_ICONS: Record<SmartId, string> = {
   all: "layers",
@@ -35,7 +35,7 @@ function SmartRow({ id, name, count }: { id: SmartId; name: string; count: numbe
     >
       <Icon name={SMART_ICONS[id]} />
       <span className="nav-name">{name}</span>
-      {id !== "completed" && count > 0 && <span className="count mono">{count}</span>}
+      {id !== "completed" && count > 0 && <span className="count">{count}</span>}
     </button>
   );
 }
@@ -45,12 +45,10 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const updateList = useStore((s) => s.updateList);
-  const deleteList = useStore((s) => s.deleteList);
-  const addList = useStore((s) => s.addList);
   const updateTask = useStore((s) => s.updateTask);
-  const [renaming, setRenaming] = useState(false);
-  const [addingSub, setAddingSub] = useState(false);
-  const [confirm, setConfirm] = useState(false);
+  const openMenu = useStore((s) => s.openMenu);
+  const renaming = useStore((s) => s.renamingListId === list.id);
+  const setRenaming = useStore((s) => s.setRenamingList);
   const kids = childLists(lists, list.id);
   const me: ViewRef = { kind: "list", id: list.id };
   const drop = useDropTarget((taskId) => void updateTask(taskId, { list_id: list.id }));
@@ -59,8 +57,12 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
     <>
       <div
         className={`nav-row ${sameView(view, me) ? "is-active" : ""} ${drop.over ? "is-drop" : ""}`}
-        style={{ paddingLeft: 8 + depth * 16 }}
+        style={{ paddingLeft: 10 + depth * 18 }}
         onClick={() => setView(me)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openMenu({ kind: "list", id: list.id, x: e.clientX, y: e.clientY });
+        }}
         {...drop.props}
       >
         {kids.length > 0 ? (
@@ -75,71 +77,38 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
           >
             <Icon name="chevron" size={12} />
           </button>
-        ) : (
+        ) : depth === 0 ? null : (
           <span className="twist-spacer" />
         )}
-        <i className="dot" style={{ background: list.color }} />
         {renaming ? (
           <InlineInput
             initial={list.name}
             onCommit={(v) => {
               void updateList(list.id, { name: v });
-              setRenaming(false);
+              setRenaming(null);
             }}
-            onCancel={() => setRenaming(false)}
+            onCancel={() => setRenaming(null)}
           />
         ) : (
-          <span className="nav-name" onDoubleClick={() => setRenaming(true)}>
+          <span className="nav-name" onDoubleClick={() => setRenaming(list.id)}>
             {list.name}
           </span>
         )}
-        <span className="nav-tools hover-reveal" onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="icon-btn" title="Add sublist" onClick={() => { setAddingSub(true); if (list.collapsed) void updateList(list.id, { collapsed: 0 }); }}>
-            <Icon name="plus" size={12} />
-          </button>
-          <Popover align="right" trigger={<Icon name="dots" size={14} />} title="List options">
-            {(close) => (
-              <div className="menu">
-                <MenuItem onClick={() => { setRenaming(true); close(); }}>Rename</MenuItem>
-                <div className="swatches">
-                  {LIST_COLORS.map((c) => (
-                    <button
-                      type="button"
-                      key={c}
-                      className={`swatch ${c === list.color ? "is-active" : ""}`}
-                      style={{ background: c }}
-                      aria-label={`Color ${c}`}
-                      onClick={() => void updateList(list.id, { color: c })}
-                    />
-                  ))}
-                </div>
-                {list.parent_id && <MenuItem onClick={() => { void updateList(list.id, { parent_id: null }); close(); }}>Move to top level</MenuItem>}
-                {confirm ? (
-                  <MenuItem danger onClick={() => { void deleteList(list.id); close(); }}>
-                    Really delete{count ? ` with ${count} open task${count === 1 ? "" : "s"}` : ""}?
-                  </MenuItem>
-                ) : (
-                  <MenuItem danger onClick={() => setConfirm(true)}>Delete list</MenuItem>
-                )}
-              </div>
-            )}
-          </Popover>
-        </span>
-        {count > 0 && <span className="count mono">{count}</span>}
+        <button
+          type="button"
+          className="icon-btn hover-reveal nav-more"
+          title="List options"
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu({ kind: "list", id: list.id, x: r.left, y: r.bottom + 4 });
+          }}
+        >
+          <Icon name="dots" size={14} />
+        </button>
+        <i className="dot" style={{ background: list.color }} />
+        <span className="count">{count > 0 ? count : ""}</span>
       </div>
-      {addingSub && (
-        <div className="nav-row nav-new" style={{ paddingLeft: 8 + (depth + 1) * 16 }}>
-          <span className="twist-spacer" />
-          <InlineInput
-            placeholder="Sublist name"
-            onCommit={(v) => {
-              void addList(v, list.id);
-              setAddingSub(false);
-            }}
-            onCancel={() => setAddingSub(false)}
-          />
-        </div>
-      )}
       {!list.collapsed && kids.map((k) => <ListRow key={k.id} list={k} depth={depth + 1} counts={counts} />)}
     </>
   );

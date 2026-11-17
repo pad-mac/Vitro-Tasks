@@ -54,3 +54,51 @@ export async function showMainWindow(): Promise<void> {
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("show_main_window");
 }
+
+export async function windowAction(action: "minimize" | "toggleMaximize" | "close"): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  const w = getCurrentWindow();
+  if (action === "minimize") await w.minimize();
+  else if (action === "toggleMaximize") await w.toggleMaximize();
+  else await w.close();
+}
+
+export async function appVersion(): Promise<string> {
+  if (!isTauri()) return "dev";
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
+}
+
+export interface FoundUpdate {
+  version: string;
+  notes: string;
+  /** Downloads, installs and restarts the app. Reports progress from 0 to 1. */
+  install(onProgress: (fraction: number) => void): Promise<void>;
+}
+
+/** Asks the GitHub release feed for a newer version. Null when up to date. */
+export async function findUpdate(): Promise<FoundUpdate | null> {
+  if (!isTauri()) return null;
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    notes: update.body ?? "",
+    async install(onProgress) {
+      let total = 0;
+      let done = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") total = event.data.contentLength ?? 0;
+        if (event.event === "Progress") {
+          done += event.data.chunkLength;
+          if (total) onProgress(Math.min(1, done / total));
+        }
+        if (event.event === "Finished") onProgress(1);
+      });
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    },
+  };
+}

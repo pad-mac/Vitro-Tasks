@@ -1,5 +1,5 @@
 // Building blocks shared by the list, board, timeline and calendar views.
-import { useState, type DragEvent } from "react";
+import { useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { subtasksOf } from "../lib/views";
@@ -93,36 +93,55 @@ export function AddBar({ base, placeholder = "Add task" }: { base: Partial<Task>
   );
 }
 
+/** Right-click handler that opens the task menu at the pointer. */
+export function useTaskMenu(taskId: string) {
+  const openMenu = useStore((s) => s.openMenu);
+  return (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu({ kind: "task", id: taskId, x: e.clientX, y: e.clientY });
+  };
+}
+
 /** Planned date, deadline and list badges for a task. */
-export function TaskMeta({ task, showList }: { task: Task; showList?: boolean }) {
+export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: boolean; dotList?: boolean }) {
   const lists = useStore((s) => s.lists);
+  const tasks = useStore((s) => s.tasks);
   const today = todayKey();
   const list = showList && task.list_id ? lists.find((l) => l.id === task.list_id) : null;
   const open = task.status === 0;
+  const subs = subtasksOf(tasks, task.id);
+  const listEl = showList && (
+    <span className="meta-list">
+      {dotList && <i className="dot" style={{ background: list?.color ?? "var(--faint)" }} />}
+      {list?.name ?? "Inbox"}
+    </span>
+  );
   return (
     <span className="task-meta">
-      {list && (
-        <span className="meta-list">
-          <i className="dot" style={{ background: list.color }} />
-          {list.name}
+      {!dotList && listEl}
+      {subs.length > 0 && (
+        <span className="meta-subs">
+          <Icon name="subtask" size={12} />
+          {subs.filter((x) => x.status !== 0).length}/{subs.length}
         </span>
       )}
-      {showList && !task.list_id && <span className="meta-list">Inbox</span>}
       {task.start_date && (
-        <span className={`meta-date mono ${open && task.start_date < today ? "is-overdue" : ""}`}>
+        <span className={`meta-date ${open && task.start_date < today ? "is-overdue" : ""}`}>
           {formatDateTime(task.start_date, task.start_time, today)}
         </span>
       )}
       {task.deadline_date && (
         <span
-          className={`meta-deadline mono ${open && task.deadline_date < today ? "is-over" : ""}`}
+          className={`meta-deadline ${open && task.deadline_date < today ? "is-over" : ""}`}
           title={`Deadline ${formatDateTime(task.deadline_date, task.deadline_time, today)}`}
         >
-          <Icon name="flag" size={12} />
+          <Icon name="flag" size={11} />
           {formatDateTime(task.deadline_date, task.deadline_time, today)}
           {open && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
         </span>
       )}
+      {dotList && listEl}
     </span>
   );
 }
@@ -133,21 +152,29 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const showCompleted = useStore((s) => s.showCompleted);
-  const children = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || task.status === 1);
+  const showDetails = useStore((s) => s.showDetails);
+  const onMenu = useTaskMenu(task.id);
+  const children = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || task.status !== 0);
   return (
     <>
       <div
-        className={`task-row ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
-        style={{ paddingLeft: 10 + depth * 24 }}
+        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
+        style={{ paddingLeft: 10 + depth * 26 }}
         onClick={() => select(task.id)}
+        onContextMenu={onMenu}
         {...dragProps(task.id)}
       >
-        <Check done={task.status === 1} priority={task.priority} onToggle={() => void toggle(task.id)} />
-        <span className="task-title">
-          {task.pinned ? <Icon name="pin" size={12} /> : null}
-          {task.title || <span className="faint">Untitled</span>}
+        <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        <span className="task-main">
+          <span className="task-line">
+            <span className="task-title">
+              {task.pinned ? <Icon name="pin" size={12} /> : null}
+              {task.title || <span className="faint">Untitled</span>}
+            </span>
+            <TaskMeta task={task} showList={showList} />
+          </span>
+          {showDetails && task.notes && <span className="task-notes">{task.notes.split("\n")[0]}</span>}
         </span>
-        <TaskMeta task={task} showList={showList} />
       </div>
       {children.map((c) => (
         <TaskRow key={c.id} task={c} depth={depth + 1} />

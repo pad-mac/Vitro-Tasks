@@ -62,7 +62,7 @@ function firstDate(t: Task): string | null {
 export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, today = todayKey()): Task[] {
   const roots = data.tasks.filter((t) => !t.parent_id);
   if (view.kind === "calendar") return roots.filter((t) => showCompleted || t.status === 0);
-  if (view.kind === "smart" && view.id === "completed") return roots.filter((t) => t.status === 1);
+  if (view.kind === "smart" && view.id === "completed") return roots.filter((t) => t.status !== 0);
   const open = roots.filter((t) => showCompleted || t.status === 0);
   if (view.kind === "list") {
     const ids = new Set(listWithDescendants(data.lists, view.id));
@@ -207,6 +207,42 @@ export function groupTasks(
     default:
       return [make("all", "", view.kind === "list" ? { list_id: view.id } : {}, () => true)];
   }
+}
+
+export interface Subgroup {
+  key: string;
+  label: string;
+  tasks: Task[];
+  tone?: "overdue" | "pinned";
+}
+
+/**
+ * Splits one board lane into sub-groups that follow the sort order, the way
+ * TickTick does: sorted by date gives Overdue / Today / ... / No Date, sorted
+ * by priority gives High / Medium / Low / None. Pinned tasks always come first.
+ */
+export function subgroupTasks(tasks: Task[], sort: SortBy, today = todayKey()): Subgroup[] {
+  const out: Subgroup[] = [];
+  const pinned = tasks.filter((t) => t.pinned);
+  const rest = tasks.filter((t) => !t.pinned);
+  if (pinned.length) out.push({ key: "pinned", label: "Pinned", tasks: pinned, tone: "pinned" });
+  if (sort === "date" || sort === "deadline") {
+    const field = sort === "date" ? "start_date" : "deadline_date";
+    for (const b of DATE_BUCKETS) {
+      const inBucket = rest.filter((t) => dateBucket(t[field], today) === b.key);
+      if (!inBucket.length) continue;
+      const label = b.key === "none" ? (sort === "date" ? "No Date" : "No Deadline") : b.label;
+      out.push({ key: b.key, label, tasks: inBucket, tone: b.key === "overdue" ? "overdue" : undefined });
+    }
+  } else if (sort === "priority") {
+    for (const p of [3, 2, 1, 0]) {
+      const inPrio = rest.filter((t) => t.priority === p);
+      if (inPrio.length) out.push({ key: `p${p}`, label: PRIORITY_LABELS[p], tasks: inPrio });
+    }
+  } else if (rest.length) {
+    out.push({ key: "all", label: out.length ? "Others" : "", tasks: rest });
+  }
+  return out;
 }
 
 /** Lists flattened in sidebar order (parents before their sublists). */

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { MONTHS_LONG, addDays, diffDays, fromKey, isWeekend, startOfWeek, todayKey } from "../lib/dates";
 import type { Group, ViewRef } from "../lib/views";
 import type { Task } from "../shared/schema";
-import { useStore } from "../store";
+import { anchorOf, useStore } from "../store";
 import { DRAG_TYPE, dragProps } from "./tasks";
 import { Icon } from "./ui";
 
@@ -126,8 +126,11 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
     return out;
   }, [rangeStart, days, dayW, zoom]);
 
+  const openMenu = useStore((s) => s.openMenu);
+  const pressed = useRef<Element | null>(null);
   const begin = (e: RPointerEvent, id: string, mode: DragMode) => {
     if (e.button !== 0) return;
+    pressed.current = e.currentTarget;
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({ id, mode, startX: e.clientX, dd: 0, moved: false });
@@ -141,7 +144,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
     if (!drag) return;
     const { dd, mode, moved } = drag;
     setDrag(null);
-    if (!moved) return select(task.id);
+    if (!moved) return select(task.id, pressed.current ? anchorOf(pressed.current) : null);
     if (!dd) return;
     if (mode === "deadline" && task.deadline_date) {
       void updateTask(task.id, { deadline_date: addDays(task.deadline_date, dd) });
@@ -210,7 +213,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
               {header.ticks.map((t) => (
                 <span
                   key={t.key}
-                  className={`tl-tick mono ${t.weekend && zoom === "day" ? "is-weekend" : ""} ${t.today ? "is-today" : ""}`}
+                  className={`tl-tick ${t.weekend && zoom === "day" ? "is-weekend" : ""} ${t.today ? "is-today" : ""}`}
                   style={{ left: t.x, width: zoom === "day" ? dayW : undefined }}
                 >
                   {t.sub && <i>{t.sub}</i>}
@@ -244,7 +247,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                       <Icon name="chevron" size={12} />
                     </button>
                     <span className="group-label">{g.label || "Tasks"}</span>
-                    <span className="count mono">{items.length}</span>
+                    <span className="count">{items.length}</span>
                   </div>
                   <div className="tl-track" style={{ width }}>
                     {!closed &&
@@ -265,7 +268,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                         const titleX = inside && s !== null ? s * dayW + 8 : (lastDay + 1) * dayW + 4;
                         const overdue = it.task.status === 0 && it.task.deadline_date !== null && it.task.deadline_date < today;
                         return (
-                          <div key={it.task.id} className={`tl-item ${selectedId === it.task.id ? "is-selected" : ""} ${it.task.status ? "is-done" : ""} ${active ? "is-dragging" : ""}`} style={{ top }}>
+                          <div key={it.task.id} onContextMenu={(ev) => { ev.preventDefault(); openMenu({ kind: "task", id: it.task.id, x: ev.clientX, y: ev.clientY }); }} className={`tl-item ${selectedId === it.task.id ? "is-selected" : ""} ${it.task.status ? "is-done" : ""} ${active ? "is-dragging" : ""}`} style={{ top }}>
                             {s !== null && e !== null && d !== null && d > e && (
                               <i className="tl-link" style={{ left: (e + 1) * dayW, width: (d - e - 1) * dayW + dayW / 2 }} />
                             )}
@@ -299,7 +302,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                             <span
                               className={`tl-title ${inside ? "is-inside" : ""}`}
                               style={{ left: titleX }}
-                              onClick={() => select(it.task.id)}
+                              onClick={(ev) => select(it.task.id, anchorOf(ev.currentTarget))}
                             >
                               {it.task.title}
                             </span>
@@ -321,7 +324,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
           <span className="micro">Unscheduled · {unscheduled.length} · drag onto the timeline</span>
           <div className="tl-chips">
             {unscheduled.map((t) => (
-              <span key={t.id} className={`tl-chip ${selectedId === t.id ? "is-selected" : ""}`} onClick={() => select(t.id)} {...dragProps(t.id)}>
+              <span key={t.id} className={`tl-chip ${selectedId === t.id ? "is-selected" : ""}`} onClick={(ev) => select(t.id, anchorOf(ev.currentTarget))} {...dragProps(t.id)}>
                 {t.title}
               </span>
             ))}
