@@ -1,0 +1,56 @@
+name: iOS
+
+# Builds an unsigned IPA for sideloading (SideStore / AltStore re-sign it with
+# your own Apple ID). Called by the main Build workflow; runs on its own for
+# manual runs and for pushes to ios-* branches.
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ["ios-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ios
+      - run: npm ci
+      - name: Tools
+        run: |
+          xcodebuild -version
+          which xcodegen || brew install xcodegen
+      - name: Generate the Xcode project
+        run: npx tauri ios init --ci
+      - name: App icon
+        run: npx tauri icon src-tauri/icons/ios-icon.png
+      - name: Build without signing
+        run: npx tauri ios build --no-sign --ci --target aarch64
+      - name: Collect the IPA
+        run: |
+          mkdir out
+          ipa=$(find src-tauri/gen/apple/build -name "*.ipa" -print -quit)
+          if [ -z "$ipa" ]; then
+            echo "::error::no .ipa was produced"; find src-tauri/gen/apple/build -maxdepth 3; exit 1
+          fi
+          cp "$ipa" out/VitroTasks.ipa
+          unzip -l out/VitroTasks.ipa | head -20
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vitro-tasks-ios
+          path: out/VitroTasks.ipa
+          if-no-files-found: error

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the app windows may do: main, quick add and detached view windows.",
+  "description": "What every app window may do, on desktop and on iOS.",
   "windows": [
     "main",
     "quickadd",
@@ -9,24 +9,10 @@
   ],
   "permissions": [
     "core:default",
-    "core:window:allow-hide",
-    "core:window:allow-show",
-    "core:window:allow-set-focus",
-    "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
-    "core:window:allow-internal-toggle-maximize",
-    "core:window:allow-close",
-    "core:window:allow-start-dragging",
-    "core:window:allow-is-maximized",
     "sql:default",
     "sql:allow-execute",
-    "updater:default",
-    "process:allow-restart",
-    "core:webview:allow-create-webview-window",
-    "core:window:allow-unminimize",
     "opener:default",
     "dialog:allow-save",
-    "core:window:allow-set-size",
     "core:event:allow-emit-to"
   ]
 }
