@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-native-ui"
+version = "0.1.0"
+description = "Native iOS parts around the Vitro Tasks web view: glass tab bar, task menus, keyboard"
+edition = "2021"
+publish = false
+links = "tauri-plugin-native-ui"
+
+[dependencies]
+tauri = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

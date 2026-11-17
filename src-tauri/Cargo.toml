@@ -25,9 +25,11 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
-# iOS: haptics, and native tweaks to the web view (safe areas, keyboard).
+# iOS: haptics, the native bar / menus / keyboard (plugins/native-ui), and
+# native tweaks to the web view (safe areas, keyboard).
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-haptics = "2"
+tauri-plugin-native-ui = { path = "../plugins/native-ui" }
 objc2 = "0.6"
 block2 = "0.6"
 

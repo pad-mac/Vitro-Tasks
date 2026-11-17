@@ -251,7 +251,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
     #[cfg(target_os = "ios")]
-    let builder = builder.plugin(tauri_plugin_haptics::init());
+    let builder = builder
+        .plugin(tauri_plugin_haptics::init())
+        .plugin(tauri_plugin_native_ui::init());
     let builder = builder
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_opener::init())

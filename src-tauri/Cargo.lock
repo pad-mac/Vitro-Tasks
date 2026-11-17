@@ -4841,6 +4841,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-native-ui"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5549,6 +5557,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-haptics",
+ "tauri-plugin-native-ui",
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
