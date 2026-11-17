@@ -84,6 +84,14 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
+/** A short tap of the phone's haptic engine (no-op elsewhere). */
+export function haptic(kind: "light" | "medium" | "selection" = "medium"): void {
+  if (!isMobile || !isTauri()) return;
+  void import("@tauri-apps/plugin-haptics")
+    .then((h) => (kind === "selection" ? h.selectionFeedback() : h.impactFeedback(kind)))
+    .catch(() => {});
+}
+
 /**
  * Saves text to a file the user picks. Returns the path (desktop) or the file
  * name (browser download), or null when cancelled.

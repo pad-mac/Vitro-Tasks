@@ -371,7 +371,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .column.is-drop { background: var(--hover); }
 .column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; }
 .column-head .group-label { font-size: 15px; }
-.column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 60px; padding: 0 2px 6px; margin: 0 -2px; }
+.column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 60px; padding: 6px 2px 6px; margin: -6px -2px 0; }
 .column-empty { color: var(--faint); font-size: 13px; text-align: center; padding: 16px 0; border: 1px dashed var(--line); border-radius: var(--r-lg); }
 .column-add { padding: 4px 0; align-items: flex-start; }
 .lane { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -471,6 +471,15 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cal-chip-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
 .cal-chip-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; flex: none; }
 .cal-span { position: absolute; z-index: 1; }
+/* Start and end edges of all-day entries: drag to change the range. */
+.cal-chip:not(.cal-span) { position: relative; }
+.edge-handle { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 2; cursor: ew-resize; }
+.edge-handle.is-start { left: -2px; }
+.edge-handle.is-end { right: -2px; }
+.edge-handle::after { content: ""; position: absolute; top: 5px; bottom: 5px; width: 2px; left: 2.5px; border-radius: 1px; background: color-mix(in srgb, var(--c) 70%, var(--text)); opacity: 0; transition: opacity var(--fast); }
+.cal-chip:hover .edge-handle::after { opacity: 0.55; }
+html.is-resizing-days, html.is-resizing-days * { cursor: ew-resize !important; user-select: none; }
+html.is-resizing-days .cal-chip { pointer-events: none; }
 .cal-span.cont-left { border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .cal-span.cont-right { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .cal-more { align-self: flex-start; font-size: 11.5px; color: var(--muted); padding: 1px 8px; border-radius: 4px; background: var(--hover); }
@@ -482,10 +491,11 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .week { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .week-head, .week-allday, .week-grid { display: grid; grid-template-columns: 58px minmax(0, 1fr); }
 .week-head { grid-template-columns: 58px repeat(7, minmax(0, 1fr)); padding-right: 10px; flex: none; }
-.week-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 0 8px; }
+.week-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0 5px; margin: 0 3px 3px; border-radius: 10px; }
 .week-day i { font-size: 12.5px; font-style: normal; color: var(--faint); }
 .week-day b { font-size: 15px; font-weight: 500; min-width: 28px; height: 26px; display: inline-grid; place-items: center; border-radius: 13px; padding: 0 6px; }
 .week-day.is-today b { background: var(--muted); color: var(--bg); }
+.week-day.has-deadline { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--signal) 75%, transparent); }
 .week-allday { flex: none; border-block: 1px solid var(--line-soft); max-height: 150px; overflow-y: auto; scrollbar-width: none; padding-right: 10px; }
 .week-allday > .week-gutter { padding: 7px 8px 0 0; text-align: right; font-size: 11px; color: var(--faint); }
 .week-allday-row { min-width: 0; touch-action: none; }
@@ -559,7 +569,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .mini-cal-title { flex: 1; font-weight: 600; padding-left: 4px; }
 .mini-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .mini-cal-dow { text-align: center; font-size: 11px; color: var(--faint); padding: 3px 0; }
-.mini-cal-day { border: 1px solid transparent; height: 30px; border-radius: 15px; font-size: 12.5px; font-variant-numeric: tabular-nums; transition: background var(--fast); }
+.mini-cal-day { border: 1px solid transparent; width: 30px; height: 30px; justify-self: center; display: grid; place-items: center; padding: 0; border-radius: 50%; font-size: 12.5px; font-variant-numeric: tabular-nums; transition: background var(--fast); }
 .mini-cal-day:hover { background: var(--active); }
 .mini-cal-day.is-out { color: var(--faint); }
 .mini-cal-day.in-range { background: color-mix(in oklab, var(--hl) 18%, transparent); }
@@ -572,10 +582,17 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .time-trigger:hover, .time-trigger.is-open { border-color: var(--faint); }
 .time-trigger .icon { color: var(--muted); }
 .time-trigger.is-empty { color: var(--faint); border-style: dashed; }
-.time-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
-.time-col { display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
+.date-pop { position: relative; }
+/* The time picker floats beside the date panel: two narrow columns. */
+.time-cols { position: absolute; bottom: 0; left: calc(100% + 8px); z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 118px; padding: 5px; background: var(--float); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); animation: pop var(--fast); }
+.time-cols.is-left { left: auto; right: calc(100% + 8px); }
+.time-cols.is-below { position: static; width: auto; margin-top: 8px; box-shadow: none; animation: none; }
+.time-col { display: flex; flex-direction: column; gap: 2px; max-height: 186px; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.time-col::-webkit-scrollbar { width: 5px; }
+.time-col::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background-clip: content-box; background-color: color-mix(in oklab, var(--faint) 55%, transparent); }
+.time-col::-webkit-scrollbar-track { background: transparent; }
 .time-col-min { justify-content: flex-start; }
-.time-cell { border: 1px solid transparent; flex: none; height: 28px; border-radius: 14px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); transition: background var(--fast); }
+.time-cell { border: 1px solid transparent; flex: none; height: 28px; border-radius: 9px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); transition: background var(--fast); }
 .time-cell:hover { background: var(--active); }
 .subtasks { display: flex; flex-direction: column; gap: 1px; margin: 4px -8px 0; }
 .subtask { display: flex; align-items: center; gap: 11px; min-height: 34px; padding: 0 8px; border-radius: 7px; transition: background var(--fast); }
@@ -724,9 +741,16 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* ---------- Phone (the iOS app, or ?mobile in a browser) ---------- */
 
-.is-mobile { --bar-h: calc(env(safe-area-inset-bottom, 0px) + 76px); -webkit-tap-highlight-color: transparent; }
+.is-mobile {
+  /* Where the bottom bar sits: low, in the home indicator's area like system apps. */
+  --bar-gap: max(calc(env(safe-area-inset-bottom, 0px) - 14px), 10px);
+  --bar-h: calc(var(--bar-gap) + 66px);
+  /* The status bar keeps its room, but a little of the space under it is used. */
+  --top-gap: max(calc(env(safe-area-inset-top, 0px) - 12px), 0px);
+  -webkit-tap-highlight-color: transparent;
+}
 .is-mobile body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-.is-mobile .app { padding-top: env(safe-area-inset-top, 0px); }
+.is-mobile .app { padding-top: var(--top-gap); }
 /* iOS zooms into fields whose text is smaller than 16px. */
 .is-mobile input, .is-mobile textarea, .is-mobile [contenteditable="true"] { font-size: max(16px, 1em); }
 .is-mobile .task-row, .is-mobile .card, .is-mobile .cal-chip, .is-mobile .nav-row, .is-mobile .tl-item, .is-mobile .tl-title { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -742,7 +766,8 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .group-head { height: 40px; }
 .is-mobile .list-view { padding: 0 8px calc(var(--bar-h) + 28px); }
 .is-mobile .kanban { padding-bottom: calc(var(--bar-h) + 4px); }
-.is-mobile .calendar, .is-mobile .timeline { padding-bottom: var(--bar-h); }
+.is-mobile .timeline { padding-bottom: var(--bar-h); }
+.is-mobile .column-body { padding-bottom: var(--bar-h); }
 .is-mobile .detail-pane { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .is-mobile .detail-head { height: 58px; }
 .is-mobile .sidebar-wrap.is-drawer { width: min(320px, 86vw) !important; padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -758,12 +783,13 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .drag-ghost { position: fixed; z-index: 200; margin: 0; pointer-events: none; background: var(--raised); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); opacity: 0.97; will-change: transform; }
 
 /* Bottom bar: a frosted pill with the three places, and the add button beside it. */
-.m-bar { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 25; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); }
-.m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 60px; padding: 4px; border-radius: 30px; background: color-mix(in oklab, var(--raised) 74%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 var(--pearl-edge); }
+.m-bar { position: fixed; left: 16px; right: 16px; bottom: var(--bar-gap); z-index: 85; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); }
+/* Glass: mostly see-through, blurred, with a light rim and top edge. */
+.m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 58px; padding: 4px; border-radius: 29px; background: color-mix(in oklab, var(--raised) 46%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid color-mix(in oklab, var(--text) 14%, transparent); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), inset 0 1px 0 color-mix(in oklab, white 45%, transparent), inset 0 -1px 0 color-mix(in oklab, white 8%, transparent); }
 .m-tabs button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 26px; color: var(--muted); font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em; transition: background var(--fast), color var(--fast); }
 .m-tabs button.is-active { color: var(--text); background: color-mix(in oklab, var(--active) 85%, transparent); }
 .m-tabs .sync-dot { position: absolute; top: 9px; left: calc(50% + 8px); border: 1.5px solid var(--raised); box-sizing: content-box; }
-.m-add { pointer-events: auto; flex: none; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; }
+.m-add { pointer-events: auto; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .m-add.pearl { box-shadow: inset 0 1px 0 var(--pearl-edge), 0 10px 26px rgba(0, 0, 0, 0.14); }
 
 /* The add sheet sits on top of the keyboard. */
@@ -781,7 +807,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* Settings fill the screen. */
 .is-mobile .overlay { place-items: stretch; }
-.is-mobile .modal { width: 100%; max-height: none; height: 100%; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.is-mobile .modal { width: 100%; max-height: none; height: 100%; border: 0; border-radius: 0; padding-top: var(--top-gap); padding-bottom: calc(var(--bar-h) + 12px); background: var(--bg); box-shadow: none; animation: none; }
+.is-mobile .overlay { background: var(--bg); animation: fade var(--fast); }
+.is-mobile .floating, .is-mobile .pop-panel { z-index: 95; }
 .is-mobile .modal header { position: sticky; top: 0; z-index: 2; background: var(--float); }
 .is-mobile .data-row { flex-wrap: wrap; }
 .is-mobile .data-row > .btn { width: 100%; }
@@ -790,3 +818,50 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* A new task from the calendar opens as a sheet at the bottom. */
 .is-mobile .floating.composer { left: 8px !important; right: 8px; top: auto !important; bottom: calc(var(--kb, 0px) + 8px + env(safe-area-inset-bottom, 0px)); width: auto; }
 .is-mobile .floating.composer .detail-popup { width: auto; }
+
+/* A task opens in a sheet; pulled up it fills the screen. */
+.m-task-scrim { z-index: 88; }
+.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 62%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: env(safe-area-inset-bottom, 0px); transition: height 300ms cubic-bezier(0.2, 0, 0, 1), border-radius 300ms, transform 300ms cubic-bezier(0.2, 0, 0, 1); animation: sheet-in 300ms cubic-bezier(0.2, 0, 0, 1); will-change: transform; }
+.m-task-sheet.is-full { height: 100%; border-radius: 0; padding-top: var(--top-gap); }
+.m-task-sheet.is-dragging { transition: none; }
+.m-task-sheet.is-closing { transform: translateY(105%); transition: transform 240ms cubic-bezier(0.4, 0, 1, 1); }
+.m-task-sheet .detail { flex: 1; min-height: 0; width: auto; border: 0; position: static; animation: none; background: transparent; }
+.m-task-sheet .detail-head { height: 52px; }
+.m-task-sheet:not(.is-full) .pane-back { display: none; }
+.m-grabber { flex: none; height: 18px; display: grid; place-items: center; }
+.m-grabber i { width: 38px; height: 5px; border-radius: 3px; background: color-mix(in oklab, var(--text) 22%, transparent); }
+.m-task-sheet.is-full .m-grabber { height: 10px; }
+.m-task-sheet.is-full .m-grabber i { opacity: 0; }
+@keyframes sheet-in { from { transform: translateY(100%); } }
+
+/* ---------- Phone calendar ---------- */
+
+.is-mobile .calendar .view-head { flex-wrap: nowrap; height: 58px; min-height: 0; padding: 0 10px 0 16px; }
+.is-mobile .calendar .view-head h1 { font-size: 24px; flex: 1; }
+.is-mobile .calendar .head-tools { margin-left: auto; gap: 4px; }
+.is-mobile .calendar .cal-add, .is-mobile .calendar .stepper > button:not(.stepper-today) { display: none; }
+.is-mobile .calendar .stepper { border: 0; background: none; }
+.is-mobile .calendar .stepper-today, .is-mobile .calendar .head-tools .btn { height: 34px; border-radius: 17px; padding: 0 14px; border: 1px solid var(--line); background: var(--raised); }
+.m-month { padding: 0; min-height: 0; }
+.m-month .month-dow { padding: 0 2px; border-bottom: 1px solid var(--line-soft); }
+.m-month .month-dow span { font-size: 11.5px; font-weight: 500; padding: 2px 0 6px; }
+.m-month-scroll { position: relative; overflow-anchor: none; flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: var(--bar-h); scroll-padding-top: 0; }
+.m-week { scroll-snap-align: start; scroll-snap-stop: normal; display: flex; }
+.m-week .cal-week { flex: 1; height: 100%; border-top: 1px solid var(--line-soft); }
+.m-week:first-child .cal-week { border-top: 0; }
+/* No vertical lines; numbers centred; today and the open day as circles. */
+.is-mobile .cal-cell { border-right: 0; padding: 30px 1px 2px; border-radius: 10px; }
+.is-mobile .cal-daynum { left: 50%; top: 4px; transform: translateX(-50%); margin: 0; width: 24px; min-width: 0; height: 24px; padding: 0; border-radius: 50%; font-size: 14px; font-weight: 500; }
+.is-mobile .cal-cell.is-sel { background: color-mix(in oklab, var(--hl) 16%, transparent); }
+.is-mobile .cal-cell.is-sel .cal-daynum { background: var(--ink); color: var(--on-ink); }
+.is-mobile .cal-cell.is-out .cal-daynum { color: var(--faint); }
+.is-mobile .cal-chip { height: 19px; font-size: 11.5px; padding: 0 3px; border-radius: 4px; gap: 3px; }
+.is-mobile .cal-chip.is-timed { padding-left: 6px; }
+.is-mobile .cal-chip.is-timed::before { left: 1px; top: 3px; bottom: 3px; width: 2px; }
+.is-mobile .cal-more { font-size: 10.5px; padding: 0 5px; }
+.is-mobile .edge-handle { display: none; }
+/* The day's list opens under its week. */
+.m-day-panel { scroll-snap-align: none; margin: 4px 8px 8px; padding: 4px 4px 8px; background: var(--raised); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08); overflow-y: auto; animation: pop var(--fast); }
+.m-day-panel > header { position: sticky; top: -4px; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 6px 12px; background: var(--raised); font-size: 14px; }
+.m-day-panel .task-row { padding-right: 8px; }
+.m-day-empty { margin: 6px 12px 10px; color: var(--faint); font-size: 13.5px; }

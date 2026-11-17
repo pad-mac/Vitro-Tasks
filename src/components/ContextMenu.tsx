@@ -194,6 +194,14 @@ function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number };
           <Icon name="subtask" size={15} /> Add Subtask
         </MenuItem>
       )}
+      {!task.parent_id && (
+        <button type="button" className="menu-item" onClick={() => setPage("move")}>
+          <span className="menu-label">
+            <Icon name="move" size={15} /> Move to
+          </span>
+          <Icon name="chevron" size={12} />
+        </button>
+      )}
       <MenuItem onClick={run(() => update(id, { pinned: task.pinned ? 0 : 1 }))}>
         <Icon name="pin" size={15} /> {task.pinned ? "Unpin" : "Pin"}
       </MenuItem>
@@ -205,14 +213,6 @@ function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number };
         <MenuItem onClick={run(() => toggle(id))}>
           <Icon name="tasks" size={15} /> Reopen
         </MenuItem>
-      )}
-      {!task.parent_id && (
-        <button type="button" className="menu-item" onClick={() => setPage("move")}>
-          <span className="menu-label">
-            <Icon name="move" size={15} /> Move to
-          </span>
-          <Icon name="chevron" size={12} />
-        </button>
       )}
       <div className="cm-sep" />
       <MenuItem onClick={run(() => duplicate(id))}>

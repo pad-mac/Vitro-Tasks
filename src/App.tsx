@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
-import { MobileAdd, MobileBar, useTouchGestures } from "./components/Mobile";
+import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
@@ -13,7 +13,7 @@ import { isMobile, isTauri, onOpenTask, windowAction, windowLabel } from "./lib/
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
 import { orderKey, parseRanks } from "./lib/order";
 import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type ViewRef } from "./lib/views";
-import type { GroupBy, SortBy, ViewMode } from "./shared/schema";
+import type { GroupBy, SortBy, Task, ViewMode } from "./shared/schema";
 import { computePrefs, useStore, viewKey } from "./store";
 
 /** Windows narrower than this get the drawer sidebar and a full-width side pane. */
@@ -316,8 +316,15 @@ export function App() {
   const narrow = useNarrow();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [addPreset, setAddPreset] = useState<Partial<Task> | null>(null);
   const addInput = useRef<HTMLInputElement>(null);
+  const openAdd = useCallback((preset: Partial<Task> | null) => {
+    setAddPreset(preset);
+    setAddOpen(true);
+    addInput.current?.focus();
+  }, []);
   useTouchGestures();
+  useEdgeSwipe();
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {
@@ -378,7 +385,8 @@ export function App() {
   if (!ready) return <div className="boot"><span className="micro">loading</span></div>;
 
   const taskLayer = view.kind !== "calendar";
-  const pane = selected && editMode === "pane" ? selected : null;
+  // On the phone a task opens in a sheet instead of the side pane.
+  const pane = selected && editMode === "pane" && !isMobile ? selected : null;
   const popup = selected && editMode === "popup" ? selected : null;
   const onWorkspaceDown = (e: RMouseEvent) => {
     if (!pane || e.button !== 0) return;
@@ -418,22 +426,22 @@ export function App() {
       </div>
       <TaskPopup task={popup} />
       <Composer />
-      {isMobile && (
-        <>
-          {!pane && !settingsOpen && !drawerOpen && (
-            <MobileBar
-              onSettings={() => setSettingsOpen(true)}
-              onAdd={() => {
-                setAddOpen(true);
-                addInput.current?.focus();
-              }}
-            />
-          )}
-          <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} />
-        </>
-      )}
       <ContextMenu />
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {isMobile && (
+        <>
+          {!drawerOpen && (
+            <MobileBar
+              settingsOpen={settingsOpen}
+              onSettings={() => setSettingsOpen(!settingsOpen)}
+              onCloseSettings={() => setSettingsOpen(false)}
+              onAdd={() => openAdd(null)}
+            />
+          )}
+          <MobileTaskSheet task={selected} />
+          <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} onOpen={openAdd} preset={addPreset} />
+        </>
+      )}
     </div>
   );
 }

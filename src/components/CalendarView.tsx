@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -19,6 +19,8 @@ import type { Task } from "../shared/schema";
 import { anchorOf, useStore, type Anchor } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
 import { useSwipe } from "./Mobile";
+import { TaskRow } from "./tasks";
+import { isMobile } from "../lib/platform";
 import { FloatingPanel, Icon, MenuItem, Popover } from "./ui";
 
 const HOUR_H = 48;
@@ -108,6 +110,65 @@ function useStepWheel(step: (dir: number) => void, threshold: number) {
 
 // ---------- Entries ----------
 
+/**
+ * Dragging the start or end edge of an all-day entry changes its range day by
+ * day; the calendar shows the new range while dragging and saves on release.
+ */
+function useEdgeResize(task: Task) {
+  const preview = useStore((s) => s.previewTask);
+  const updateTask = useStore((s) => s.updateTask);
+  return (edge: "start" | "end") => (e: RPointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || e.pointerType === "touch" || !task.start_date) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const first = task.start_date;
+    const last = task.end_date ?? task.start_date;
+    let cur = { start: first, end: last };
+    const html = document.documentElement;
+    const onMove = (ev: PointerEvent) => {
+      const day = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-day]")?.dataset.day;
+      if (!day) return;
+      const next = edge === "end" ? { start: first, end: day < first ? first : day } : { start: day > last ? last : day, end: last };
+      if (next.start === cur.start && next.end === cur.end) return;
+      cur = next;
+      preview(task.id, { start_date: next.start, end_date: next.end > next.start ? next.end : null });
+    };
+    const finish = (save: boolean) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey, true);
+      html.classList.remove("is-resizing-days");
+      const patch = save
+        ? { start_date: cur.start, end_date: cur.end > cur.start ? cur.end : null }
+        : { start_date: task.start_date, end_date: task.end_date };
+      if (save && patch.start_date === task.start_date && patch.end_date === task.end_date) return;
+      if (save) void updateTask(task.id, patch);
+      else preview(task.id, patch);
+    };
+    const onUp = () => finish(true);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.stopPropagation();
+      finish(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("keydown", onKey, true);
+    html.classList.add("is-resizing-days");
+  };
+}
+
+/** The draggable start and end edges of an all-day entry. */
+function EdgeHandles({ task, start = true, end = true }: { task: Task; start?: boolean; end?: boolean }) {
+  const resize = useEdgeResize(task);
+  return (
+    <>
+      {start && <span className="edge-handle is-start" data-nodrag title="Drag to change the first day" onPointerDown={resize("start")} />}
+      {end && <span className="edge-handle is-end" data-nodrag title="Drag to change the last day" onPointerDown={resize("end")} />}
+    </>
+  );
+}
+
 function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
   const lists = useStore((s) => s.lists);
   const selectedId = useStore((s) => s.selectedId);
@@ -131,6 +192,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
       {kind === "deadline" && <Icon name="deadline" size={11} />}
       <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
       {time && !timed && <span className="cal-chip-time">{time}</span>}
+      {kind === "planned" && !time && !timed && <EdgeHandles task={task} />}
     </div>
   );
 }
@@ -161,6 +223,7 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
       {...dragProps(task.id, "planned")}
     >
       <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+      <EdgeHandles task={task} start={!left} end={!right} />
     </div>
   );
 }
@@ -203,7 +266,7 @@ function DayCell({
     >
       {month && (
         <span className={`cal-daynum ${day === today ? "is-today" : ""}`}>
-          {+day.slice(8) === 1 ? `${MONTHS_LONG[+day.slice(5, 7) - 1].slice(0, 3)} 1` : +day.slice(8)}
+          {+day.slice(8) === 1 && !isMobile ? `${MONTHS_LONG[+day.slice(5, 7) - 1].slice(0, 3)} 1` : +day.slice(8)}
         </span>
       )}
       {shown.map((e) => (
@@ -554,6 +617,8 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
   const days = Array.from({ length: n }, (_, i) => addDays(start, i));
   const cols = { gridTemplateColumns: `58px repeat(${n}, minmax(0, 1fr))` };
   const scroller = useRef<HTMLDivElement>(null);
+  // Days with an open deadline get a frame in the header, whatever the deadline's time.
+  const deadlineDays = useMemo(() => new Set(tasks.filter((t) => t.status === 0 && t.deadline_date).map((t) => t.deadline_date!)), [tasks]);
   const { range, handlers } = useDayRange();
   const wheel = useStepWheel(onShift, 70);
   useEffect(() => {
@@ -569,7 +634,7 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
       <div className="week-head" style={cols}>
         <span className="week-gutter" />
         {days.map((d) => (
-          <span key={d} className={`week-day ${d === today ? "is-today" : ""} ${isWeekend(d) ? "is-weekend" : ""}`}>
+          <span key={d} className={`week-day ${d === today ? "is-today" : ""} ${isWeekend(d) ? "is-weekend" : ""} ${deadlineDays.has(d) ? "has-deadline" : ""}`} title={deadlineDays.has(d) ? "A deadline is due this day" : undefined}>
             <i>{WEEKDAYS[(fromKey(d).getDay() + 6) % 7]}</i>
             <b>{+d.slice(8)}</b>
           </span>
@@ -616,6 +681,154 @@ function MonthView({ top, rows = 6, tasks, titleMonth, onShift, onExpand }: { to
       <div className="month-grid" ref={gridRef} style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }} onWheel={(e) => e.deltaY && !e.ctrlKey && !e.shiftKey && wheel(e.deltaY)} {...handlers}>
         {Array.from({ length: rows }, (_, i) => addDays(top, i * 7)).map((ws) => (
           <WeekRow key={ws} start={ws} tasks={tasks} month titleMonth={titleMonth} capacity={capacity} range={range} onExpand={onExpand} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Phone: one long, smoothly scrolling month ----------
+
+const SPAN_WEEKS = 26;
+
+/**
+ * The phone's month view: weeks scroll freely and snap to a week row; the
+ * title follows the month in view. Tapping a day opens its list under that
+ * week; holding a day adds a task there (see the touch gestures).
+ */
+function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks: Task[]; todaySignal: number; onMonth: (month: string) => void }) {
+  const today = todayKey();
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  const [anchor, setAnchor] = useState(() => startOfWeek(today));
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [focus, setFocus] = useState<string | null>(null);
+  // The week in view when weeks are added or dropped, and how far into it the view starts.
+  const keep = useRef<{ week: string; delta: number } | null>(null);
+  const placed = useRef(false);
+  const rowH = Math.max(64, Math.floor((height || 600) / rows));
+  const capacity = Math.max(1, Math.floor((rowH - 30) / CHIP_H));
+  const weeks = useMemo(() => Array.from({ length: SPAN_WEEKS * 2 + 1 }, (_, i) => addDays(anchor, (i - SPAN_WEEKS) * 7)), [anchor]);
+  const focusWeek = focus ? startOfWeek(focus) : null;
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
+    ro.observe(el);
+    setHeight(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+  const rowEl = (week: string) => ref.current?.querySelector<HTMLElement>(`[data-week="${week}"]`) ?? null;
+  // First layout: the current week at the top.
+  useLayoutEffect(() => {
+    if (!height || placed.current || !ref.current) return;
+    placed.current = true;
+    ref.current.scrollTop = rowEl(anchor)?.offsetTop ?? 0;
+  });
+  // Weeks were added above or dropped: keep the same week in view. (Measured,
+  // not computed, as browsers may already have moved the view to keep their
+  // snap position.)
+  useLayoutEffect(() => {
+    const k = keep.current;
+    keep.current = null;
+    const r = k && rowEl(k.week);
+    if (r && ref.current) ref.current.scrollTop = r.offsetTop + k.delta;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor]);
+  // "Today": back to the current week.
+  useEffect(() => {
+    if (!todaySignal) return;
+    const week = startOfWeek(todayKey());
+    if (!rowEl(week)) {
+      placed.current = false;
+      setAnchor(week);
+    } else ref.current?.scrollTo({ top: rowEl(week)!.offsetTop, behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todaySignal]);
+
+  const settle = useRef(0);
+  const onScroll = () => {
+    const el = ref.current;
+    if (!el) return;
+    // The month of the week a third of the way down names the view.
+    const probe = el.scrollTop + el.clientHeight / 3;
+    const hit = [...el.querySelectorAll<HTMLElement>("[data-week]")].find((r) => r.offsetTop + r.offsetHeight > probe);
+    if (hit) {
+      const m = addDays(hit.dataset.week!, 3).slice(0, 7);
+      if (m !== month) {
+        setMonth(m);
+        onMonth(m);
+      }
+    }
+    // Near either end, more weeks come in once the scrolling has settled.
+    clearTimeout(settle.current);
+    settle.current = window.setTimeout(() => {
+      const near = 6 * rowH;
+      const top = el.scrollTop;
+      const atEdge = top < near ? -1 : el.scrollHeight - top - el.clientHeight < near ? 1 : 0;
+      if (!atEdge) return;
+      const inView = [...el.querySelectorAll<HTMLElement>("[data-week]")].find((r) => r.offsetTop + r.offsetHeight > top + 1);
+      if (inView) keep.current = { week: inView.dataset.week!, delta: top - inView.offsetTop };
+      setAnchor((a) => addDays(a, atEdge * 13 * 7));
+    }, 180);
+  };
+
+  const openDay = (day: string) => {
+    if (focus === day) return setFocus(null);
+    setFocus(day);
+    requestAnimationFrame(() => {
+      const r = rowEl(startOfWeek(day));
+      if (r) ref.current?.scrollTo({ top: r.offsetTop, behavior: "smooth" });
+    });
+  };
+  const onClick = (e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest(".cal-chip, .m-day-panel")) return;
+    const day = t.closest<HTMLElement>("[data-day]")?.dataset.day;
+    if (day) openDay(day);
+  };
+  const dayEntries = focus ? entriesForDay(tasks, focus) : [];
+  const dayTasks = [...new Map(dayEntries.map((e) => [e.task.id, e.task])).values()].filter((t) => !t.parent_id);
+  const [fy, fm, fd] = (focus ?? today).split("-").map(Number);
+
+  return (
+    <div className="month m-month">
+      <div className="month-dow">
+        {WEEKDAYS.map((w) => (
+          <span key={w}>{w.slice(0, 1)}</span>
+        ))}
+      </div>
+      <div className="m-month-scroll" ref={ref} onScroll={onScroll} onClick={onClick}>
+        {weeks.map((ws) => (
+          <Fragment key={ws}>
+            <div className="m-week" data-week={ws} style={{ height: rowH }}>
+              <WeekRow
+                start={ws}
+                tasks={tasks}
+                month
+                titleMonth={month}
+                capacity={capacity}
+                range={focus && focusWeek === ws ? [focus, focus] : null}
+                onExpand={(day) => openDay(day)}
+              />
+            </div>
+            {focusWeek === ws && focus && (
+              <section className="m-day-panel" style={{ maxHeight: Math.max(220, (height || 600) - rowH - 8) }}>
+                <header>
+                  <b>{WEEKDAYS[(fromKey(focus).getDay() + 6) % 7]}, {fd}. {MONTHS_LONG[fm - 1]}{fy !== +today.slice(0, 4) ? ` ${fy}` : ""}</b>
+                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => setFocus(null)}>
+                    <Icon name="x" size={14} />
+                  </button>
+                </header>
+                {dayTasks.length ? (
+                  dayTasks.map((t) => <TaskRow key={t.id} task={t} showList />)
+                ) : (
+                  <p className="m-day-empty">Nothing on this day. Hold a day to add a task to it.</p>
+                )}
+              </section>
+            )}
+          </Fragment>
         ))}
       </div>
     </div>
@@ -699,16 +912,24 @@ export function CalendarView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayTick]);
   const onExpand = (day: string, anchor: Anchor) => setExpanded({ day, anchor });
-  const swipe = useSwipe(step, mode !== "week");
+  // Phones scroll the month views; only the week view pages by swiping.
+  const phoneMonth = isMobile && mode !== "week";
+  const swipe = useSwipe(step, false);
+  const [todaySignal, setTodaySignal] = useState(0);
+  const [phoneTitle, setPhoneTitle] = useState(today.slice(0, 7));
 
   return (
-    <div className="calendar" ref={rootRef} {...swipe}>
+    <div className="calendar" ref={rootRef} {...(phoneMonth ? {} : swipe)}>
       <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
         <h1 data-tauri-drag-region={detached ? true : undefined}>
-          {mode === "multiweek" ? rangeTitle(mwTop, addDays(mwTop, weeks * 7 - 1)) : `${MONTHS_LONG[tm - 1]} ${ty}`}
+          {phoneMonth
+            ? `${MONTHS_LONG[+phoneTitle.slice(5, 7) - 1]}${phoneTitle.slice(0, 4) !== today.slice(0, 4) ? ` ${phoneTitle.slice(0, 4)}` : ""}`
+            : mode === "multiweek"
+              ? rangeTitle(mwTop, addDays(mwTop, weeks * 7 - 1))
+              : `${MONTHS_LONG[tm - 1]} ${ty}`}
         </h1>
         <div className="head-tools">
-          <button type="button" className="btn btn-square" title="New task today" onClick={(e) => openComposer({ start_date: today }, anchorOf(e.currentTarget))}>
+          <button type="button" className="btn btn-square cal-add" title="New task today" onClick={(e) => openComposer({ start_date: today }, anchorOf(e.currentTarget))}>
             <Icon name="plus" />
           </button>
           <Popover
@@ -748,7 +969,16 @@ export function CalendarView() {
             <button type="button" aria-label="Previous" onClick={() => step(-1)}>
               <span className="flip"><Icon name="chevron" size={14} /></span>
             </button>
-            <button type="button" className="stepper-today" onClick={goToday}>Today</button>
+            <button
+              type="button"
+              className="stepper-today"
+              onClick={() => {
+                goToday();
+                setTodaySignal((n) => n + 1);
+              }}
+            >
+              Today
+            </button>
             <button type="button" aria-label="Next" onClick={() => step(1)}>
               <Icon name="chevron" size={14} />
             </button>
@@ -765,7 +995,9 @@ export function CalendarView() {
           </Popover>
         </div>
       </header>
-      {mode === "month" ? (
+      {phoneMonth ? (
+        <PhoneMonth rows={mode === "month" ? 5 : weeks} tasks={visible} todaySignal={todaySignal + todayTick} onMonth={setPhoneTitle} />
+      ) : mode === "month" ? (
         <MonthView top={top} tasks={visible} titleMonth={titleMonth} onShift={(w) => setTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
       ) : mode === "multiweek" ? (
         <MonthView top={mwTop} rows={weeks} tasks={visible} titleMonth="" onShift={(w) => setMwTop((t) => addDays(t, w * 7))} onExpand={onExpand} />

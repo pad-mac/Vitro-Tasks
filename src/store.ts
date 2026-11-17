@@ -175,6 +175,8 @@ interface State {
 
   addTask(patch: Partial<Task> & { title: string }): Promise<Task>;
   updateTask(id: string, patch: Partial<Task>): Promise<void>;
+  /** Shows a change while it is being dragged, without saving it. */
+  previewTask(id: string, patch: Partial<Task>): void;
   toggleTask(id: string): Promise<void>;
   deleteTask(id: string): Promise<void>;
 
@@ -551,6 +553,10 @@ export const useStore = create<State>((set, get) => {
           await get().updateTask(child.id, { list_id: next.list_id, section_id: null });
         }
       }
+    },
+
+    previewTask(id, patch) {
+      set({ tasks: get().tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
     },
 
     async toggleTask(id) {

@@ -502,7 +502,7 @@ export function MiniCalendar({
 const MINUTES = [0, 15, 30, 45];
 
 /** Hour and quarter-hour columns, styled like the rest of the app. */
-function TimeColumns({ time, onPick }: { time: string | null; onPick: (t: string) => void }) {
+function TimeColumns({ time, onPick, side }: { time: string | null; onPick: (t: string) => void; side: "right" | "left" | "below" }) {
   const [h, m] = time ? time.split(":").map(Number) : [null, null];
   const hours = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -512,7 +512,7 @@ function TimeColumns({ time, onPick }: { time: string | null; onPick: (t: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className="time-cols">
+    <div className={`time-cols is-${side}`}>
       <div className="time-col" ref={hours}>
         {Array.from({ length: 24 }, (_, i) => (
           <button type="button" key={i} className={`time-cell ${i === h ? "is-selected pearl" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
@@ -555,10 +555,18 @@ export function DatePickerPanel({
   picks?: [string, string][];
 }) {
   const today = todayKey();
-  const [timeOpen, setTimeOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState<"right" | "left" | "below" | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   const pick = (d: string) => {
     onChange(d, time);
     onDone();
+  };
+  // The time columns float beside the panel, on whichever side has room.
+  const toggleTime = () => {
+    if (timeOpen) return setTimeOpen(null);
+    const r = box.current?.getBoundingClientRect();
+    const need = 130;
+    setTimeOpen(!r || r.right + need <= innerWidth ? (r ? "right" : "below") : r.left - need >= 0 ? "left" : "below");
   };
   const quick = picks ?? [
     ["Today", today],
@@ -566,7 +574,7 @@ export function DatePickerPanel({
     ["Next week", addDays(today, 7)],
   ];
   return (
-    <div className="date-pop">
+    <div className="date-pop" ref={box}>
       <div className="quick-picks">
         {quick.map(([label, d]) => (
           <button type="button" key={label} className="chip-btn" disabled={!!min && d < min} onClick={() => pick(d)}>
@@ -576,7 +584,7 @@ export function DatePickerPanel({
       </div>
       <MiniCalendar value={date} onPick={pick} min={min} range={range} />
       <div className="date-pop-foot">
-        <button type="button" className={`time-trigger ${time ? "" : "is-empty"} ${timeOpen ? "is-open" : ""}`} onClick={() => setTimeOpen(!timeOpen)}>
+        <button type="button" className={`time-trigger ${time ? "" : "is-empty"} ${timeOpen ? "is-open" : ""}`} onClick={toggleTime}>
           <Icon name="clock" size={14} />
           {time ?? "Add time"}
         </button>
@@ -590,7 +598,7 @@ export function DatePickerPanel({
           Clear
         </button>
       </div>
-      {timeOpen && <TimeColumns time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
+      {timeOpen && <TimeColumns side={timeOpen} time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
     </div>
   );
 }

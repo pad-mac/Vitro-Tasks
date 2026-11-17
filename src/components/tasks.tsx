@@ -19,6 +19,11 @@ export function dragProps(taskId: string, payload = "") {
   return {
     draggable: true,
     onDragStart: (e: DragEvent) => {
+      // Edge handles resize the entry instead of moving it.
+      if ((e.target as HTMLElement).closest?.("[data-nodrag]")) {
+        e.preventDefault();
+        return;
+      }
       e.dataTransfer.setData(DRAG_TYPE, taskId);
       e.dataTransfer.setData("text/plain", payload);
       e.dataTransfer.effectAllowed = "move";
