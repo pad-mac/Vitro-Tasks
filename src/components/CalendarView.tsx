@@ -13,13 +13,13 @@ import {
   startOfWeek,
   todayKey,
 } from "../lib/dates";
-import { entriesForDay, tasksForView, type DayEntry } from "../lib/views";
+import { plainText } from "../lib/rich";
+import { entriesForDay, hiddenLists, tasksForView, type DayEntry } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { anchorOf, useStore, type Anchor } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
 import { FloatingPanel, Icon, MenuItem, Popover } from "./ui";
 
-type Mode = "month" | "week";
 const HOUR_H = 48;
 const SNAP = 15;
 const CHIP_H = 22;
@@ -58,6 +58,20 @@ function useMoveEntry() {
     }
     void updateTask(taskId, patch);
   };
+}
+
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el);
+    setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w] as const;
 }
 
 function useElementHeight<T extends HTMLElement>() {
@@ -105,7 +119,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
     <div
       className={`cal-chip ${kind === "deadline" ? "is-deadline" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
       style={{ ["--c" as string]: color }}
-      title={`${kind === "deadline" ? "Deadline: " : ""}${task.title}`}
+      title={`${kind === "deadline" ? "Deadline: " : ""}${plainText(task.title)}`}
       onClick={(e) => {
         e.stopPropagation();
         select(task.id, anchorOf(e.currentTarget));
@@ -113,14 +127,14 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
       onContextMenu={onMenu}
       {...dragProps(task.id, kind)}
     >
-      {kind === "deadline" && <Icon name="flag" size={11} />}
-      <span className="cal-chip-title">{task.title || "Untitled"}</span>
+      {kind === "deadline" && <Icon name="deadline" size={11} />}
+      <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
       {time && !timed && <span className="cal-chip-time">{time}</span>}
     </div>
   );
 }
 
-function SpanBar({ task, c0, c1, lane, top, from, to }: { task: Task; c0: number; c1: number; lane: number; top: number; from: string; to: string }) {
+function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: number; c1: number; lane: number; top: number; from: string; to: string; n: number }) {
   const lists = useStore((s) => s.lists);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
@@ -133,11 +147,11 @@ function SpanBar({ task, c0, c1, lane, top, from, to }: { task: Task; c0: number
       className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
       style={{
         ["--c" as string]: color,
-        left: `calc(${(c0 / 7) * 100}% + ${left ? 0 : 4}px)`,
-        width: `calc(${((c1 - c0 + 1) / 7) * 100}% - ${(left ? 0 : 4) + (right ? 0 : 4)}px)`,
+        left: `calc(${(c0 / n) * 100}% + ${left ? 0 : 4}px)`,
+        width: `calc(${((c1 - c0 + 1) / n) * 100}% - ${(left ? 0 : 4) + (right ? 0 : 4)}px)`,
         top: top + lane * CHIP_H,
       }}
-      title={task.title}
+      title={plainText(task.title)}
       onClick={(e) => {
         e.stopPropagation();
         select(task.id, anchorOf(e.currentTarget));
@@ -145,7 +159,7 @@ function SpanBar({ task, c0, c1, lane, top, from, to }: { task: Task; c0: number
       onContextMenu={onMenu}
       {...dragProps(task.id, "planned")}
     >
-      <span className="cal-chip-title">{task.title || "Untitled"}</span>
+      <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
     </div>
   );
 }
@@ -209,6 +223,7 @@ function WeekRow({
   capacity,
   range,
   onExpand,
+  n = 7,
 }: {
   start: string;
   tasks: Task[];
@@ -217,18 +232,20 @@ function WeekRow({
   capacity: number;
   range: [string, string] | null;
   onExpand: (day: string, anchor: Anchor) => void;
+  /** Number of day columns (narrow windows show fewer days in the week view). */
+  n?: number;
 }) {
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(start, i)), [start]);
-  const end = days[6];
+  const days = useMemo(() => Array.from({ length: n }, (_, i) => addDays(start, i)), [start, n]);
+  const end = days[n - 1];
   const { spans, lanesAt } = useMemo(() => {
     const list = tasks
       .filter((t) => isSpan(t) && t.start_date! <= end && t.end_date! >= start)
       .sort((a, b) => (a.start_date! < b.start_date! ? -1 : a.start_date! > b.start_date! ? 1 : a.end_date! > b.end_date! ? -1 : a.id < b.id ? -1 : 1));
     const laneEnds: number[] = [];
-    const lanesAt = [0, 0, 0, 0, 0, 0, 0];
+    const lanesAt = Array.from({ length: n }, () => 0);
     const spans = list.map((task) => {
       const c0 = Math.max(0, diffDays(start, task.start_date!));
-      const c1 = Math.min(6, diffDays(start, task.end_date!));
+      const c1 = Math.min(n - 1, diffDays(start, task.end_date!));
       let lane = laneEnds.findIndex((e) => e < c0);
       if (lane === -1) lane = laneEnds.length;
       laneEnds[lane] = c1;
@@ -236,9 +253,9 @@ function WeekRow({
       return { task, c0, c1, lane };
     });
     return { spans, lanesAt };
-  }, [tasks, start, end]);
+  }, [tasks, start, end, n]);
   return (
-    <div className={`cal-week ${month ? "" : "is-allday"}`}>
+    <div className={`cal-week ${month ? "" : "is-allday"}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
       {days.map((d, i) => (
         <DayCell
           key={d}
@@ -253,7 +270,7 @@ function WeekRow({
         />
       ))}
       {spans.map((s) => (
-        <SpanBar key={s.task.id} {...s} top={month ? 30 : 4} from={start} to={end} />
+        <SpanBar key={s.task.id} {...s} top={month ? 30 : 4} from={start} to={end} n={n} />
       ))}
     </div>
   );
@@ -475,9 +492,10 @@ function NowLine() {
   return <i className="week-now" style={{ top: ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_H }} />;
 }
 
-function WeekView({ start, tasks, onShift, onExpand }: { start: string; tasks: Task[]; onShift: (days: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
+function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: number; tasks: Task[]; onShift: (days: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
   const today = todayKey();
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const days = Array.from({ length: n }, (_, i) => addDays(start, i));
+  const cols = { gridTemplateColumns: `58px repeat(${n}, minmax(0, 1fr))` };
   const scroller = useRef<HTMLDivElement>(null);
   const { range, handlers } = useDayRange();
   const wheel = useStepWheel(onShift, 70);
@@ -491,7 +509,7 @@ function WeekView({ start, tasks, onShift, onExpand }: { start: string; tasks: T
   };
   return (
     <div className="week" onWheel={onWheel}>
-      <div className="week-head">
+      <div className="week-head" style={cols}>
         <span className="week-gutter" />
         {days.map((d) => (
           <span key={d} className={`week-day ${d === today ? "is-today" : ""} ${isWeekend(d) ? "is-weekend" : ""}`}>
@@ -503,11 +521,11 @@ function WeekView({ start, tasks, onShift, onExpand }: { start: string; tasks: T
       <div className="week-allday">
         <span className="week-gutter">all day</span>
         <div className="week-allday-row" {...handlers}>
-          <WeekRow start={start} tasks={tasks} month={false} capacity={99} range={range} onExpand={onExpand} />
+          <WeekRow start={start} tasks={tasks} month={false} capacity={99} range={range} onExpand={onExpand} n={n} />
         </div>
       </div>
       <div className="week-scroll" ref={scroller}>
-        <div className="week-grid" style={{ height: 24 * HOUR_H }}>
+        <div className="week-grid" style={{ height: 24 * HOUR_H, ...cols }}>
           <div className="week-gutter">
             {Array.from({ length: 24 }, (_, h) => (
               <span key={h} className="week-hour" style={{ top: h * HOUR_H }}>
@@ -547,9 +565,31 @@ function MonthView({ top, tasks, titleMonth, onShift, onExpand }: { top: string;
   );
 }
 
+/** Popup / side pane switch, shown next to the sort and options buttons. */
+export function EditModeToggle({ view }: { view: import("../lib/views").ViewRef }) {
+  const mode = useStore((s) => s.editMode(view));
+  const setMode = useStore((s) => s.setEditMode);
+  const next = mode === "popup" ? "pane" : "popup";
+  return (
+    <button
+      type="button"
+      className="icon-btn icon-btn-lg"
+      title={mode === "popup" ? "Editing in a popup. Click to edit in the side pane" : "Editing in the side pane. Click to edit in a popup"}
+      onClick={() => void setMode(view, next)}
+    >
+      <Icon name={mode === "popup" ? "editpopup" : "editpane"} size={20} />
+    </button>
+  );
+}
+
 export function CalendarView() {
   const today = todayKey();
-  const [mode, setMode] = useState<Mode>("month");
+  const mode = useStore((s) => s.calMode);
+  const setMode = useStore((s) => s.setCalMode);
+  const todayTick = useStore((s) => s.calTodayTick);
+  const detached = useStore((s) => s.detached);
+  const [rootRef, width] = useElementWidth<HTMLDivElement>();
+  const n = width === 0 || width >= 640 ? 7 : width >= 430 ? 3 : 1;
   // Month: Monday of the first visible row. Week: first visible day.
   const [top, setTop] = useState(() => startOfWeek(startOfMonth(today)));
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
@@ -557,13 +597,14 @@ export function CalendarView() {
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
+  const settings = useStore((s) => s.settings);
   const showCompleted = useStore((s) => s.showCompleted);
   const setShowCompleted = useStore((s) => s.setShowCompleted);
   const openComposer = useStore((s) => s.openComposer);
 
   const visible = useMemo(
-    () => tasksForView({ kind: "calendar" }, { lists, sections, tasks }, showCompleted),
-    [lists, sections, tasks, showCompleted],
+    () => tasksForView({ kind: "calendar" }, { lists, sections, tasks, hidden: hiddenLists(settings) }, showCompleted),
+    [lists, sections, tasks, settings, showCompleted],
   );
 
   // The month the grid mostly shows: the one its middle day falls in.
@@ -572,18 +613,22 @@ export function CalendarView() {
   const [ty, tm] = titleKey.split("-").map(Number);
   const step = (dir: number) => {
     if (mode === "month") setTop(startOfWeek(addMonths(`${titleMonth}-01`, dir)));
-    else setWeekStart(addDays(weekStart, dir * 7));
+    else setWeekStart(addDays(weekStart, dir * n));
   };
   const goToday = () => {
     setTop(startOfWeek(startOfMonth(today)));
-    setWeekStart(startOfWeek(today));
+    setWeekStart(n === 7 ? startOfWeek(today) : today);
   };
+  useEffect(() => {
+    if (todayTick) goToday();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayTick]);
   const onExpand = (day: string, anchor: Anchor) => setExpanded({ day, anchor });
 
   return (
-    <div className="calendar">
-      <header className="view-head">
-        <h1>
+    <div className="calendar" ref={rootRef}>
+      <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
+        <h1 data-tauri-drag-region={detached ? true : undefined}>
           {MONTHS_LONG[tm - 1]} {ty}
         </h1>
         <div className="head-tools">
@@ -617,6 +662,7 @@ export function CalendarView() {
               <Icon name="chevron" size={14} />
             </button>
           </div>
+          <EditModeToggle view={{ kind: "calendar" }} />
           <Popover align="right" title="Options" trigger={<span className="icon-btn icon-btn-lg"><Icon name="dots" size={18} /></span>}>
             {(close) => (
               <div className="menu">
@@ -631,7 +677,7 @@ export function CalendarView() {
       {mode === "month" ? (
         <MonthView top={top} tasks={visible} titleMonth={titleMonth} onShift={(w) => setTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
       ) : (
-        <WeekView start={weekStart} tasks={visible} onShift={(d) => setWeekStart((s) => addDays(s, d))} onExpand={onExpand} />
+        <WeekView start={weekStart} n={n} tasks={visible} onShift={(d) => setWeekStart((s) => addDays(s, d))} onExpand={onExpand} />
       )}
       {expanded && (
         <FloatingPanel anchor={expanded.anchor} onClose={() => setExpanded(null)} className="day-sheet">

@@ -3,7 +3,7 @@ import { defaultsForView, subgroupTasks, type Group, type Subgroup, type ViewRef
 import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
 import { TaskMeta, dragProps, useCreateTask, useDropTarget, useTaskMenu } from "./tasks";
-import { Check, Icon, InlineInput, MenuItem, Popover } from "./ui";
+import { Check, Icon, InlineInput, MenuItem, Popover, Rich } from "./ui";
 
 function Card({ task, showList }: { task: Task; showList: boolean }) {
   const selectedId = useStore((s) => s.selectedId);
@@ -20,9 +20,9 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
     >
       <div className="card-top">
         <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
-        <span className="task-title">{task.title || <span className="faint">Untitled</span>}</span>
+        <span className="task-title">{task.title ? <Rich text={task.title} /> : <span className="faint">Untitled</span>}</span>
       </div>
-      {showDetails && task.notes && <p className="card-notes">{task.notes}</p>}
+      {showDetails && task.notes && <p className="card-notes"><Rich text={task.notes.split("\n")[0]} /></p>}
       <div className="card-foot">
         <TaskMeta task={task} showList={showList} dotList />
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { MONTHS_LONG, addDays, diffDays, fromKey, isWeekend, startOfWeek, todayKey } from "../lib/dates";
 import type { Group, ViewRef } from "../lib/views";
 import type { Task } from "../shared/schema";
+import { plainText } from "../lib/rich";
 import { anchorOf, useStore } from "../store";
 import { DRAG_TYPE, dragProps } from "./tasks";
 import { Icon } from "./ui";
@@ -47,7 +48,7 @@ function layout(tasks: Task[], rangeStart: string, dayW: number): { items: Item[
     const x0 = first * dayW;
     // Short bars carry their title to the right, so reserve room for it.
     const barW = s === null || e === null ? 0 : (e - s + 1) * dayW;
-    const titleW = Math.min(280, task.title.length * 6.6 + 16);
+    const titleW = Math.min(280, plainText(task.title).length * 6.6 + 16);
     const x1 = (last + 1) * dayW + (barW >= titleW ? 0 : titleW) + 10;
     let lane = laneEnds.findIndex((end) => end <= x0);
     if (lane === -1) lane = laneEnds.length;
@@ -262,7 +263,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                         const color = lists.find((l) => l.id === it.task.list_id)?.color ?? "var(--muted)";
                         const top = ROW_PAD + it.lane * LANE_H;
                         const barW = s === null || e === null ? 0 : (e - s + 1) * dayW - 2;
-                        const titleW = it.task.title.length * 6.6 + 16;
+                        const titleW = plainText(it.task.title).length * 6.6 + 16;
                         const inside = barW >= titleW;
                         const lastDay = Math.max(e ?? -Infinity, d ?? -Infinity);
                         const titleX = inside && s !== null ? s * dayW + 8 : (lastDay + 1) * dayW + 4;
@@ -279,7 +280,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                                 onPointerDown={(ev) => begin(ev, it.task.id, "move")}
                                 onPointerMove={move}
                                 onPointerUp={() => end(it.task)}
-                                title={it.task.title}
+                                title={plainText(it.task.title)}
                               >
                                 <span
                                   className="tl-resize"
@@ -304,7 +305,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                               style={{ left: titleX }}
                               onClick={(ev) => select(it.task.id, anchorOf(ev.currentTarget))}
                             >
-                              {it.task.title}
+                              {plainText(it.task.title)}
                             </span>
                           </div>
                         );
@@ -325,7 +326,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
           <div className="tl-chips">
             {unscheduled.map((t) => (
               <span key={t.id} className={`tl-chip ${selectedId === t.id ? "is-selected" : ""}`} onClick={(ev) => select(t.id, anchorOf(ev.currentTarget))} {...dragProps(t.id)}>
-                {t.title}
+                {plainText(t.title)}
               </span>
             ))}
           </div>

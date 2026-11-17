@@ -6,17 +6,22 @@ import {
   announceChange,
   appVersion,
   DEFAULT_SHORTCUT,
+  detachedLayer,
+  takeHandoff,
   findUpdate,
   onRemoteChange,
   setQuickAddShortcut,
   type FoundUpdate,
 } from "./lib/platform";
+import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
 import {
   SMART_DEFAULTS,
+  listVisibility,
   listWithDescendants,
   type SmartId,
   type ViewPrefs,
   type ViewRef,
+  type VisibilityKey,
 } from "./lib/views";
 import type { EntityName, List, Row, Section, Setting, Task } from "./shared/schema";
 
@@ -43,7 +48,31 @@ export const anchorOf = (el: Element): Anchor => {
   return { x: r.left, y: r.top, w: r.width, h: r.height };
 };
 
-export type MenuTarget = { kind: "task" | "list"; id: string; x: number; y: number };
+export type MenuTarget =
+  | { kind: "task" | "list"; id: string; x: number; y: number }
+  | { kind: "layer"; id: "tasks" | "calendar"; x: number; y: number }
+  | { kind: "window"; id: string; x: number; y: number };
+
+export type EditMode = "popup" | "pane";
+export type CalMode = "month" | "week";
+
+/** Default highlight: brushed silver. */
+export const DEFAULT_HIGHLIGHT = "#b4b9bf";
+
+export const SIDEBAR_DEFAULT = 262;
+
+/** Key under which a view's own settings are stored. */
+export function viewKey(view: ViewRef): string {
+  return view.kind === "calendar" ? "calendar" : `${view.kind}:${view.id}`;
+}
+
+/** Popup or side pane for a view: chosen per view, defaulting to the pane in list mode. */
+export function computeEditMode(view: ViewRef, prefs: ViewPrefs | null, settings: Record<string, string>): EditMode {
+  const stored = settings[`edit:${viewKey(view)}`];
+  if (stored === "popup" || stored === "pane") return stored;
+  if (view.kind === "calendar") return "popup";
+  return prefs?.view_mode === "list" ? "pane" : "popup";
+}
 
 export interface UpdateState {
   status: "idle" | "checking" | "none" | "available" | "installing" | "error";
@@ -60,6 +89,8 @@ interface State {
   tasks: Task[];
   settings: Record<string, string>;
   view: ViewRef;
+  /** The task view to return to from the calendar. */
+  lastTaskView: ViewRef;
   selectedId: string | null;
   /** Set when the task was opened from a card, bar or chip: edit in a popup there. */
   anchor: Anchor | null;
@@ -71,6 +102,16 @@ interface State {
   showCompleted: boolean;
   showDetails: boolean;
   sidebarOpen: boolean;
+  sidebarWidth: number;
+  /** Narrow windows: the list sidebar slides over the content. */
+  drawerOpen: boolean;
+  highlight: string;
+  shortcuts: Shortcuts;
+  calMode: CalMode;
+  /** Bumped to make the calendar jump to today. */
+  calTodayTick: number;
+  /** This window shows only one view layer (opened from the title bar). */
+  detached: "tasks" | "calendar" | null;
   version: string;
   update: UpdateState;
   theme: Theme;
@@ -87,10 +128,19 @@ interface State {
   closeComposer(): void;
   openMenu(menu: MenuTarget | null): void;
   setRenamingList(id: string | null): void;
-  addSubtaskTo(id: string): void;
+  addSubtaskTo(id: string, anchor?: Anchor | null): void;
   setShowCompleted(v: boolean): void;
   setShowDetails(v: boolean): Promise<void>;
   setSidebarOpen(v: boolean): void;
+  setSidebarWidth(px: number, save?: boolean): void;
+  setDrawerOpen(v: boolean): void;
+  setHighlight(color: string): Promise<void>;
+  setShortcuts(s: Shortcuts): Promise<void>;
+  setCalMode(m: CalMode): void;
+  goCalToday(): void;
+  editMode(view: ViewRef): EditMode;
+  setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
+  setListVisibility(listId: string, key: VisibilityKey, shown: boolean): Promise<void>;
   checkUpdate(): Promise<void>;
   installUpdate(): Promise<void>;
   duplicateTask(id: string): Promise<void>;
@@ -168,6 +218,7 @@ export const useStore = create<State>((set, get) => {
     tasks: [],
     settings: {},
     view: { kind: "smart", id: "today" },
+    lastTaskView: { kind: "smart", id: "today" },
     selectedId: null,
     anchor: null,
     composer: null,
@@ -177,6 +228,13 @@ export const useStore = create<State>((set, get) => {
     showCompleted: false,
     showDetails: true,
     sidebarOpen: true,
+    sidebarWidth: SIDEBAR_DEFAULT,
+    drawerOpen: false,
+    highlight: DEFAULT_HIGHLIGHT,
+    shortcuts: parseShortcuts(null),
+    calMode: "month",
+    calTodayTick: 0,
+    detached: detachedLayer(),
     version: "",
     update: { status: "idle" },
     theme: "system",
@@ -193,7 +251,14 @@ export const useStore = create<State>((set, get) => {
         const shortcut = (await getMeta(db, "quickadd_shortcut")) ?? DEFAULT_SHORTCUT;
         const syncConfig = await getSyncConfig(db);
         const showDetails = (await getMeta(db, "show_details")) !== "0";
-        set({ theme, shortcut, syncConfig, showDetails, sync: { status: syncConfig ? "idle" : "off" } });
+        const highlight = (await getMeta(db, "highlight")) || DEFAULT_HIGHLIGHT;
+        const sidebarWidth = Number(await getMeta(db, "sidebar_width")) || SIDEBAR_DEFAULT;
+        const shortcuts = parseShortcuts(await getMeta(db, "shortcuts"));
+        const calMode = ((await getMeta(db, "cal_mode")) as CalMode | null) ?? "month";
+        set({ theme, shortcut, syncConfig, showDetails, highlight, sidebarWidth, shortcuts, calMode, sync: { status: syncConfig ? "idle" : "off" } });
+        // A detached window starts on the view it was opened from.
+        const handoff = get().detached ? takeHandoff<ViewRef>() : null;
+        if (handoff) set({ view: handoff, ...(handoff.kind !== "calendar" ? { lastTaskView: handoff } : {}) });
         void appVersion().then((version) => set({ version }));
         await get().reload();
         set({ ready: true });
@@ -223,7 +288,7 @@ export const useStore = create<State>((set, get) => {
     },
 
     setView(view) {
-      set({ view, selectedId: null, anchor: null, composer: null });
+      set({ view, selectedId: null, anchor: null, composer: null, drawerOpen: false, ...(view.kind !== "calendar" ? { lastTaskView: view } : {}) });
     },
     select(id, anchor = null) {
       set({ selectedId: id, anchor: id ? anchor : null, composer: null, focusSubtask: false });
@@ -240,8 +305,8 @@ export const useStore = create<State>((set, get) => {
     setRenamingList(id) {
       set({ renamingListId: id });
     },
-    addSubtaskTo(id) {
-      set({ selectedId: id, anchor: null, composer: null, focusSubtask: true });
+    addSubtaskTo(id, anchor = null) {
+      set({ selectedId: id, anchor, composer: null, focusSubtask: true });
     },
     setShowCompleted(v) {
       set({ showCompleted: v });
@@ -252,6 +317,44 @@ export const useStore = create<State>((set, get) => {
     },
     setSidebarOpen(v) {
       set({ sidebarOpen: v });
+    },
+    setSidebarWidth(px, save = false) {
+      const w = Math.round(Math.max(180, Math.min(480, px)));
+      set({ sidebarWidth: w });
+      if (save) void setMeta(db, "sidebar_width", String(w));
+    },
+    setDrawerOpen(v) {
+      set({ drawerOpen: v });
+    },
+    async setHighlight(color) {
+      set({ highlight: color });
+      await setMeta(db, "highlight", color);
+    },
+    async setShortcuts(shortcuts) {
+      set({ shortcuts });
+      await setMeta(db, "shortcuts", JSON.stringify(shortcuts));
+    },
+    setCalMode(calMode) {
+      set({ calMode });
+      void setMeta(db, "cal_mode", calMode);
+    },
+    goCalToday() {
+      set({ calTodayTick: get().calTodayTick + 1 });
+    },
+    editMode(view) {
+      const prefs = view.kind === "calendar" ? null : computePrefs(view, get().lists, get().settings);
+      return computeEditMode(view, prefs, get().settings);
+    },
+    async setEditMode(view, mode) {
+      const key = `edit:${viewKey(view)}`;
+      set({ settings: { ...get().settings, [key]: mode } });
+      await save("settings", { id: key, value: mode, updated_at: 0, deleted: 0 } as Setting);
+    },
+    async setListVisibility(listId, key, shown) {
+      const id = `listvis:${listId}`;
+      const value = JSON.stringify({ ...listVisibility(get().settings, listId), [key]: shown });
+      set({ settings: { ...get().settings, [id]: value } });
+      await save("settings", { id, value, updated_at: 0, deleted: 0 } as Setting);
     },
 
     async checkUpdate() {

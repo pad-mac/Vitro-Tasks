@@ -88,7 +88,7 @@ export function QuickAdd() {
             )}
             {parsed.deadline_date && (
               <span className="qa-chip is-deadline mono">
-                <Icon name="flag" size={12} /> {formatDateTime(parsed.deadline_date, parsed.deadline_time)}
+                <Icon name="deadline" size={12} /> {formatDateTime(parsed.deadline_date, parsed.deadline_time)}
               </span>
             )}
             {parsed.priority > 0 && <span className={`qa-chip p${parsed.priority}`}>{PRIORITY_LABELS[parsed.priority]}</span>}

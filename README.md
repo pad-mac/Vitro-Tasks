@@ -11,15 +11,15 @@ Every task has two independent dates:
 
 | Area | Details |
 | --- | --- |
-| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. |
+| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar (right-click the list). The sidebar is resizable by dragging its edge. |
 | Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. |
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
 | Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
 | Calendar | Month and week. Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. |
-| Tasks | Priority, notes, subtasks, pinning, completion, won't do. Edited in the side pane (list view) or in a popup next to the task (board, timeline, calendar). |
-| Right-click | Own menus for tasks (date, deadline, priority, subtask, pin, won't do, move, duplicate, delete) and for lists. |
-| Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. |
+| Tasks | Priority (flag), hard deadline (hourglass, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. |
+| Right-click | Own menus for tasks (date with a full picker, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
+| Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. Right-click Tasks or Calendar to open that view in its own frameless window (drag it by its top area, close it with Alt+F4 or right-click on the top area). Works down to 300 px wide: the lists become a drawer, the board shows one lane, the side pane fills the window. |
 | Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
 | Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). |
 | Sync | Optional. Local first, last write wins per task. |
@@ -42,7 +42,11 @@ Example: `Draft chapter wed ^30.11. !high #research`
 
 ### Keys
 
-`n` new task · `1` tasks · `2` calendar · `Esc` close the detail pane
+`Ctrl+Tab` switch Tasks / Calendar · `1` Tasks · `2` Calendar · `A` add task · `W` / `M` week / month · `T` today in the calendar · `S` sidebar · `E` popup / side pane editing · `Esc` close
+
+All of them can be changed under Settings → Shortcuts. Single-key shortcuts do nothing while you are typing.
+
+Settings → Appearance also sets the highlight colour, shown as a brushed-metal finish (silver by default).
 
 ## Install
 

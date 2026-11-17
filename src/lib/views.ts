@@ -39,6 +39,35 @@ export interface Data {
   lists: List[];
   sections: Section[];
   tasks: Task[];
+  /** Lists hidden from All, from Today / Next 7 Days, and from the calendar. */
+  hidden?: Hidden;
+}
+
+export type VisibilityKey = "all" | "today" | "calendar";
+export type Hidden = Record<VisibilityKey, Set<string>>;
+export type ListVisibility = Record<VisibilityKey, boolean>;
+
+export const SHOWN_EVERYWHERE: ListVisibility = { all: true, today: true, calendar: true };
+
+/** Per-list visibility, stored as synced settings `listvis:<listId>`. */
+export function listVisibility(settings: Record<string, string>, listId: string): ListVisibility {
+  try {
+    const raw = settings[`listvis:${listId}`];
+    return raw ? { ...SHOWN_EVERYWHERE, ...(JSON.parse(raw) as Partial<ListVisibility>) } : SHOWN_EVERYWHERE;
+  } catch {
+    return SHOWN_EVERYWHERE;
+  }
+}
+
+export function hiddenLists(settings: Record<string, string>): Hidden {
+  const out: Hidden = { all: new Set(), today: new Set(), calendar: new Set() };
+  for (const key of Object.keys(settings)) {
+    if (!key.startsWith("listvis:")) continue;
+    const id = key.slice(8);
+    const v = listVisibility(settings, id);
+    for (const k of ["all", "today", "calendar"] as VisibilityKey[]) if (!v[k]) out[k].add(id);
+  }
+  return out;
 }
 
 /** The list itself plus all of its sublists, depth first. */
@@ -61,7 +90,8 @@ function firstDate(t: Task): string | null {
 /** Top-level tasks belonging to a view (subtasks hang under their parent). */
 export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, today = todayKey()): Task[] {
   const roots = data.tasks.filter((t) => !t.parent_id);
-  if (view.kind === "calendar") return roots.filter((t) => showCompleted || t.status === 0);
+  const shownIn = (key: VisibilityKey) => (t: Task) => !t.list_id || !data.hidden?.[key].has(t.list_id);
+  if (view.kind === "calendar") return roots.filter((t) => (showCompleted || t.status === 0) && shownIn("calendar")(t));
   if (view.kind === "smart" && view.id === "completed") return roots.filter((t) => t.status !== 0);
   const open = roots.filter((t) => showCompleted || t.status === 0);
   if (view.kind === "list") {
@@ -70,19 +100,19 @@ export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, 
   }
   switch (view.id) {
     case "all":
-      return open;
+      return open.filter(shownIn("all"));
     case "inbox":
       return open.filter((t) => t.list_id === null);
     case "today":
       return open.filter((t) => {
         const d = firstDate(t);
-        return d !== null && d <= today;
+        return d !== null && d <= today && shownIn("today")(t);
       });
     case "next7": {
       const end = addDays(today, 6);
       return open.filter((t) => {
         const d = firstDate(t);
-        return d !== null && d <= end;
+        return d !== null && d <= end && shownIn("today")(t);
       });
     }
     case "deadlines":

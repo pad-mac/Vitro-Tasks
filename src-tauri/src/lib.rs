@@ -65,6 +65,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             set_quick_add_shortcut,
             show_main_window
@@ -111,7 +112,8 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             // Closing the main window keeps the app in the tray so the
             // global shortcut stays available. Quit from the tray menu.
-            WindowEvent::CloseRequested { api, .. } => {
+            // Detached view windows ("view-…") close for real.
+            WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 api.prevent_close();
                 let _ = window.hide();
             }

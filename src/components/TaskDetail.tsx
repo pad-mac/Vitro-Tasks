@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
+import { formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
-import { Check, DateField, Flag, FloatingPanel, Icon, MenuItem, Popover } from "./ui";
+import { Check, DateField, DeadlineField, Flag, FloatingPanel, Icon, MenuItem, Popover, Rich, usePresence } from "./ui";
+import { hasLink } from "../lib/rich";
 
 /** Text field that edits locally and saves shortly after typing stops, or on blur. */
 function useDraft(value: string, taskId: string, save: (v: string) => void) {
@@ -45,12 +46,79 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
+type Draft = ReturnType<typeof useDraft>;
+
+/**
+ * A text field that shows its links as clickable links while not being edited.
+ * Clicking anywhere else in the text switches to editing.
+ */
+function RichField({
+  draft,
+  className,
+  placeholder,
+  rows,
+  singleLine,
+}: {
+  draft: Draft;
+  className: string;
+  placeholder: string;
+  rows: number;
+  singleLine?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => autoGrow(ref.current), [draft.value, editing]);
+  useEffect(() => {
+    if (!editing) return;
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [editing]);
+  if (!editing && draft.value && hasLink(draft.value)) {
+    return (
+      <div
+        className={`${className} rich-view`}
+        role="textbox"
+        tabIndex={0}
+        onMouseDown={(e) => {
+          if ((e.target as HTMLElement).closest("a")) return;
+          e.preventDefault();
+          setEditing(true);
+        }}
+        onFocus={() => setEditing(true)}
+      >
+        <Rich text={draft.value} />
+      </div>
+    );
+  }
+  return (
+    <textarea
+      ref={ref}
+      className={className}
+      rows={rows}
+      placeholder={placeholder}
+      {...draft}
+      onBlur={() => {
+        draft.onBlur();
+        setEditing(false);
+      }}
+      onKeyDown={(e) => {
+        if (singleLine && e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLTextAreaElement).blur();
+        }
+      }}
+    />
+  );
+}
+
 function ListPicker({ listId, onPick }: { listId: string | null; onPick: (id: string | null) => void }) {
   const lists = useStore((s) => s.lists);
   const list = lists.find((l) => l.id === listId);
   return (
     <Popover
-      className="pop-up"
+      prefer="above"
       trigger={
         <span className="foot-trigger">
           {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={14} />}
@@ -93,6 +161,7 @@ function PriorityPicker({ priority, onPick }: { priority: number; onPick: (p: nu
 }
 
 export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "popup" }) {
+  const anchor = useStore((s) => s.anchor);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
   const update = useStore((s) => s.updateTask);
@@ -108,13 +177,7 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
 
   const title = useDraft(task.title, task.id, (v) => void update(task.id, { title: v }));
   const notes = useDraft(task.notes, task.id, (v) => void update(task.id, { notes: v }));
-  const titleRef = useRef<HTMLTextAreaElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
   const subRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    autoGrow(titleRef.current);
-    autoGrow(notesRef.current);
-  }, [title.value, notes.value, task.id]);
   useEffect(() => {
     if (focusSubtask) subRef.current?.focus();
   }, [focusSubtask, task.id]);
@@ -124,11 +187,15 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
   const subs = subtasksOf(tasks, task.id);
   const parent = task.parent_id ? tasks.find((t) => t.id === task.parent_id) : null;
   const open = task.status === 0;
-  const overdue = open && task.deadline_date !== null && task.deadline_date < today;
 
   return (
     <aside className={`detail detail-${variant}`}>
       <header className="detail-head">
+        {variant === "pane" && (
+          <button type="button" className="icon-btn pane-back" title="Back" onClick={() => select(null)}>
+            <Icon name="back" size={16} />
+          </button>
+        )}
         <Check done={!open} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
         <i className="vr" />
         <DateField
@@ -150,7 +217,8 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
             <span className="arrow">–</span>
             <DateField
               ghost
-              icon="clock"
+              icon=""
+              className="is-end"
               date={task.end_date ?? (task.end_time ? task.start_date : null)}
               time={task.end_time}
               placeholder="End"
@@ -162,9 +230,15 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
           </>
         )}
         <span className="push" />
+        <DeadlineField
+          date={task.deadline_date}
+          time={task.deadline_time}
+          open={open}
+          onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
+        />
         <PriorityPicker priority={task.priority} onPick={(p) => void update(task.id, { priority: p })} />
         {variant === "pane" && (
-          <button type="button" className="icon-btn" title="Close" onClick={() => select(null)}>
+          <button type="button" className="icon-btn pane-close" title="Close" onClick={() => select(null)}>
             <Icon name="x" size={14} />
           </button>
         )}
@@ -172,44 +246,19 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
 
       <div className="detail-body">
         {parent && (
-          <button type="button" className="crumb" onClick={() => select(parent.id)}>
+          <button type="button" className="crumb" onClick={() => select(parent.id, anchor)}>
             <span className="flip"><Icon name="chevron" size={12} /></span> {parent.title}
           </button>
         )}
-        <textarea
-          ref={titleRef}
-          className="detail-title"
-          rows={1}
-          placeholder="What would you like to do?"
-          {...title}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLTextAreaElement).blur();
-            }
-          }}
-        />
-        <div className="deadline-row">
-          <DateField
-            date={task.deadline_date}
-            time={task.deadline_time}
-            placeholder="Add deadline"
-            icon="flag"
-            tone="signal"
-            onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
-          />
-          {task.deadline_date && open && (
-            <span className={`countdown ${overdue ? "is-over" : ""}`}>{deadlineCountdown(task.deadline_date, today)}</span>
-          )}
-        </div>
-        <textarea ref={notesRef} className="detail-notes" rows={2} placeholder="Description" {...notes} />
+        <RichField draft={title} className="detail-title" rows={1} placeholder="What would you like to do?" singleLine />
+        <RichField draft={notes} className="detail-notes" rows={2} placeholder="Description" />
 
         {!task.parent_id && (
           <section className="subtasks">
             {subs.map((s) => (
               <div key={s.id} className={`subtask ${s.status ? "is-done" : ""}`}>
                 <Check done={s.status !== 0} wontDo={s.status === 2} priority={s.priority} onToggle={() => void toggle(s.id)} />
-                <span className="task-title" onClick={() => select(s.id)}>{s.title}</span>
+                <span className="task-title" onClick={() => select(s.id, anchor)}><Rich text={s.title} /></span>
                 <button type="button" className="icon-btn hover-reveal" title="Delete subtask" onClick={() => void del(s.id)}>
                   <Icon name="x" size={12} />
                 </button>
@@ -237,7 +286,7 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
       <footer className="detail-foot">
         {!task.parent_id && <ListPicker listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
         {!task.parent_id && listSections.length > 0 && (
-          <Popover className="pop-up" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
+          <Popover prefer="above" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
             {(close) => (
               <div className="menu menu-scroll">
                 <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
@@ -251,7 +300,7 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
           </Popover>
         )}
         <span className="push" />
-        <Popover className="pop-up" align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
+        <Popover prefer="above" align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
           {(close) => (
             <div className="menu">
               <MenuItem onClick={() => { void update(task.id, { pinned: task.pinned ? 0 : 1 }); close(); }}>
@@ -277,13 +326,16 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
 }
 
 /** The editor as a floating card next to whatever was clicked (board, timeline, calendar). */
-export function TaskPopup({ task }: { task: Task }) {
+export function TaskPopup({ task }: { task: Task | null }) {
   const anchor = useStore((s) => s.anchor);
   const select = useStore((s) => s.select);
-  if (!anchor) return null;
+  // Without a clicked element (a shortcut, a menu), open in the middle of the window.
+  const at = anchor ?? { x: innerWidth / 2 - 210, y: 90, w: 0, h: 0 };
+  const [shown, closing] = usePresence(task ? { task, at } : null);
+  if (!shown) return null;
   return (
-    <FloatingPanel anchor={anchor} onClose={() => select(null)} className="task-popup">
-      <TaskDetail task={task} variant="popup" />
+    <FloatingPanel anchor={shown.at} onClose={() => select(null)} className="task-popup" closing={closing}>
+      <TaskDetail task={shown.task} variant="popup" />
     </FloatingPanel>
   );
 }
@@ -297,12 +349,14 @@ export function Composer() {
   const [draft, setDraft] = useState<Partial<Task>>({});
   const [title, setTitle] = useState("");
   useEffect(() => {
-    setDraft(composer?.base ?? {});
+    if (!composer) return;
+    setDraft(composer.base);
     setTitle("");
   }, [composer]);
-  if (!composer) return null;
+  const [shown, closing] = usePresence(composer);
+  if (!shown) return null;
   const today = todayKey();
-  const d = { ...composer.base, ...draft };
+  const d = { ...shown.base, ...draft };
   const create = () => {
     const p = parseQuick(title);
     if (!p.title) return close();
@@ -323,13 +377,18 @@ export function Composer() {
       d.end_date ? ` – ${formatDateTime(d.end_date, d.end_time ?? null, today)}` : d.end_time ? ` – ${d.end_time}` : ""
     }`;
   return (
-    <FloatingPanel anchor={composer.anchor} onClose={close} className="task-popup composer">
+    <FloatingPanel anchor={shown.anchor} onClose={close} className="task-popup composer" closing={closing}>
       <div className="detail detail-popup">
         <header className="detail-head">
-          <span className="composer-date">
+          <span className="composer-date sheen-text">
             <Icon name="calendar" size={14} /> {range || "No date"}
           </span>
           <span className="push" />
+          <DeadlineField
+            date={d.deadline_date ?? null}
+            time={d.deadline_time ?? null}
+            onChange={(date, time) => setDraft({ ...draft, deadline_date: date, deadline_time: date ? time : null })}
+          />
           <PriorityPicker priority={d.priority ?? 0} onPick={(p) => setDraft({ ...draft, priority: p })} />
         </header>
         <div className="detail-body">
@@ -343,16 +402,6 @@ export function Composer() {
               if (e.key === "Enter") create();
             }}
           />
-          <div className="deadline-row">
-            <DateField
-              date={d.deadline_date ?? null}
-              time={d.deadline_time ?? null}
-              placeholder="Add deadline"
-              icon="flag"
-              tone="signal"
-              onChange={(date, time) => setDraft({ ...draft, deadline_date: date, deadline_time: date ? time : null })}
-            />
-          </div>
         </div>
         <footer className="detail-foot">
           <ListPicker listId={d.list_id ?? null} onPick={(id) => setDraft({ ...draft, list_id: id })} />

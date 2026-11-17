@@ -1,18 +1,24 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Anchor } from "../store";
 import {
   MONTHS_LONG,
   WEEKDAYS,
   addDays,
   addMonths,
+  deadlineCountdown,
   formatDateTime,
+  pad,
   startOfMonth,
   startOfWeek,
   todayKey,
 } from "../lib/dates";
+import { openExternal } from "../lib/platform";
+import { richParts } from "../lib/rich";
 
-// ---------- Icons (16px grid, 1.5 stroke) ----------
+// ---------- Icons ----------
 
+// 16px grid, 1.4 stroke.
 const PATHS: Record<string, ReactNode> = {
   list: <path d="M3 4.5h10M3 8h10M3 11.5h10" />,
   board: <path d="M3 3h3v10H3zM10 3h3v6h-3z M6.5 3h3v8h-3z" />,
@@ -23,8 +29,9 @@ const PATHS: Record<string, ReactNode> = {
   x: <path d="M4 4l8 8M12 4l-8 8" />,
   check: <path d="M3.5 8.5l3 3 6-7" />,
   chevron: <path d="M6 4l4 4-4 4" />,
-  flag: <path d="M4 14V2.5M4 3h7.5l-1.8 2.6L11.5 8H4" />,
   clock: <path d="M8 2.2a5.8 5.8 0 1 0 0 11.6A5.8 5.8 0 0 0 8 2.2zM8 4.8V8l2.2 1.4" />,
+  // Hourglass: the hard deadline. Flags belong to priorities.
+  deadline: <path d="M4.5 2.3h7M4.5 13.7h7M5.4 2.3v1.9c0 1.5 2.6 2.4 2.6 3.8s-2.6 2.3-2.6 3.8v1.9M10.6 2.3v1.9c0 1.5-2.6 2.4-2.6 3.8s2.6 2.3 2.6 3.8v1.9" />,
   trash: <path d="M3 4.5h10M6.2 4.5V3h3.6v1.5M4.3 4.5l.6 8.5h6.2l.6-8.5" />,
   settings: <path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M10 3.4v3.2M6 9.4v3.2" />,
   sync: <path d="M13 6.5A5.2 5.2 0 0 0 3.6 5M3 9.5A5.2 5.2 0 0 0 12.4 11M3.2 2.6V5h2.4M12.8 13.4V11h-2.4" />,
@@ -34,14 +41,8 @@ const PATHS: Record<string, ReactNode> = {
   layers: <path d="M8 2.5L2.5 5.5 8 8.5l5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3" />,
   done: <path d="M8 2.2a5.8 5.8 0 1 0 0 11.6A5.8 5.8 0 0 0 8 2.2zM5.5 8.2l1.8 1.8 3.4-3.8" />,
   dots: <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" strokeWidth="2.2" />,
-  group: <path d="M2.5 3.5h11v3.5h-11zM2.5 9.5h11v3h-11z" />,
   sort: <path d="M4.5 3v10M2.5 11l2 2 2-2M9 4h4.5M9 8h3.2M9 12h2" />,
-  eye: <path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8zM8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z" />,
   pin: <path d="M6 2.5h4l-.6 4 2.1 2.2H4.5l2.1-2.2zM8 8.7v5" />,
-  sidebar: <path d="M2.5 3.5h11v9h-11zM6 3.5v9M3.9 6h.8M3.9 8h.8" />,
-  sunrise: <path d="M2 12.5h12M4.2 12.5a3.8 3.8 0 0 1 7.6 0M8 4v2.2M3.4 7.4l1.2 1.2M12.6 7.4l-1.2 1.2M6.6 3.6L8 2.2l1.4 1.4" />,
-  plus7: <path d="M2.5 4h11v9.5h-11zM2.5 6.8h11M5.5 2.2v3M10.5 2.2v3M5 10h2M6 9v2M8.6 8.8h2.2l-1.4 3" />,
-  calx: <path d="M2.5 4h11v9.5h-11zM2.5 6.8h11M5.5 2.2v3M10.5 2.2v3M6.5 8.7l3 3M9.5 8.7l-3 3" />,
   copy: <path d="M5.5 5.5h8v8h-8zM3 10.5h-.5v-8h8V3" />,
   ban: <path d="M2.5 2.5h11v11h-11zM5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />,
   move: <path d="M2.5 4.5h11v8h-11zM2.5 4.5l1-2h9l1 2M6.5 8.5h4M9 7l1.5 1.5L9 10" />,
@@ -51,6 +52,54 @@ const PATHS: Record<string, ReactNode> = {
   winmin: <path d="M4 8h8" />,
   winmax: <path d="M4.2 4.2h7.6v7.6H4.2z" />,
   notes: <path d="M3 3.5h10v9H3zM5.2 6.2h5.6M5.2 8.4h5.6M5.2 10.4h3" />,
+  window: <path d="M2.5 3.5h11v9h-11zM2.5 6h11M10 8.5h1.8v1.8" />,
+  back: <path d="M10 3.5L5.5 8l4.5 4.5" />,
+};
+
+// 20px grid with a thin stroke: for icons shown large (menus, toolbar toggles).
+const PATHS20: Record<string, ReactNode> = {
+  today: (
+    <>
+      <circle cx="10" cy="10" r="3.2" />
+      <path d="M10 2.6v1.5M10 15.9v1.5M2.6 10h1.5M15.9 10h1.5M4.8 4.8l1 1M14.2 14.2l1 1M15.2 4.8l-1 1M5.8 14.2l-1 1" />
+    </>
+  ),
+  tomorrow: <path d="M2.8 15.2h14.4M6 15.2a4 4 0 0 1 8 0M10 3.2v4M8.3 4.9L10 3.2l1.7 1.7M4.4 10.4l1.1.9M15.6 10.4l-1.1.9" />,
+  nextweek: (
+    <>
+      <rect x="3.2" y="4.4" width="13.6" height="12" rx="2.2" />
+      <path d="M3.2 7.9h13.6M7 2.9v2.8M13 2.9v2.8M6.6 12.3h2.6M7.9 11v2.6M11.2 10.6h2.6l-1.7 3.8" />
+    </>
+  ),
+  pickdate: (
+    <>
+      <rect x="3.2" y="4.4" width="13.6" height="12" rx="2.2" />
+      <path d="M3.2 7.9h13.6M7 2.9v2.8M13 2.9v2.8" />
+      <circle cx="7" cy="11" r=".7" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="11" r=".7" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="11" r=".7" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="13.8" r=".7" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="13.8" r=".7" fill="currentColor" stroke="none" />
+    </>
+  ),
+  sidebar: (
+    <>
+      <rect x="3" y="4" width="14" height="12" rx="2.2" />
+      <path d="M8 4v12" />
+    </>
+  ),
+  editpane: (
+    <>
+      <rect x="2.8" y="4" width="14.4" height="12" rx="2.2" />
+      <path d="M11.6 4v12M13.4 7.4h2M13.4 9.6h2" />
+    </>
+  ),
+  editpopup: (
+    <>
+      <rect x="2.8" y="4" width="14.4" height="12" rx="2.2" strokeDasharray="2 2.2" />
+      <rect x="7" y="7.3" width="7.6" height="5.6" rx="1.4" />
+    </>
+  ),
 };
 
 /** Priority flag: filled in the priority colour, outlined for none. */
@@ -63,47 +112,120 @@ export function Flag({ priority, size = 16 }: { priority: number; size?: number 
 }
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  const big = name in PATHS20;
   return (
     <svg
       className="icon"
       width={size}
       height={size}
-      viewBox="0 0 16 16"
+      viewBox={big ? "0 0 20 20" : "0 0 16 16"}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.4"
+      strokeWidth={big ? 1.25 : 1.4}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {PATHS[name]}
+      {big ? PATHS20[name] : PATHS[name]}
     </svg>
   );
 }
 
+// ---------- Presence (lets things fade out before they unmount) ----------
+
+/**
+ * Keeps showing the last non-null value for `ms` after it turns null, and
+ * reports that it is closing, so panels can play an exit animation.
+ */
+export function usePresence<T>(value: T | null, ms = 140): [T | null, boolean] {
+  const open = value !== null;
+  const last = useRef<T | null>(value);
+  const wasOpen = useRef(open);
+  const [closing, setClosing] = useState(false);
+  if (open) last.current = value;
+  // Switch to "closing" in the same render the value disappears, so the
+  // panel never unmounts for a frame.
+  if (!open && wasOpen.current && !closing && last.current !== null) setClosing(true);
+  if (open && closing) setClosing(false);
+  wasOpen.current = open;
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(() => {
+      last.current = null;
+      setClosing(false);
+    }, ms);
+    return () => clearTimeout(t);
+  }, [closing, ms]);
+  if (open) return [value, false];
+  return closing ? [last.current, true] : [null, false];
+}
+
 // ---------- Popover ----------
 
-/** A button that opens a floating panel; closes on outside click or Escape. */
+/**
+ * A button that opens a floating panel. The panel lives at the top of the
+ * page (so scrolling containers cannot clip it), opens below the trigger or
+ * above it when there is no room, and closes on outside press or Escape.
+ */
 export function Popover({
   trigger,
   children,
   align = "left",
   className = "",
   title,
+  prefer = "below",
 }: {
   trigger: ReactNode;
   children: (close: () => void) => ReactNode;
   align?: "left" | "right";
   className?: string;
   title?: string;
+  prefer?: "below" | "above";
 }) {
   const [open, setOpen] = useState(false);
+  const [shown, closing] = usePresence(open ? true : null, 110);
   const ref = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  const place = () => {
+    const t = ref.current?.getBoundingClientRect();
+    const el = panel.current;
+    if (!t || !el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const gap = 6;
+    const m = 8;
+    const below = t.bottom + gap;
+    const above = t.top - gap - h;
+    const fitsBelow = below + h <= innerHeight - m;
+    const fitsAbove = above >= m;
+    let top = prefer === "above" ? (fitsAbove || !fitsBelow ? above : below) : fitsBelow || !fitsAbove ? below : above;
+    top = Math.max(m, Math.min(innerHeight - h - m, top));
+    let left = align === "right" ? t.right - w : t.left;
+    left = Math.max(m, Math.min(innerWidth - w - m, left));
+    setPos((p) => (p && p.left === left && p.top === top ? p : { left, top }));
+  };
+  useLayoutEffect(() => {
+    if (shown && !closing) place();
+  });
+  // Content that grows inside the panel (the time columns) moves it back on screen.
   useEffect(() => {
-    if (!open) return;
+    const el = panel.current;
+    if (!open || !el) return;
+    const ro = new ResizeObserver(() => place());
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, shown]);
+  useEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -111,33 +233,37 @@ export function Popover({
         setOpen(false);
       }
     };
+    const onScroll = (e: Event) => {
+      if (!panel.current?.contains(e.target as Node)) place();
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey, true);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", () => setOpen(false), { once: true });
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
-  }, [open]);
-  // Keep the panel inside the window.
-  useLayoutEffect(() => {
-    const el = panel.current;
-    if (!open || !el) return;
-    el.style.transform = "";
-    const r = el.getBoundingClientRect();
-    const dx = r.right > innerWidth - 8 ? innerWidth - 8 - r.right : r.left < 8 ? 8 - r.left : 0;
-    const dy = r.bottom > innerHeight - 8 ? innerHeight - 8 - r.bottom : 0;
-    if (dx || dy) el.style.transform = `translate(${dx}px, ${dy}px)`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   return (
     <div className={`pop ${className}`} ref={ref}>
       <button type="button" className={`pop-trigger ${open ? "is-open" : ""}`} title={title} onClick={() => setOpen(!open)}>
         {trigger}
       </button>
-      {open && (
-        <div className={`pop-panel pop-${align}`} ref={panel}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {shown &&
+        createPortal(
+          <div
+            className={`pop-panel layer ${closing ? "is-closing" : ""}`}
+            ref={panel}
+            style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? undefined : "hidden" }}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -147,66 +273,30 @@ export function MenuItem({
   onClick,
   active,
   danger,
+  check = true,
 }: {
   children: ReactNode;
   onClick: () => void;
   active?: boolean;
   danger?: boolean;
+  /** Show a tick for the active item. */
+  check?: boolean;
 }) {
   return (
     <button type="button" className={`menu-item ${active ? "is-active" : ""} ${danger ? "is-danger" : ""}`} onClick={onClick}>
       <span className="menu-label">{children}</span>
-      {active && <Icon name="check" size={14} />}
+      {active && check && <Icon name="check" size={14} />}
     </button>
   );
 }
 
-/** Labelled dropdown with a fixed set of options. */
-export function Select<T extends string>({
-  icon,
-  label,
-  value,
-  options,
-  onChange,
-  align,
-}: {
-  icon?: string;
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  align?: "left" | "right";
-}) {
-  const current = options.find((o) => o.value === value);
+/** Menu row with an on/off switch that does not close the menu. */
+export function ToggleItem({ children, on, onToggle }: { children: ReactNode; on: boolean; onToggle: () => void }) {
   return (
-    <Popover
-      align={align}
-      title={label}
-      trigger={
-        <span className="select-trigger">
-          {icon && <Icon name={icon} size={14} />}
-          <span className="select-label">{label}</span>
-          <span className="select-value">{current?.label ?? "—"}</span>
-        </span>
-      }
-    >
-      {(close) => (
-        <div className="menu">
-          {options.map((o) => (
-            <MenuItem
-              key={o.value}
-              active={o.value === value}
-              onClick={() => {
-                onChange(o.value);
-                close();
-              }}
-            >
-              {o.label}
-            </MenuItem>
-          ))}
-        </div>
-      )}
-    </Popover>
+    <button type="button" className="menu-item" role="switch" aria-checked={on} onClick={onToggle}>
+      <span className="menu-label">{children}</span>
+      <i className={`switch ${on ? "is-on" : ""}`} />
+    </button>
   );
 }
 
@@ -238,7 +328,38 @@ export function Check({
   );
 }
 
-// ---------- Date field ----------
+// ---------- Links in text ----------
+
+/** Text with clickable URLs and [markdown](links). Clicking a link never selects the task. */
+export function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {richParts(text).map((p, i) =>
+        p.href ? (
+          <a
+            key={i}
+            className="link"
+            href={p.href}
+            title={p.href}
+            draggable={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void openExternal(p.href!);
+            }}
+          >
+            {p.text}
+          </a>
+        ) : (
+          <Fragment key={i}>{p.text}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+// ---------- Date and time picking ----------
 
 export function MiniCalendar({ value, onPick }: { value: string | null; onPick: (key: string) => void }) {
   const today = todayKey();
@@ -250,7 +371,7 @@ export function MiniCalendar({ value, onPick }: { value: string | null; onPick: 
     <div className="mini-cal">
       <div className="mini-cal-head">
         <span className="mini-cal-title">
-          {MONTHS_LONG[m - 1]} <span className="mono">{y}</span>
+          {MONTHS_LONG[m - 1]} {y}
         </span>
         <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
           <span className="flip"><Icon name="chevron" size={14} /></span>
@@ -267,13 +388,95 @@ export function MiniCalendar({ value, onPick }: { value: string | null; onPick: 
           <button
             type="button"
             key={d}
-            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected" : ""}`}
+            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected sheen" : ""}`}
             onClick={() => onPick(d)}
           >
             {+d.slice(8)}
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+const MINUTES = [0, 15, 30, 45];
+
+/** Hour and quarter-hour columns, styled like the rest of the app. */
+function TimeColumns({ time, onPick }: { time: string | null; onPick: (t: string) => void }) {
+  const [h, m] = time ? time.split(":").map(Number) : [null, null];
+  const hours = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // Start around the chosen hour, or the working morning.
+    const el = hours.current;
+    if (el) el.scrollTop = Math.max(0, ((h ?? 9) - 2) * 30);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="time-cols">
+      <div className="time-col" ref={hours}>
+        {Array.from({ length: 24 }, (_, i) => (
+          <button type="button" key={i} className={`time-cell ${i === h ? "is-selected sheen" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
+            {pad(i)}
+          </button>
+        ))}
+      </div>
+      <div className="time-col time-col-min">
+        {MINUTES.map((x) => (
+          <button type="button" key={x} className={`time-cell ${x === m ? "is-selected sheen" : ""}`} onClick={() => onPick(`${pad(h ?? 9)}:${pad(x)}`)}>
+            :{pad(x)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Quick picks, month grid and an optional time. Used by the date fields and
+ * the right-click menu.
+ */
+export function DatePickerPanel({
+  date,
+  time,
+  onChange,
+  onDone,
+}: {
+  date: string | null;
+  time: string | null;
+  onChange: (date: string | null, time: string | null) => void;
+  /** Called after a day was picked or the value cleared. */
+  onDone: () => void;
+}) {
+  const today = todayKey();
+  const [timeOpen, setTimeOpen] = useState(false);
+  const pick = (d: string) => {
+    onChange(d, time);
+    onDone();
+  };
+  return (
+    <div className="date-pop">
+      <div className="quick-picks">
+        <button type="button" className="chip-btn" onClick={() => pick(today)}>Today</button>
+        <button type="button" className="chip-btn" onClick={() => pick(addDays(today, 1))}>Tomorrow</button>
+        <button type="button" className="chip-btn" onClick={() => pick(addDays(today, 7))}>Next week</button>
+      </div>
+      <MiniCalendar value={date} onPick={pick} />
+      <div className="date-pop-foot">
+        <button type="button" className={`time-trigger ${time ? "" : "is-empty"} ${timeOpen ? "is-open" : ""}`} onClick={() => setTimeOpen(!timeOpen)}>
+          <Icon name="clock" size={14} />
+          {time ?? "Add time"}
+        </button>
+        {time && (
+          <button type="button" className="text-btn" title="Remove the time" onClick={() => onChange(date, null)}>
+            No time
+          </button>
+        )}
+        <span className="push" />
+        <button type="button" className="text-btn" disabled={!date} onClick={() => { onChange(null, null); onDone(); }}>
+          Clear
+        </button>
+      </div>
+      {timeOpen && <TimeColumns time={time} onPick={(t) => onChange(date ?? today, t)} />}
     </div>
   );
 }
@@ -287,6 +490,7 @@ export function DateField({
   icon = "calendar",
   align,
   ghost,
+  className = "",
 }: {
   date: string | null;
   time: string | null;
@@ -297,48 +501,67 @@ export function DateField({
   align?: "left" | "right";
   /** Borderless text style, used in the editor header. */
   ghost?: boolean;
+  className?: string;
 }) {
   const today = todayKey();
   return (
     <Popover
       align={align}
-      className="date-field"
+      className={`date-field ${className}`}
       trigger={
         <span className={`date-trigger ${date ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""} ${ghost ? "is-ghost" : ""}`}>
-          <Icon name={icon} size={14} />
+          {icon && <Icon name={icon} size={14} />}
           <span>{date ? formatDateTime(date, time, today) : placeholder}</span>
         </span>
       }
     >
+      {(close) => <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} />}
+    </Popover>
+  );
+}
+
+/**
+ * The hard deadline in an editor header: just the hourglass while unset; the
+ * date and the days left in the signal colour once set.
+ */
+export function DeadlineField({
+  date,
+  time,
+  open = true,
+  onChange,
+}: {
+  date: string | null;
+  time: string | null;
+  /** The task is still open (shows the countdown). */
+  open?: boolean;
+  onChange: (date: string | null, time: string | null) => void;
+}) {
+  const today = todayKey();
+  const over = open && date !== null && date < today;
+  return (
+    <Popover
+      align="right"
+      className="deadline-field"
+      title={date ? `Deadline ${formatDateTime(date, time, today)}` : "Add deadline"}
+      trigger={
+        date ? (
+          <span className={`dl-trigger ${over ? "is-over" : ""}`}>
+            <Icon name="deadline" size={14} />
+            <span>{formatDateTime(date, time, today)}</span>
+            {open && <em>{deadlineCountdown(date, today)}</em>}
+          </span>
+        ) : (
+          <span className="icon-btn dl-empty">
+            <Icon name="deadline" size={16} />
+          </span>
+        )
+      }
+    >
       {(close) => (
-        <div className="date-pop">
-          <div className="quick-picks">
-            {[
-              ["Today", today],
-              ["Tomorrow", addDays(today, 1)],
-              ["Monday", addDays(startOfWeek(today), 7)],
-              ["+1 wk", addDays(date ?? today, 7)],
-            ].map(([label, key]) => (
-              <button type="button" key={label} className="chip-btn" onClick={() => { onChange(key, time); close(); }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <MiniCalendar value={date} onPick={(d) => { onChange(d, time); close(); }} />
-          <div className="date-pop-foot">
-            <label className="time-input">
-              <Icon name="clock" size={14} />
-              <input
-                type="time"
-                value={time ?? ""}
-                onChange={(e) => onChange(date ?? today, e.target.value || null)}
-              />
-            </label>
-            <button type="button" className="text-btn" disabled={!date} onClick={() => { onChange(null, null); close(); }}>
-              Clear
-            </button>
-          </div>
-        </div>
+        <>
+          <span className="cm-label dl-label">Deadline</span>
+          <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} />
+        </>
       )}
     </Popover>
   );
@@ -392,7 +615,8 @@ export function InlineInput({
 /**
  * A panel attached to a rectangle on screen (a card, a calendar entry, a
  * right-click position). Opens beside the anchor, flips to the other side when
- * there is no room, and closes on an outside press or Escape.
+ * there is no room, and closes on an outside press or Escape. While `closing`
+ * it fades out and ignores input.
  */
 export function FloatingPanel({
   anchor,
@@ -400,18 +624,20 @@ export function FloatingPanel({
   children,
   className = "",
   placement = "side",
+  closing = false,
 }: {
   anchor: Anchor;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   placement?: "side" | "below";
+  closing?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const place = () => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || closing) return;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     const gap = 8;
@@ -433,10 +659,19 @@ export function FloatingPanel({
   };
   useLayoutEffect(place);
   useEffect(() => {
+    const el = ref.current;
+    if (!el || closing) return;
+    const ro = new ResizeObserver(() => place());
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closing, anchor.x, anchor.y]);
+  useEffect(() => {
+    if (closing) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       // Presses inside another floating layer (a menu opened from here) don't close this one.
-      if (!ref.current?.contains(t) && !t.closest(".floating")) onClose();
+      if (!ref.current?.contains(t) && !t.closest(".floating, .layer")) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -449,11 +684,11 @@ export function FloatingPanel({
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onClose);
     };
-  }, [onClose]);
+  }, [onClose, closing]);
   return (
     <div
       ref={ref}
-      className={`floating ${className}`}
+      className={`floating ${className} ${closing ? "is-closing" : ""}`}
       // Transparent, not hidden, for the first frame so fields inside can take focus.
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, opacity: pos ? undefined : 0 }}
       onContextMenu={(e) => e.preventDefault()}

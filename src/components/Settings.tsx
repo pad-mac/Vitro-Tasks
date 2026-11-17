@@ -1,7 +1,58 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isTauri } from "../lib/platform";
-import { useStore, type Theme } from "../store";
+import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
+import { DEFAULT_HIGHLIGHT, useStore, type Theme } from "../store";
 import { Icon } from "./ui";
+
+const HIGHLIGHTS: [string, string][] = [
+  ["Silver", DEFAULT_HIGHLIGHT],
+  ["Graphite", "#7a7f86"],
+  ["Champagne", "#cdb88f"],
+  ["Rose gold", "#cf9f92"],
+  ["Steel blue", "#86a0c4"],
+  ["Sage", "#98ad95"],
+  ["Lavender", "#aaa0c8"],
+];
+
+function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
+  const shortcuts = useStore((s) => s.shortcuts);
+  const setShortcuts = useStore((s) => s.setShortcuts);
+  const [recording, setRecording] = useState(false);
+  useEffect(() => {
+    if (!recording) return;
+    shortcutRecording.active = true;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") return setRecording(false);
+      if (e.key === "Backspace" || e.key === "Delete") {
+        void setShortcuts({ ...shortcuts, [id]: "" });
+        return setRecording(false);
+      }
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      // A key combination belongs to one action: take it away from any other.
+      const next = { ...shortcuts };
+      for (const k of Object.keys(next) as ActionId[]) if (next[k] === combo) next[k] = "";
+      next[id] = combo;
+      void setShortcuts(next);
+      setRecording(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      shortcutRecording.active = false;
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [recording, shortcuts, setShortcuts, id]);
+  return (
+    <div className="shortcut-row">
+      <span>{label}</span>
+      <button type="button" className={`kbd-btn ${recording ? "is-recording" : ""}`} onClick={() => setRecording(!recording)}>
+        {recording ? "Press keys…" : shortcuts[id] ? <kbd>{shortcuts[id]}</kbd> : <span className="faint">None</span>}
+      </button>
+    </div>
+  );
+}
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const theme = useStore((s) => s.theme);
@@ -20,6 +71,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState(syncConfig?.url ?? "");
   const [token, setToken] = useState(syncConfig?.token ?? "");
   const [keys, setKeys] = useState(shortcut);
+  const highlight = useStore((s) => s.highlight);
+  const setHighlight = useStore((s) => s.setHighlight);
+  const setShortcuts = useStore((s) => s.setShortcuts);
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -40,6 +94,40 @@ export function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <span className="micro">Highlight</span>
+          <div className="highlights">
+            {HIGHLIGHTS.map(([name, c]) => (
+              <button
+                type="button"
+                key={c}
+                title={name}
+                aria-label={name}
+                className={`hl-swatch ${highlight.toLowerCase() === c ? "is-active" : ""}`}
+                style={{ ["--hl" as string]: c }}
+                onClick={() => void setHighlight(c)}
+              />
+            ))}
+            <label className={`hl-swatch hl-custom ${HIGHLIGHTS.some(([, c]) => c === highlight.toLowerCase()) ? "" : "is-active"}`} title="Custom colour" style={{ ["--hl" as string]: highlight }}>
+              <input type="color" value={highlight} onChange={(e) => void setHighlight(e.target.value)} />
+              <Icon name="plus" size={12} />
+            </label>
+          </div>
+          <p className="form-hint">Selected days, times and other highlights take this colour as a brushed metal finish.</p>
+        </section>
+
+        <section>
+          <span className="micro">Shortcuts</span>
+          <div className="shortcuts">
+            {ACTIONS.map((a) => (
+              <ShortcutRow key={a.id} id={a.id} label={a.label} />
+            ))}
+          </div>
+          <p className="form-hint">
+            Click a shortcut and press the new keys. Backspace removes it, Escape cancels. Single keys only work while you are not typing.{" "}
+            <button type="button" className="text-btn inline" onClick={() => void setShortcuts(DEFAULT_SHORTCUTS)}>
+              Reset all
+            </button>
+          </p>
         </section>
 
         <section>

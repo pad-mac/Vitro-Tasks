@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { SMART_VIEWS, childLists, countOpen, type SmartId, type ViewRef } from "../lib/views";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { SMART_VIEWS, childLists, countOpen, hiddenLists, type SmartId, type ViewRef } from "../lib/views";
 import type { List } from "../shared/schema";
 import { useStore } from "../store";
 import { useDropTarget } from "./tasks";
@@ -9,7 +9,7 @@ const SMART_ICONS: Record<SmartId, string> = {
   all: "layers",
   today: "sun",
   next7: "week",
-  deadlines: "flag",
+  deadlines: "deadline",
   inbox: "inbox",
   completed: "done",
 };
@@ -94,40 +94,75 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
             {list.name}
           </span>
         )}
-        <button
-          type="button"
-          className="icon-btn hover-reveal nav-more"
-          title="List options"
-          onClick={(e) => {
-            e.stopPropagation();
-            const r = e.currentTarget.getBoundingClientRect();
-            openMenu({ kind: "list", id: list.id, x: r.left, y: r.bottom + 4 });
-          }}
-        >
-          <Icon name="dots" size={14} />
-        </button>
         <i className="dot" style={{ background: list.color }} />
-        <span className="count">{count > 0 ? count : ""}</span>
+        {/* The options button takes the count's place on hover, so the name keeps its room. */}
+        <span className="nav-end">
+          <span className="count">{count > 0 ? count : ""}</span>
+          <button
+            type="button"
+            className="icon-btn nav-more"
+            title="List options"
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              openMenu({ kind: "list", id: list.id, x: r.left, y: r.bottom + 4 });
+            }}
+          >
+            <Icon name="dots" size={14} />
+          </button>
+        </span>
       </div>
       {!list.collapsed && kids.map((k) => <ListRow key={k.id} list={k} depth={depth + 1} counts={counts} />)}
     </>
   );
 }
 
-export function Sidebar() {
+/** Drag handle on the sidebar's right edge. Double-click resets the width. */
+function Resizer() {
+  const width = useStore((s) => s.sidebarWidth);
+  const setWidth = useStore((s) => s.setSidebarWidth);
+  const start = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      className="sidebar-resizer"
+      title="Drag to resize"
+      onPointerDown={(e: PointerEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, w: width };
+        document.documentElement.classList.add("is-resizing");
+      }}
+      onPointerMove={(e) => {
+        if (start.current) setWidth(start.current.w + e.clientX - start.current.x);
+      }}
+      onPointerUp={(e) => {
+        if (!start.current) return;
+        setWidth(start.current.w + e.clientX - start.current.x, true);
+        start.current = null;
+        document.documentElement.classList.remove("is-resizing");
+      }}
+      onDoubleClick={() => setWidth(262, true)}
+    />
+  );
+}
+
+export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
+  const settings = useStore((s) => s.settings);
+  const width = useStore((s) => s.sidebarWidth);
   const addList = useStore((s) => s.addList);
   const setView = useStore((s) => s.setView);
   const [adding, setAdding] = useState(false);
-  const data = useMemo(() => ({ lists, sections, tasks }), [lists, sections, tasks]);
+  const data = useMemo(() => ({ lists, sections, tasks, hidden: hiddenLists(settings) }), [lists, sections, tasks, settings]);
   const counts = useMemo(() => {
     const m = new Map<string, number>();
     for (const l of lists) m.set(l.id, countOpen({ kind: "list", id: l.id }, data));
     return m;
   }, [lists, data]);
   return (
+    <div className={`sidebar-wrap ${drawer ? "is-drawer" : ""}`} style={{ width: drawer ? Math.min(width, 300) : width }}>
     <nav className="sidebar">
       <div className="nav-group">
         {SMART_VIEWS.map((v) => (
@@ -164,5 +199,7 @@ export function Sidebar() {
         )}
       </div>
     </nav>
+    {!drawer && <Resizer />}
+    </div>
   );
 }

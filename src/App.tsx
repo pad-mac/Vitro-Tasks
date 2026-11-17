@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarView } from "./components/CalendarView";
+import { useEffect, useMemo, useState, type MouseEvent as RMouseEvent } from "react";
+import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
@@ -9,9 +9,24 @@ import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
 import { TimelineView } from "./components/TimelineView";
 import { Icon, MenuItem, Popover } from "./components/ui";
 import { isTauri, windowAction } from "./lib/platform";
-import { SMART_VIEWS, groupTasks, tasksForView, type ViewRef } from "./lib/views";
+import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
+import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type ViewRef } from "./lib/views";
 import type { GroupBy, SortBy, ViewMode } from "./shared/schema";
 import { computePrefs, useStore } from "./store";
+
+/** Windows narrower than this get the drawer sidebar and a full-width side pane. */
+const NARROW = 720;
+
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => innerWidth < NARROW);
+  useEffect(() => {
+    const onResize = () => setNarrow(innerWidth < NARROW);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return narrow;
+}
+
 
 const MODES: { value: ViewMode; label: string; icon: string }[] = [
   { value: "list", label: "List", icon: "list" },
@@ -49,19 +64,19 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
   const setShowCompleted = useStore((s) => s.setShowCompleted);
   const showDetails = useStore((s) => s.showDetails);
   const setShowDetails = useStore((s) => s.setShowDetails);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const setPrefs = useStore((s) => s.setPrefs);
   const addSection = useStore((s) => s.addSection);
+  const detached = useStore((s) => s.detached);
+  const toggleSidebar = useToggleSidebar();
 
   const prefs = useMemo(() => computePrefs(view, lists, settings), [view, lists, settings]);
   const completedView = view.kind === "smart" && view.id === "completed";
   const mode: ViewMode = completedView ? "list" : prefs.view_mode;
   const groups = useMemo(() => {
-    const data = { lists, sections, tasks };
+    const data = { lists, sections, tasks, hidden: hiddenLists(settings) };
     const visible = tasksForView(view, data, showCompleted);
     return groupTasks(visible, completedView ? { group_by: "none", sort_by: "created" } : prefs, view, data);
-  }, [view, lists, sections, tasks, showCompleted, prefs, completedView]);
+  }, [view, lists, sections, tasks, settings, showCompleted, prefs, completedView]);
 
   const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : SMART_VIEWS.find((v) => v.id === view.id)!.name;
   const sectioned = view.kind === "list" && prefs.group_by === "section";
@@ -69,13 +84,14 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
 
   return (
     <>
-      <header className="view-head">
-        <button type="button" className="icon-btn icon-btn-lg" title={sidebarOpen ? "Hide sidebar" : "Show sidebar"} onClick={() => setSidebarOpen(!sidebarOpen)}>
-          <Icon name="sidebar" size={18} />
+      <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
+        <button type="button" className="icon-btn icon-btn-lg" title="Show or hide the lists" onClick={toggleSidebar}>
+          <Icon name="sidebar" size={20} />
         </button>
-        <h1>{title}</h1>
+        <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
         {!completedView && (
           <div className="head-tools">
+            <EditModeToggle view={view} />
             <Popover align="right" title="Group and sort" trigger={<span className="icon-btn icon-btn-lg"><Icon name="sort" size={18} /></span>}>
               {() => (
                 <div className="menu menu-two">
@@ -152,9 +168,25 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
   );
 }
 
-function Titlebar({ onSettings, lastTaskView }: { onSettings: () => void; lastTaskView: ViewRef }) {
+/** Sidebar button: in narrow windows it slides the lists over the content. */
+function useToggleSidebar() {
+  const narrow = useNarrow();
+  return () => {
+    const s = useStore.getState();
+    if (narrow) s.setDrawerOpen(!s.drawerOpen);
+    else s.setSidebarOpen(!s.sidebarOpen);
+  };
+}
+
+function Titlebar({ onSettings }: { onSettings: () => void }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
+  const lastTaskView = useStore((s) => s.lastTaskView);
+  const openMenu = useStore((s) => s.openMenu);
+  const layerMenu = (layer: "tasks" | "calendar") => (e: RMouseEvent) => {
+    e.preventDefault();
+    openMenu({ kind: "layer", id: layer, x: e.clientX, y: e.clientY });
+  };
   const sync = useStore((s) => s.sync);
   const syncNow = useStore((s) => s.syncNow);
   const update = useStore((s) => s.update);
@@ -171,10 +203,10 @@ function Titlebar({ onSettings, lastTaskView }: { onSettings: () => void; lastTa
     <header className="titlebar" data-tauri-drag-region>
       <span className="logo" aria-label="Vitro Tasks" data-tauri-drag-region>V</span>
       <nav className="tb-nav">
-        <button type="button" className={`tb-btn ${view.kind !== "calendar" ? "is-active" : ""}`} title="Tasks (1)" onClick={() => setView(lastTaskView)}>
+        <button type="button" className={`tb-btn ${view.kind !== "calendar" ? "is-active" : ""}`} title="Tasks (right-click: open in a new window)" onClick={() => setView(lastTaskView)} onContextMenu={layerMenu("tasks")}>
           <Icon name="tasks" size={17} /> <span>Tasks</span>
         </button>
-        <button type="button" className={`tb-btn ${view.kind === "calendar" ? "is-active" : ""}`} title="Calendar (2)" onClick={() => setView({ kind: "calendar" })}>
+        <button type="button" className={`tb-btn ${view.kind === "calendar" ? "is-active" : ""}`} title="Calendar (right-click: open in a new window)" onClick={() => setView({ kind: "calendar" })} onContextMenu={layerMenu("calendar")}>
           <Icon name="calendar" size={17} /> <span>Calendar</span>
         </button>
       </nav>
@@ -203,35 +235,68 @@ function Titlebar({ onSettings, lastTaskView }: { onSettings: () => void; lastTa
   );
 }
 
+/** Runs a shortcut action. Returns false when it does not apply here. */
+function runAction(id: ActionId, narrow: boolean): boolean {
+  const s = useStore.getState();
+  const inCalendar = s.view.kind === "calendar";
+  switch (id) {
+    case "switchLayer":
+      if (s.detached) return false;
+      s.setView(inCalendar ? s.lastTaskView : { kind: "calendar" });
+      return true;
+    case "goTasks":
+      if (s.detached) return false;
+      s.setView(s.lastTaskView);
+      return true;
+    case "goCalendar":
+      if (s.detached) return false;
+      s.setView({ kind: "calendar" });
+      return true;
+    case "addTask": {
+      const input = document.querySelector<HTMLInputElement>(".add-bar input");
+      if (!input) return false;
+      input.focus();
+      return true;
+    }
+    case "calWeek":
+    case "calMonth":
+      if (!inCalendar) return false;
+      s.setCalMode(id === "calWeek" ? "week" : "month");
+      return true;
+    case "calToday":
+      if (!inCalendar) return false;
+      s.goCalToday();
+      return true;
+    case "toggleSidebar":
+      if (inCalendar) return false;
+      if (narrow) s.setDrawerOpen(!s.drawerOpen);
+      else s.setSidebarOpen(!s.sidebarOpen);
+      return true;
+    case "toggleEditMode":
+      void s.setEditMode(s.view, s.editMode(s.view) === "popup" ? "pane" : "popup");
+      return true;
+  }
+}
+
+/** Presses on empty space close the side pane, as an outside click closes the popup. */
+const KEEPS_SELECTION =
+  ".task-row, .card, .cal-chip, .week-event, .tl-item, .tl-chip, .tl-title, .layer, .floating, button, input, textarea, a, .add-bar, .rich-view";
+
 export function App() {
   const ready = useStore((s) => s.ready);
   const fatal = useStore((s) => s.fatal);
   const view = useStore((s) => s.view);
-  const setView = useStore((s) => s.setView);
-  const selected = useStore((s) => s.tasks.find((t) => t.id === s.selectedId));
-  const anchor = useStore((s) => s.anchor);
+  const selected = useStore((s) => s.tasks.find((t) => t.id === s.selectedId) ?? null);
   const select = useStore((s) => s.select);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
+  const drawerOpen = useStore((s) => s.drawerOpen);
+  const setDrawerOpen = useStore((s) => s.setDrawerOpen);
+  const detached = useStore((s) => s.detached);
+  const editMode = useStore((s) => s.editMode(s.view));
   const shortcut = useStore((s) => s.shortcut);
   const shortcutError = useStore((s) => s.shortcutError);
-  const checkUpdate = useStore((s) => s.checkUpdate);
+  const narrow = useNarrow();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [lastTaskView, setLastTaskView] = useState<ViewRef>({ kind: "smart", id: "today" });
-
-  useEffect(() => {
-    if (view.kind !== "calendar") setLastTaskView(view);
-  }, [view]);
-
-  // Look for a new release shortly after start, then every six hours.
-  useEffect(() => {
-    if (!ready || !isTauri()) return;
-    const first = setTimeout(() => void checkUpdate(), 5000);
-    const again = setInterval(() => void checkUpdate(), 6 * 3600 * 1000);
-    return () => {
-      clearTimeout(first);
-      clearInterval(again);
-    };
-  }, [ready, checkUpdate]);
 
   useEffect(() => {
     // The app has its own menus; the webview's default one only stays for text fields.
@@ -239,18 +304,26 @@ export function App() {
       if (!/^(INPUT|TEXTAREA)$/.test((e.target as HTMLElement).tagName)) e.preventDefault();
     };
     const onKey = (e: KeyboardEvent) => {
-      const typing = /^(INPUT|TEXTAREA)$/.test((e.target as HTMLElement).tagName);
+      if (shortcutRecording.active) return;
+      const typing = isTyping(e.target);
       if (e.key === "Escape" && !typing) {
+        const st = useStore.getState();
         if (settingsOpen) setSettingsOpen(false);
-        else if (!useStore.getState().anchor) select(null);
+        else if (st.drawerOpen) st.setDrawerOpen(false);
+        else if (!st.anchor || st.editMode(st.view) === "pane") select(null);
+        return;
       }
-      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "1") setView(lastTaskView);
-      if (e.key === "2") setView({ kind: "calendar" });
-      if (e.key === "n") {
-        e.preventDefault();
-        document.querySelector<HTMLInputElement>(".add-bar input")?.focus();
+      if (settingsOpen || document.querySelector(".floating:not(.is-closing), .pop-panel:not(.is-closing)")) {
+        // Menus and popups keep the keyboard, apart from shortcuts with a modifier.
+        if (!(e.ctrlKey || e.altKey || e.metaKey)) return;
       }
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      // Single keys only act while nothing is being typed.
+      if (typing && !hasModifier(combo)) return;
+      const { shortcuts } = useStore.getState();
+      const action = (Object.keys(shortcuts) as ActionId[]).find((k) => shortcuts[k] === combo);
+      if (action && runAction(action, narrow)) e.preventDefault();
     };
     window.addEventListener("contextmenu", onContext);
     window.addEventListener("keydown", onKey);
@@ -258,7 +331,7 @@ export function App() {
       window.removeEventListener("contextmenu", onContext);
       window.removeEventListener("keydown", onKey);
     };
-  }, [settingsOpen, lastTaskView, select, setView]);
+  }, [settingsOpen, select, narrow]);
 
   if (fatal) {
     return (
@@ -270,21 +343,46 @@ export function App() {
   }
   if (!ready) return <div className="boot"><span className="micro">loading</span></div>;
 
-  const pane = selected && !anchor ? selected : null;
+  const taskLayer = view.kind !== "calendar";
+  const pane = selected && editMode === "pane" ? selected : null;
+  const popup = selected && editMode === "popup" ? selected : null;
+  const onWorkspaceDown = (e: RMouseEvent) => {
+    if (!pane || e.button !== 0) return;
+    const t = e.target as HTMLElement;
+    if (t.closest(".detail-pane, .sidebar") || t.closest(KEEPS_SELECTION)) return;
+    select(null);
+  };
   return (
-    <div className="app">
-      <Titlebar onSettings={() => setSettingsOpen(true)} lastTaskView={lastTaskView} />
-      {shortcutError && (
+    <div className={`app ${narrow ? "is-narrow" : ""} ${detached ? "is-detached" : ""}`}>
+      {detached ? (
+        <div
+          className="drag-strip"
+          data-tauri-drag-region
+          onContextMenu={(e) => {
+            e.preventDefault();
+            useStore.getState().openMenu({ kind: "window", id: "window", x: e.clientX, y: e.clientY });
+          }}
+        />
+      ) : (
+        <Titlebar onSettings={() => setSettingsOpen(true)} />
+      )}
+      {shortcutError && !detached && (
         <button type="button" className="banner" onClick={() => setSettingsOpen(true)}>
           Quick add shortcut {shortcut} could not be registered ({shortcutError}). Click to choose another one.
         </button>
       )}
-      <div className="workspace">
-        {view.kind !== "calendar" && sidebarOpen && <Sidebar />}
+      <div className="workspace" onMouseDown={onWorkspaceDown}>
+        {taskLayer && !narrow && sidebarOpen && <Sidebar />}
         <main className="main">{view.kind === "calendar" ? <CalendarView /> : <TaskViews view={view} />}</main>
-        {pane && <TaskDetail task={pane} variant="pane" />}
+        {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
+        {taskLayer && narrow && drawerOpen && (
+          <>
+            <div className="drawer-scrim" onMouseDown={() => setDrawerOpen(false)} />
+            <Sidebar drawer />
+          </>
+        )}
       </div>
-      {selected && anchor && <TaskPopup task={selected} />}
+      <TaskPopup task={popup} />
       <Composer />
       <ContextMenu />
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}

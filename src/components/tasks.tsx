@@ -4,8 +4,8 @@ import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
-import { useStore } from "../store";
-import { Check, Icon } from "./ui";
+import { anchorOf, useStore } from "../store";
+import { Check, Icon, Rich } from "./ui";
 
 export const DRAG_TYPE = "application/x-vitro-task";
 
@@ -136,7 +136,7 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
           className={`meta-deadline ${open && task.deadline_date < today ? "is-over" : ""}`}
           title={`Deadline ${formatDateTime(task.deadline_date, task.deadline_time, today)}`}
         >
-          <Icon name="flag" size={11} />
+          <Icon name="deadline" size={11} />
           {formatDateTime(task.deadline_date, task.deadline_time, today)}
           {open && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
         </span>
@@ -160,7 +160,7 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
       <div
         className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
         style={{ paddingLeft: 10 + depth * 26 }}
-        onClick={() => select(task.id)}
+        onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
         onContextMenu={onMenu}
         {...dragProps(task.id)}
       >
@@ -169,11 +169,11 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
           <span className="task-line">
             <span className="task-title">
               {task.pinned ? <Icon name="pin" size={12} /> : null}
-              {task.title || <span className="faint">Untitled</span>}
+              {task.title ? <Rich text={task.title} /> : <span className="faint">Untitled</span>}
             </span>
             <TaskMeta task={task} showList={showList} />
           </span>
-          {showDetails && task.notes && <span className="task-notes">{task.notes.split("\n")[0]}</span>}
+          {showDetails && task.notes && <span className="task-notes"><Rich text={task.notes.split("\n")[0]} /></span>}
         </span>
       </div>
       {children.map((c) => (

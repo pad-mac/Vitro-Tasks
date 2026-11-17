@@ -111,3 +111,20 @@ describe("subgroupTasks", () => {
     expect(ids(tasksForView({ kind: "smart", id: "completed" }, d, false, TODAY))).toBe("w");
   });
 });
+
+describe("list visibility", () => {
+  it("hides a list from All, Today/Next 7 Days and the calendar separately, never from Deadlines", async () => {
+    const { hiddenLists } = await import("../src/lib/views");
+    const settings = {
+      "listvis:home": JSON.stringify({ all: false, today: false }),
+      "listvis:uni": JSON.stringify({ calendar: false }),
+    };
+    const hidden = hiddenLists(settings);
+    const d: Data = { ...data, hidden };
+    expect(ids(tasksForView({ kind: "smart", id: "all" }, d, false, TODAY))).toBe("abce");
+    expect(ids(tasksForView({ kind: "smart", id: "today" }, d, false, TODAY))).toBe("ab");
+    expect(ids(tasksForView({ kind: "smart", id: "deadlines" }, d, false, TODAY))).toBe("cd");
+    expect(ids(tasksForView({ kind: "calendar" }, d, false, TODAY))).toBe("abdeh");
+    expect(ids(tasksForView({ kind: "list", id: "home" }, d, false, TODAY))).toBe("dh");
+  });
+});
