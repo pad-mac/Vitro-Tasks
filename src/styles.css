@@ -238,7 +238,8 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .ghost-btn { display: inline-flex; align-items: center; gap: 7px; color: var(--faint); padding: 7px 10px; border-radius: var(--r); transition: color var(--fast), background var(--fast); }
 .ghost-btn:hover { color: var(--text); background: var(--hover); }
 .chip-btn { font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); transition: all var(--fast); white-space: nowrap; }
-.chip-btn:hover { color: var(--text); border-color: var(--faint); }
+.chip-btn:hover:not(:disabled) { color: var(--text); border-color: var(--faint); }
+.chip-btn:disabled { opacity: 0.4; cursor: default; }
 
 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); padding: 2px; gap: 2px; height: 32px; }
 .segmented button { display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 6px; color: var(--muted); transition: background var(--fast), color var(--fast); }
@@ -281,6 +282,13 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cm-sep { height: 1px; background: var(--line-soft); margin: 5px 4px; }
 .cm-subhead { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 10px; border-radius: 7px; color: var(--muted); font-weight: 500; text-align: left; transition: background var(--fast), color var(--fast); }
 .cm-subhead:hover { background: var(--hover); color: var(--text); }
+.cm-subhead-row { display: flex; align-items: center; gap: 6px; padding-right: 4px; }
+.cm-subhead-row .cm-subhead { flex: 1; min-width: 0; }
+.seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 8px; background: var(--hover); }
+.seg button { height: 24px; padding: 0 11px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted); transition: background var(--fast), color var(--fast), box-shadow var(--fast); }
+.seg button:hover:not(:disabled) { color: var(--text); }
+.seg button.is-active { background: var(--raised); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--line); }
+.seg button:disabled { opacity: 0.4; cursor: default; }
 .cm-picker { min-width: 0; padding-bottom: 0; }
 .cm-picker .date-pop { padding: 6px 6px 10px; }
 .cm-deadline { display: inline-flex; align-items: center; gap: 6px; color: var(--signal); font-size: 12.5px; }
@@ -327,12 +335,12 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .add-bar input { flex: 1; color: var(--text); }
 .add-bar input::placeholder, .detail input::placeholder, textarea::placeholder { color: var(--faint); }
 .group { border-radius: 10px; margin-top: 4px; transition: background var(--fast); }
-.group.is-drop { background: var(--hover); box-shadow: inset 0 0 0 1.5px var(--focus); }
+.group.is-drop { background: color-mix(in oklab, var(--hover) 60%, transparent); }
 .group-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 4px; }
 .group-label { font-weight: 600; font-size: 14.5px; }
 .tone-overdue .group-label, .tone-overdue .lane-label { color: var(--text); }
 .group-empty { padding: 2px 30px 10px; color: var(--faint); font-size: 13px; }
-.task-row { display: flex; align-items: flex-start; gap: 12px; padding: 9px 10px 0; border-radius: 10px; cursor: pointer; transition: background var(--fast); }
+.task-row { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 9px 10px 0; border-radius: 10px; cursor: pointer; transition: background var(--fast); }
 .task-row .check { margin-top: 2px; }
 .task-row:hover { background: var(--hover); }
 .task-row.is-selected { background: var(--active); }
@@ -360,7 +368,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 
 .kanban { flex: 1; display: flex; gap: 14px; padding: 0 22px 18px; overflow: auto; align-items: flex-start; }
 .column { width: 300px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: var(--r-lg); transition: background var(--fast), box-shadow var(--fast); }
-.column.is-drop { background: var(--hover); box-shadow: 0 0 0 1.5px var(--focus); }
+.column.is-drop { background: var(--hover); }
 .column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; }
 .column-head .group-label { font-size: 15px; }
 .column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 60px; padding: 0 2px 6px; margin: 0 -2px; }
@@ -370,7 +378,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .lane-head { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 2px; text-align: left; }
 .lane-head > .icon { color: var(--p2); }
 .lane-label { font-weight: 600; font-size: 13.5px; }
-.card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 11px 13px; cursor: pointer; transition: border-color var(--fast), background var(--fast), transform var(--fast); }
+.card { position: relative; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 11px 13px; cursor: pointer; transition: border-color var(--fast), background var(--fast), transform var(--fast); }
 .card:hover { border-color: var(--faint); }
 .card:active { transform: scale(0.99); }
 .card.is-selected { background: var(--active); }
@@ -454,6 +462,11 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cal-chip:hover { background: color-mix(in srgb, var(--c) 28%, transparent); }
 .cal-chip.is-selected { background: color-mix(in srgb, var(--c) 40%, transparent); }
 .cal-chip.is-done { opacity: 0.5; text-decoration: line-through; }
+/* One day at a set time: no fill, just the list colour as a bar and in the text. */
+.cal-chip.is-timed { position: relative; background: none; border-left: 0; padding-left: 9px; color: color-mix(in srgb, var(--c) 62%, var(--text)); }
+.cal-chip.is-timed::before { content: ""; position: absolute; left: 2px; top: 4px; bottom: 4px; width: 2.5px; border-radius: 2px; background: var(--c); }
+.cal-chip.is-timed:hover { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.cal-chip.is-timed.is-selected { background: color-mix(in srgb, var(--c) 18%, transparent); }
 .cal-chip.is-deadline { background: none; border: 1px solid color-mix(in srgb, var(--signal) 50%, transparent); color: var(--signal); }
 .cal-chip-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
 .cal-chip-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; flex: none; }
@@ -549,6 +562,8 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .mini-cal-day { border: 1px solid transparent; height: 30px; border-radius: 15px; font-size: 12.5px; font-variant-numeric: tabular-nums; transition: background var(--fast); }
 .mini-cal-day:hover { background: var(--active); }
 .mini-cal-day.is-out { color: var(--faint); }
+.mini-cal-day.in-range { background: color-mix(in oklab, var(--hl) 18%, transparent); }
+.mini-cal-day:disabled { opacity: 0.35; cursor: default; background: none; }
 .mini-cal-day.is-today { color: var(--hl-ink); font-weight: 700; }
 .date-pop-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .date-pop-foot .push { flex: 1; }
@@ -616,6 +631,13 @@ label.btn { cursor: pointer; }
 .check-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--muted); font-size: 12.5px; cursor: pointer; align-self: flex-start; }
 .check-row input { accent-color: var(--hl-ink); }
 .form-ok { color: var(--text); font-size: 12.5px; text-align: center; user-select: text; animation: fade var(--fast); }
+
+/* ---------- Reordering ---------- */
+
+.task-row.drop-before::before, .card.drop-before::before { content: ""; position: absolute; left: 6px; right: 6px; top: -2px; height: 2px; border-radius: 1px; background: var(--hl-ink); pointer-events: none; animation: fade var(--fast); }
+.card.drop-before::before { top: -5px; left: 2px; right: 2px; }
+.drop-end { height: 2px; margin: 4px 6px; border-radius: 1px; background: var(--hl-ink); animation: fade var(--fast); }
+.is-dragging { opacity: 0.4; }
 
 /* ---------- List suggestions (typing #) ---------- */
 
@@ -699,3 +721,72 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Phone (the iOS app, or ?mobile in a browser) ---------- */
+
+.is-mobile { --bar-h: calc(env(safe-area-inset-bottom, 0px) + 76px); -webkit-tap-highlight-color: transparent; }
+.is-mobile body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+.is-mobile .app { padding-top: env(safe-area-inset-top, 0px); }
+/* iOS zooms into fields whose text is smaller than 16px. */
+.is-mobile input, .is-mobile textarea, .is-mobile [contenteditable="true"] { font-size: max(16px, 1em); }
+.is-mobile .task-row, .is-mobile .card, .is-mobile .cal-chip, .is-mobile .nav-row, .is-mobile .tl-item, .is-mobile .tl-title { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.is-mobile .add-bar, .is-mobile kbd, .is-mobile .menu-kbd, .is-mobile .edit-mode-toggle { display: none; }
+.is-mobile .hover-reveal { opacity: 1; pointer-events: auto; }
+
+.is-mobile .view-head { height: 58px; padding: 0 8px 0 6px; }
+.is-mobile .view-head h1 { font-size: 22px; }
+.is-mobile .icon-btn-lg { width: 40px; height: 40px; border-radius: 12px; }
+.is-mobile .nav-row { height: 44px; font-size: 15px; }
+.is-mobile .task-row { padding-top: 12px; gap: 13px; }
+.is-mobile .task-title { font-size: 15.5px; }
+.is-mobile .group-head { height: 40px; }
+.is-mobile .list-view { padding: 0 8px calc(var(--bar-h) + 28px); }
+.is-mobile .kanban { padding-bottom: calc(var(--bar-h) + 4px); }
+.is-mobile .calendar, .is-mobile .timeline { padding-bottom: var(--bar-h); }
+.is-mobile .detail-pane { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.is-mobile .detail-head { height: 58px; }
+.is-mobile .sidebar-wrap.is-drawer { width: min(320px, 86vw) !important; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.is-mobile .menu-item { min-height: 40px; }
+.is-mobile .month-grid { touch-action: none; }
+.is-mobile .calendar .view-head { padding-left: 14px; }
+/* Narrow month cells: the title matters more than the time. */
+.is-mobile .cal-cell .cal-chip-time { display: none; }
+.is-mobile .week-scroll { touch-action: pan-y; }
+
+/* Long press lifts the item; a drag carries a copy of it. */
+.is-mobile .is-lifted { transform: scale(0.985); background: var(--active); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), background 180ms; }
+.drag-ghost { position: fixed; z-index: 200; margin: 0; pointer-events: none; background: var(--raised); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); opacity: 0.97; will-change: transform; }
+
+/* Bottom bar: a frosted pill with the three places, and the add button beside it. */
+.m-bar { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 25; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); }
+.m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 60px; padding: 4px; border-radius: 30px; background: color-mix(in oklab, var(--raised) 74%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 var(--pearl-edge); }
+.m-tabs button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 26px; color: var(--muted); font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em; transition: background var(--fast), color var(--fast); }
+.m-tabs button.is-active { color: var(--text); background: color-mix(in oklab, var(--active) 85%, transparent); }
+.m-tabs .sync-dot { position: absolute; top: 9px; left: calc(50% + 8px); border: 1.5px solid var(--raised); box-sizing: content-box; }
+.m-add { pointer-events: auto; flex: none; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; }
+.m-add.pearl { box-shadow: inset 0 1px 0 var(--pearl-edge), 0 10px 26px rgba(0, 0, 0, 0.14); }
+
+/* The add sheet sits on top of the keyboard. */
+.m-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.2); opacity: 0; pointer-events: none; transition: opacity 200ms; }
+.m-scrim.is-open { opacity: 1; pointer-events: auto; }
+.m-sheet { position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 61; background: var(--float); border-radius: 20px 20px 0 0; box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.14); padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateY(115%); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1); pointer-events: none; }
+.m-sheet.is-open { transform: none; pointer-events: auto; }
+.m-add-row { display: flex; align-items: center; gap: 10px; }
+.m-add-row input { flex: 1; min-width: 0; height: 46px; font-size: 17px; }
+.m-add-row input::placeholder { color: var(--faint); }
+.m-send { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); transition: opacity var(--fast); }
+.m-send:disabled { opacity: 0.25; }
+.m-add-foot { min-height: 30px; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.m-suggest { padding: 2px 0 4px; }
+
+/* Settings fill the screen. */
+.is-mobile .overlay { place-items: stretch; }
+.is-mobile .modal { width: 100%; max-height: none; height: 100%; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.is-mobile .modal header { position: sticky; top: 0; z-index: 2; background: var(--float); }
+.is-mobile .data-row { flex-wrap: wrap; }
+.is-mobile .data-row > .btn { width: 100%; }
+.selectable { user-select: text; -webkit-user-select: text; word-break: break-all; }
+
+/* A new task from the calendar opens as a sheet at the bottom. */
+.is-mobile .floating.composer { left: 8px !important; right: 8px; top: auto !important; bottom: calc(var(--kb, 0px) + 8px + env(safe-area-inset-bottom, 0px)); width: auto; }
+.is-mobile .floating.composer .detail-popup { width: auto; }

@@ -120,6 +120,8 @@ const PATHS: Record<string, ReactNode> = {
     </>
   ),
   edit: <path d="M3 13l.6-2.8 7.2-7.2 2.2 2.2-7.2 7.2zM9.6 4.2l2.2 2.2" />,
+  undo: <path d="M4.5 6.5h6a3 3 0 0 1 0 6H7M6.5 4.5l-2 2 2 2" />,
+  arrowup: <path d="M8 13V3.5M4.2 7.3L8 3.5l3.8 3.8" />,
   download: <path d="M8 2.5v7.5M5 7.2l3 3 3-3M3 13.2h10" />,
   upload: <path d="M8 10.5V3M5 5.8l3-3 3 3M3 13.2h10" />,
   winmin: <path d="M4 8h8" />,
@@ -446,7 +448,19 @@ export function Rich({ text }: { text: string }) {
 
 // ---------- Date and time picking ----------
 
-export function MiniCalendar({ value, onPick }: { value: string | null; onPick: (key: string) => void }) {
+export function MiniCalendar({
+  value,
+  onPick,
+  min,
+  range,
+}: {
+  value: string | null;
+  onPick: (key: string) => void;
+  /** Days before this cannot be picked (an end date before its start). */
+  min?: string | null;
+  /** Days of the task's span, tinted. */
+  range?: [string, string] | null;
+}) {
   const today = todayKey();
   const [month, setMonth] = useState(startOfMonth(value ?? today));
   const first = startOfWeek(month);
@@ -473,7 +487,8 @@ export function MiniCalendar({ value, onPick }: { value: string | null; onPick: 
           <button
             type="button"
             key={d}
-            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected pearl" : ""}`}
+            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected pearl" : ""} ${range && d !== value && d >= range[0] && d <= range[1] ? "in-range" : ""}`}
+            disabled={!!min && d < min}
             onClick={() => onPick(d)}
           >
             {+d.slice(8)}
@@ -525,12 +540,19 @@ export function DatePickerPanel({
   time,
   onChange,
   onDone,
+  min,
+  range,
+  picks,
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
   /** Called after a day was picked or the value cleared. */
   onDone: () => void;
+  min?: string | null;
+  range?: [string, string] | null;
+  /** Quick picks above the calendar (default: today, tomorrow, next week). */
+  picks?: [string, string][];
 }) {
   const today = todayKey();
   const [timeOpen, setTimeOpen] = useState(false);
@@ -538,14 +560,21 @@ export function DatePickerPanel({
     onChange(d, time);
     onDone();
   };
+  const quick = picks ?? [
+    ["Today", today],
+    ["Tomorrow", addDays(today, 1)],
+    ["Next week", addDays(today, 7)],
+  ];
   return (
     <div className="date-pop">
       <div className="quick-picks">
-        <button type="button" className="chip-btn" onClick={() => pick(today)}>Today</button>
-        <button type="button" className="chip-btn" onClick={() => pick(addDays(today, 1))}>Tomorrow</button>
-        <button type="button" className="chip-btn" onClick={() => pick(addDays(today, 7))}>Next week</button>
+        {quick.map(([label, d]) => (
+          <button type="button" key={label} className="chip-btn" disabled={!!min && d < min} onClick={() => pick(d)}>
+            {label}
+          </button>
+        ))}
       </div>
-      <MiniCalendar value={date} onPick={pick} />
+      <MiniCalendar value={date} onPick={pick} min={min} range={range} />
       <div className="date-pop-foot">
         <button type="button" className={`time-trigger ${time ? "" : "is-empty"} ${timeOpen ? "is-open" : ""}`} onClick={() => setTimeOpen(!timeOpen)}>
           <Icon name="clock" size={14} />
@@ -561,7 +590,7 @@ export function DatePickerPanel({
           Clear
         </button>
       </div>
-      {timeOpen && <TimeColumns time={time} onPick={(t) => onChange(date ?? today, t)} />}
+      {timeOpen && <TimeColumns time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
     </div>
   );
 }

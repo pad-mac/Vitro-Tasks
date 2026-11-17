@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { QuickAdd } from "./QuickAdd";
 import { seedDemo } from "./lib/demo";
-import { isTauri, windowLabel } from "./lib/platform";
+import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 /** Readable text colour on top of a highlight colour. */
 function onColor(hex: string): string {
@@ -21,6 +21,15 @@ function onColor(hex: string): string {
 import { useStore } from "./store";
 
 const isQuickAdd = windowLabel() === "quickadd";
+if (isMobile) document.documentElement.classList.add("is-mobile");
+
+// The on-screen keyboard: how much of the window it covers, for sheets that sit on top of it.
+if (isMobile && window.visualViewport) {
+  const vv = window.visualViewport;
+  const onResize = () => document.documentElement.style.setProperty("--kb", `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`);
+  vv.addEventListener("resize", onResize);
+  vv.addEventListener("scroll", onResize);
+}
 
 function Root() {
   const theme = useStore((s) => s.theme);
@@ -49,8 +58,12 @@ void useStore
   .then(async () => {
     // Browser preview only: `?demo` fills an empty database with sample data.
     if (!isTauri() && new URLSearchParams(location.search).has("demo")) await seedDemo();
-    // Only the main window owns the global shortcut and the update checks.
-    if (windowLabel() === "main" && isTauri()) {
+    // Coming back to the app (phone unlocked, window shown again) pulls changes.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && windowLabel() === "main") void useStore.getState().syncNow();
+    });
+    // Only the main desktop window owns the global shortcut and the update checks.
+    if (windowLabel() === "main" && isTauri() && !isMobile) {
       // Register the saved shortcut from here so a failure (shortcut already
       // taken by another program) becomes visible in the app.
       const { shortcut, setShortcut } = useStore.getState();

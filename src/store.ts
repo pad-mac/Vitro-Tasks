@@ -14,17 +14,24 @@ import {
   type FoundUpdate,
 } from "./lib/platform";
 import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
+import { moveInOrder, orderKey, parseRanks, positionsFor, ranksFor } from "./lib/order";
 import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
 import {
   SMART_DEFAULTS,
   listVisibility,
   listWithDescendants,
+  type Group,
   type SmartId,
   type ViewPrefs,
   type ViewRef,
   type VisibilityKey,
 } from "./lib/views";
-import type { EntityName, List, Row, Section, Setting, Task } from "./shared/schema";
+import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./shared/schema";
+
+export interface DropHint {
+  group: string;
+  before: string | null;
+}
 
 export const LIST_COLORS = ["#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a"];
 
@@ -98,6 +105,8 @@ interface State {
   /** New-task popup, e.g. after dragging over days in the calendar. */
   composer: { anchor: Anchor; base: Partial<Task> } | null;
   menu: MenuTarget | null;
+  /** Where a dragged task would land: before which task of which group (null: at the end). */
+  dropHint: DropHint | null;
   renamingListId: string | null;
   focusSubtask: boolean;
   showCompleted: boolean;
@@ -136,6 +145,12 @@ interface State {
   openComposer(base: Partial<Task>, anchor: Anchor): void;
   closeComposer(): void;
   openMenu(menu: MenuTarget | null): void;
+  setDropHint(hint: DropHint | null): void;
+  /** Drops a task at a place in a group: moves it there (group change) and orders it. */
+  dropTask(view: ViewRef, sort: SortBy, group: Pick<Group, "tasks" | "patch">, taskId: string, index: number): Promise<void>;
+  /** Whether a view has a custom order for a sort. */
+  hasCustomOrder(view: ViewRef, sort: SortBy): boolean;
+  clearCustomOrder(view: ViewRef, sort: SortBy): Promise<void>;
   setRenamingList(id: string | null): void;
   addSubtaskTo(id: string, anchor?: Anchor | null): void;
   setShowCompleted(v: boolean): void;
@@ -267,6 +282,7 @@ export const useStore = create<State>((set, get) => {
     anchor: null,
     composer: null,
     menu: null,
+    dropHint: null,
     renamingListId: null,
     focusSubtask: false,
     showCompleted: false,
@@ -644,6 +660,49 @@ export const useStore = create<State>((set, get) => {
 
     prefs(view) {
       return computePrefs(view, get().lists, get().settings);
+    },
+
+    setDropHint(hint) {
+      const cur = get().dropHint;
+      if (cur === hint || (cur && hint && cur.group === hint.group && cur.before === hint.before)) return;
+      set({ dropHint: hint });
+    },
+
+    async dropTask(view, sort, group, taskId, index) {
+      set({ dropHint: null });
+      const task = get().tasks.find((t) => t.id === taskId);
+      if (!task) return;
+      const ids = group.tasks.map((t) => t.id);
+      const inGroup = ids.includes(taskId);
+      if (!inGroup) {
+        // Into another group: take on what the group stands for (section,
+        // date, priority, list). Groups like "Overdue" take nothing.
+        if (!Object.keys(group.patch).length) return;
+        await get().updateTask(taskId, group.patch);
+      }
+      const order = moveInOrder(ids, taskId, index);
+      if (inGroup && order.every((id, i) => id === ids[i])) return;
+      if (sort === "manual") {
+        const byId = new Map(get().tasks.map((t) => [t.id, t]));
+        const tasks = order.map((id) => byId.get(id)).filter((t): t is Task => !!t);
+        for (const p of positionsFor(tasks, taskId)) await get().updateTask(p.id, { position: p.position });
+        return;
+      }
+      const key = orderKey(viewKey(view), sort);
+      const alive = new Set(get().tasks.filter((t) => t.status === 0).map((t) => t.id));
+      const value = JSON.stringify(ranksFor(order, parseRanks(get().settings[key]), alive));
+      set({ settings: { ...get().settings, [key]: value } });
+      await save("settings", { id: key, value, updated_at: 0, deleted: 0 } as Setting);
+    },
+
+    hasCustomOrder(view, sort) {
+      return Object.keys(parseRanks(get().settings[orderKey(viewKey(view), sort)])).length > 0;
+    },
+
+    async clearCustomOrder(view, sort) {
+      const key = orderKey(viewKey(view), sort);
+      set({ settings: { ...get().settings, [key]: "" } });
+      await save("settings", { id: key, value: "", updated_at: 0, deleted: 0 } as Setting);
     },
 
     async setPrefs(view, patch) {

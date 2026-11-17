@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { defaultsForView, type Group, type ViewRef } from "../lib/views";
+import type { SortBy } from "../shared/schema";
 import { useStore } from "../store";
-import { AddBar, TaskRow, useDropTarget } from "./tasks";
+import { AddBar, TaskRow, useReorderTarget } from "./tasks";
 import { Icon, InlineInput, MenuItem, Popover } from "./ui";
 
-function GroupBlock({ group, view, sectioned }: { group: Group; view: ViewRef; sectioned: boolean }) {
+function GroupBlock({ group, view, sectioned, sort, reorder }: { group: Group; view: ViewRef; sectioned: boolean; sort: SortBy; reorder: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const updateTask = useStore((s) => s.updateTask);
   const updateSection = useStore((s) => s.updateSection);
   const deleteSection = useStore((s) => s.deleteSection);
-  const drop = useDropTarget((id) => {
-    if (Object.keys(group.patch).length) void updateTask(id, group.patch);
-  });
+  const dropTask = useStore((s) => s.dropTask);
+  // Dropping anywhere on a collapsed group puts the task at its end.
+  const drop = useReorderTarget(group.key, '.task-row[data-depth="0"]', (id, index) => void dropTask(view, sort, group, id, collapsed ? group.tasks.length : index), reorder);
   const isSection = sectioned && group.key !== "nosection";
   return (
     <section className={`group ${drop.over ? "is-drop" : ""}`} {...drop.props}>
@@ -50,11 +50,12 @@ function GroupBlock({ group, view, sectioned }: { group: Group; view: ViewRef; s
       )}
       {!collapsed && group.tasks.map((t) => <TaskRow key={t.id} task={t} showList={view.kind !== "list" || t.list_id !== view.id} />)}
       {!collapsed && group.label && !group.tasks.length && <div className="group-empty">No tasks</div>}
+      {drop.atEnd && !collapsed && <div className="drop-end" />}
     </section>
   );
 }
 
-export function ListView({ view, groups, sectioned }: { view: ViewRef; groups: Group[]; sectioned: boolean }) {
+export function ListView({ view, groups, sectioned, sort }: { view: ViewRef; groups: Group[]; sectioned: boolean; sort: SortBy }) {
   const addSection = useStore((s) => s.addSection);
   const [adding, setAdding] = useState(false);
   const total = groups.reduce((n, g) => n + g.tasks.length, 0);
@@ -65,7 +66,7 @@ export function ListView({ view, groups, sectioned }: { view: ViewRef; groups: G
       <div className="list-inner">
         {!completedView && <AddBar base={defaultsForView(view)} />}
         {groups.map((g) => (
-          <GroupBlock key={g.key} group={g} view={view} sectioned={sectioned} />
+          <GroupBlock key={g.key} group={g} view={view} sectioned={sectioned} sort={sort} reorder={!completedView} />
         ))}
         {!total && !groups.some((g) => g.label) && (
           <div className="empty">

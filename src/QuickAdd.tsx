@@ -13,9 +13,34 @@ const BAR_H = 56;
 const FOOT_H = 34;
 const ROW_H = 34;
 
+/** What typed quick-add text turns into: list, date, deadline and priority. */
+export function ParsedChips({ value }: { value: string }) {
+  const lists = useStore((s) => s.lists);
+  const parsed = useMemo(() => parseQuick(value), [value]);
+  const list = matchList(parsed.listQuery, lists);
+  return (
+    <span className="qa-chips">
+      <span className="qa-chip">
+        {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={12} />}
+        {list ? list.name : parsed.listQuery ? `no list “${parsed.listQuery}” → Inbox` : "Inbox"}
+      </span>
+      {parsed.start_date && (
+        <span className="qa-chip">
+          <Icon name="calendar" size={12} /> {formatDateTime(parsed.start_date, parsed.start_time)}
+        </span>
+      )}
+      {parsed.deadline_date && (
+        <span className="qa-chip is-deadline">
+          <Icon name="deadline" size={12} /> {formatDateTime(parsed.deadline_date, parsed.deadline_time)}
+        </span>
+      )}
+      {parsed.priority > 0 && <span className={`qa-chip p${parsed.priority}`}>{PRIORITY_LABELS[parsed.priority]}</span>}
+    </span>
+  );
+}
+
 export function QuickAdd() {
   const ready = useStore((s) => s.ready);
-  const lists = useStore((s) => s.lists);
   const reload = useStore((s) => s.reload);
   const create = useCreateTask();
   const [value, setValue] = useState("");
@@ -24,7 +49,6 @@ export function QuickAdd() {
   const suggest = useListSuggest(value, setValue, input);
 
   const parsed = useMemo(() => parseQuick(value), [value]);
-  const list = matchList(parsed.listQuery, lists);
 
   useEffect(() => {
     document.documentElement.classList.add("quickadd-window");
@@ -95,23 +119,7 @@ export function QuickAdd() {
               <Icon name="check" size={14} /> Added “{saved}”
             </span>
           ) : value.trim() ? (
-            <span className="qa-chips">
-              <span className="qa-chip">
-                {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={12} />}
-                {list ? list.name : parsed.listQuery ? `no list “${parsed.listQuery}” → Inbox` : "Inbox"}
-              </span>
-              {parsed.start_date && (
-                <span className="qa-chip">
-                  <Icon name="calendar" size={12} /> {formatDateTime(parsed.start_date, parsed.start_time)}
-                </span>
-              )}
-              {parsed.deadline_date && (
-                <span className="qa-chip is-deadline">
-                  <Icon name="deadline" size={12} /> {formatDateTime(parsed.deadline_date, parsed.deadline_time)}
-                </span>
-              )}
-              {parsed.priority > 0 && <span className={`qa-chip p${parsed.priority}`}>{PRIORITY_LABELS[parsed.priority]}</span>}
-            </span>
+            <ParsedChips value={value} />
           ) : (
             <span className="qa-hint">tomorrow 14:00 · ^fri deadline · !high · #list · Ctrl+Enter adds and opens · Esc closes</span>
           )}

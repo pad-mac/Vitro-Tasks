@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { todayKey } from "../lib/dates";
-import { isTauri, saveTextFile } from "../lib/platform";
+import { isMobile, isTauri, saveTextFile } from "../lib/platform";
 import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
 import { DEFAULT_HIGHLIGHT, useStore, type ImportResult, type Theme } from "../store";
@@ -217,6 +217,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
           <p className="form-hint">Selected days, times and other highlights take this colour as a quiet pearl finish.</p>
         </section>
 
+        {!isMobile && (
+        <>
         <section>
           <span className="micro">Shortcuts</span>
           <div className="shortcuts">
@@ -248,9 +250,21 @@ export function Settings({ onClose }: { onClose: () => void }) {
             <code>!high</code> priority · <code>#list</code>
           </p>
         </section>
+        </>
+        )}
 
         <DataSection />
 
+        {isMobile ? (
+          <section>
+            <span className="micro">Updates</span>
+            <span className="sync-state">Version {version || "…"}</span>
+            <p className="form-hint">
+              New versions arrive through SideStore. Add this source there once:{" "}
+              <code className="selectable">https://github.com/pad-mac/Vitro-Tasks/releases/latest/download/vitro-tasks.altsource.json</code>
+            </p>
+          </section>
+        ) : (
         <section>
           <span className="micro">Updates</span>
           <div className="form-actions">
@@ -273,6 +287,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
           </div>
           <p className="form-hint">Updates come from the releases of the Vitro-Tasks repository on GitHub and are checked automatically.</p>
         </section>
+        )}
 
         <section>
           <span className="micro">Sync server</span>

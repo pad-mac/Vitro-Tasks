@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { defaultsForView, subgroupTasks, type Group, type Subgroup, type ViewRef } from "../lib/views";
 import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
-import { TaskMeta, dragProps, useCreateTask, useDropTarget, useTaskMenu } from "./tasks";
+import { TaskMeta, dragProps, useCreateTask, useReorderTarget, useTaskMenu } from "./tasks";
 import { Check, Icon, InlineInput, MenuItem, Popover, Rich } from "./ui";
 
 function Card({ task, showList }: { task: Task; showList: boolean }) {
@@ -11,9 +11,11 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
   const toggle = useStore((s) => s.toggleTask);
   const showDetails = useStore((s) => s.showDetails);
   const onMenu = useTaskMenu(task.id);
+  const dropBefore = useStore((s) => s.dropHint?.before === task.id);
   return (
     <article
-      className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
+      data-id={task.id}
+      className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${dropBefore ? "drop-before" : ""}`}
       onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
       onContextMenu={onMenu}
       {...dragProps(task.id)}
@@ -50,18 +52,15 @@ function Lane({ sub, showListFor }: { sub: Subgroup; showListFor: (t: Task) => b
 function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef; sort: SortBy; sectioned: boolean }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const updateTask = useStore((s) => s.updateTask);
   const updateSection = useStore((s) => s.updateSection);
   const deleteSection = useStore((s) => s.deleteSection);
+  const dropTask = useStore((s) => s.dropTask);
   const create = useCreateTask();
-  const canDrop = Object.keys(group.patch).length > 0;
-  const drop = useDropTarget((id) => {
-    if (canDrop) void updateTask(id, group.patch);
-  });
+  const drop = useReorderTarget(group.key, ".card[data-id]", (id, index) => void dropTask(view, sort, group, id, index));
   const subs = useMemo(() => subgroupTasks(group.tasks, sort), [group.tasks, sort]);
   const isSection = sectioned && group.key !== "nosection";
   return (
-    <section className={`column ${drop.over && canDrop ? "is-drop" : ""}`} {...drop.props}>
+    <section className={`column ${drop.over ? "is-drop" : ""}`} {...drop.props}>
       <header className={`column-head ${group.tone === "overdue" ? "tone-overdue" : ""}`}>
         {renaming ? (
           <InlineInput
@@ -108,6 +107,7 @@ function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef;
           <Lane key={s.key} sub={s} showListFor={(t) => view.kind !== "list" || t.list_id !== view.id} />
         ))}
         {!group.tasks.length && !adding && <div className="column-empty">No tasks</div>}
+        {drop.atEnd && <div className="drop-end" />}
       </div>
     </section>
   );

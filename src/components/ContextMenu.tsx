@@ -15,11 +15,14 @@ function IconRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
+function SubHead({ title, onBack, children }: { title: string; onBack: () => void; children?: React.ReactNode }) {
   return (
-    <button type="button" className="cm-subhead" onClick={onBack}>
-      <Icon name="back" size={14} /> {title}
-    </button>
+    <div className="cm-subhead-row">
+      <button type="button" className="cm-subhead" onClick={onBack}>
+        <Icon name="back" size={14} /> {title}
+      </button>
+      {children}
+    </div>
   );
 }
 
@@ -33,6 +36,7 @@ function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number };
   const toggle = useStore((s) => s.toggleTask);
   const addSubtaskTo = useStore((s) => s.addSubtaskTo);
   const [page, setPage] = useState<"main" | "move" | "date" | "deadline">("main");
+  const [edge, setEdge] = useState<"start" | "end">("start");
   if (!task) return null;
   const today = todayKey();
   const run = (fn: () => unknown) => () => {
@@ -60,21 +64,64 @@ function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number };
     );
   }
   if (page === "date") {
+    const start = task.start_date;
+    const end = task.end_date ?? (task.end_time ? start : null);
+    const span: [string, string] | null = start && end ? [start, end] : null;
+    const isEnd = edge === "end" && !!start;
     return (
       <div className="menu cm-picker">
-        <SubHead title="Date" onBack={back} />
-        <DatePickerPanel
-          date={task.start_date}
-          time={task.start_time}
-          onChange={(d, t) =>
-            void update(id, {
-              start_date: d,
-              start_time: d ? t : null,
-              ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
-            })
-          }
-          onDone={close}
-        />
+        <SubHead title="Date" onBack={back}>
+          <div className="seg" role="tablist" aria-label="Start or end">
+            <button type="button" role="tab" aria-selected={!isEnd} className={!isEnd ? "is-active" : ""} onClick={() => setEdge("start")}>
+              Start
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isEnd}
+              className={isEnd ? "is-active" : ""}
+              disabled={!start}
+              title={start ? "End date and time" : "Set a start date first"}
+              onClick={() => setEdge("end")}
+            >
+              End
+            </button>
+          </div>
+        </SubHead>
+        {isEnd ? (
+          <DatePickerPanel
+            key="end"
+            date={end}
+            time={task.end_time}
+            min={start}
+            range={span}
+            picks={[
+              ["+1 day", addDays(start!, 1)],
+              ["+2 days", addDays(start!, 2)],
+              ["+1 week", addDays(start!, 7)],
+            ]}
+            onChange={(d, t) => {
+              const ok = d !== null && d >= start!;
+              void update(id, { end_date: ok && d > start! ? d : null, end_time: ok ? t : null });
+            }}
+            onDone={close}
+          />
+        ) : (
+          <DatePickerPanel
+            key="start"
+            date={start}
+            time={task.start_time}
+            range={span}
+            onChange={(d, t) =>
+              void update(id, {
+                start_date: d,
+                start_time: d ? t : null,
+                ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
+              })
+            }
+            onDone={close}
+          />
+        )}
       </div>
     );
   }

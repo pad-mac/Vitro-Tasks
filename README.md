@@ -1,6 +1,6 @@
 # Vitro Tasks
 
-A task manager for Windows with lists and sublists, global views, three view modes (list, board, timeline), a calendar, and a global quick add bar. Tasks live in a local SQLite file and can sync to a server you host yourself.
+A task manager for Windows (and, as a first prototype, iPhone) with lists and sublists, global views, three view modes (list, board, timeline), a calendar, and a global quick add bar. Tasks live in a local SQLite file and can sync to a server you host yourself.
 
 Every task has two independent dates:
 
@@ -15,10 +15,11 @@ Every task has two independent dates:
 | Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. |
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
 | Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
+| Order | Drag tasks into any order, in lists and on boards, whatever the sort. With the sort "Custom" this sets the tasks' own order; with any other sort the view remembers your order on top of it, and the sort menu offers "Restore default order". Dropping into another group changes what the group stands for (section, date, priority, list). |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
-| Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. |
+| Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. One-day entries with a time show only a bar and text in the list colour. |
 | Tasks | Priority (flag), hard deadline (target symbol, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. |
-| Right-click | Own menus for tasks (date with a full picker, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
+| Right-click | Own menus for tasks (date with a full picker and a Start / End switch for spans, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
 | Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. Right-click Tasks or Calendar to open that view in its own frameless window (drag it by its top area, close it with Alt+F4 or right-click on the top area). Works down to 300 px wide: the lists become a drawer, the board shows one lane, the side pane fills the window. |
 | Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
 | Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). `Enter` adds the task; `Ctrl+Enter` adds it and opens it in the app, inside the list (or Inbox) it went to. |
@@ -67,6 +68,15 @@ In TickTick: Settings → Account → Generate backup. In Vitro Tasks: Settings 
 
 Repeat rules, reminders and other tags are not carried over; the import tells you how many there were. Importing the same backup again only adds what is new.
 
+## iPhone (prototype)
+
+Each release also has `VitroTasks.ipa`, an unsigned build for sideloading with [SideStore](https://sidestore.io) (or AltStore), which signs it with your own Apple ID.
+
+- To get updates in SideStore, add this source once: `https://github.com/pad-mac/Vitro-Tasks/releases/latest/download/vitro-tasks.altsource.json`
+- Or download the `.ipa` from the release and open it with SideStore.
+
+The phone layout has a bottom bar (Tasks, Calendar, Settings), an add button with the same quick add syntax, full-screen task editing, long press for a task's menu, and long press and drag to reorder. Swipe the calendar to page through it; tap a day (or an hour in the week view) to add a task there. Data stays on the phone until you enter your sync server under Settings. Plain `http://` server addresses are allowed. With a free Apple ID, SideStore has to refresh the app every 7 days.
+
 ## Install
 
 Download `VitroTasks-setup.exe` from the latest entry under **Releases**. `VitroTasks-portable.exe` runs without installing, but only the installed app can update itself. The app uses the WebView2 runtime, which Windows 11 ships with; on Windows 10 the installer fetches it if it is missing.
@@ -92,7 +102,7 @@ The token is a single shared secret, so one server serves one person.
 
 ## Releasing
 
-Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` and push to `main`. The Build workflow publishes a release `vX.Y.Z` with the installer whenever that version has no release yet; installed apps pick the update up from there.
+Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` and push to `main`. The Build workflow publishes a release `vX.Y.Z` with the installer whenever that version has no release yet; installed apps pick the update up from there. The iPhone build and its SideStore source are added to the same release.
 
 Updates are signed. The workflow needs the repository secret `TAURI_SIGNING_PRIVATE_KEY` (the private key belonging to the public key in `src-tauri/tauri.conf.json`). Without it the release is still published, but without `latest.json`, so installed apps will not see it. After adding the secret, run the workflow again (Actions → Build → Run workflow) to add the feed to the current release.
 
@@ -106,8 +116,10 @@ npm test             # unit tests; sync tests also run when TEST_DATABASE_URL po
 npm run tauri build  # Windows installer (on Windows)
 ```
 
-Layout: `src/` UI and data layer · `src/shared/schema.ts` data model · `src-tauri/` desktop shell (windows, tray, global shortcut) · `server/` sync server.
+Layout: `src/` UI and data layer · `src/shared/schema.ts` data model · `src-tauri/` app shell (windows, tray, global shortcut on desktop; `tauri.ios.conf.json` and `Info.ios.plist` for iOS) · `server/` sync server.
+
+The iPhone build runs in `.github/workflows/ios.yml` on a macOS runner (`tauri ios init`, then `tauri ios build --no-sign`); push a branch named `ios-…` to build only that.
 
 ## Not in this version
 
-Recurring tasks, reminders, tags, focus timer, manual drag ordering inside a list, and accounts for more than one person on a server.
+Recurring tasks, reminders, tags, focus timer, and accounts for more than one person on a server. On the phone: the timeline is not adapted yet, and tasks cannot be dragged onto lists in the drawer (use Move to).

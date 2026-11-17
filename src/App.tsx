@@ -1,26 +1,29 @@
-import { useEffect, useMemo, useState, type MouseEvent as RMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
+import { MobileAdd, MobileBar, useTouchGestures } from "./components/Mobile";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
 import { TimelineView } from "./components/TimelineView";
 import { Icon, MenuItem, Popover } from "./components/ui";
-import { isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
+import { isMobile, isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
+import { orderKey, parseRanks } from "./lib/order";
 import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type ViewRef } from "./lib/views";
 import type { GroupBy, SortBy, ViewMode } from "./shared/schema";
-import { computePrefs, useStore } from "./store";
+import { computePrefs, useStore, viewKey } from "./store";
 
 /** Windows narrower than this get the drawer sidebar and a full-width side pane. */
 const NARROW = 720;
 
 function useNarrow() {
-  const [narrow, setNarrow] = useState(() => innerWidth < NARROW);
+  // Phones always get the narrow layout (tablets too, for the touch-sized parts).
+  const [narrow, setNarrow] = useState(() => isMobile || innerWidth < NARROW);
   useEffect(() => {
-    const onResize = () => setNarrow(innerWidth < NARROW);
+    const onResize = () => setNarrow(isMobile || innerWidth < NARROW);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -75,8 +78,11 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
   const groups = useMemo(() => {
     const data = { lists, sections, tasks, hidden: hiddenLists(settings) };
     const visible = tasksForView(view, data, showCompleted);
-    return groupTasks(visible, completedView ? { group_by: "none", sort_by: "created" } : prefs, view, data);
+    if (completedView) return groupTasks(visible, { group_by: "none", sort_by: "created" }, view, data);
+    return groupTasks(visible, prefs, view, data, undefined, parseRanks(settings[orderKey(viewKey(view), prefs.sort_by)]));
   }, [view, lists, sections, tasks, settings, showCompleted, prefs, completedView]);
+  const customOrder = !completedView && prefs.sort_by !== "manual" && !!settings[orderKey(viewKey(view), prefs.sort_by)];
+  const clearCustomOrder = useStore((s) => s.clearCustomOrder);
 
   const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : SMART_VIEWS.find((v) => v.id === view.id)!.name;
   const sectioned = view.kind === "list" && prefs.group_by === "section";
@@ -110,6 +116,14 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
                         {o.label}
                       </MenuItem>
                     ))}
+                    {customOrder && (
+                      <>
+                        <div className="cm-sep" />
+                        <MenuItem onClick={() => void clearCustomOrder(view, prefs.sort_by)}>
+                          <Icon name="undo" size={14} /> Restore default order
+                        </MenuItem>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -161,7 +175,7 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
           </div>
         )}
       </header>
-      {mode === "list" && <ListView view={view} groups={groups} sectioned={sectioned} />}
+      {mode === "list" && <ListView view={view} groups={groups} sectioned={sectioned} sort={completedView ? "created" : prefs.sort_by} />}
       {mode === "kanban" && <KanbanView view={view} groups={groups} sectioned={sectioned} sort={prefs.sort_by} />}
       {mode === "timeline" && <TimelineView view={view} groups={groups} sectioned={sectioned} />}
     </>
@@ -295,11 +309,15 @@ export function App() {
   const drawerOpen = useStore((s) => s.drawerOpen);
   const setDrawerOpen = useStore((s) => s.setDrawerOpen);
   const detached = useStore((s) => s.detached);
-  const editMode = useStore((s) => s.editMode(s.view));
+  // Phones always open a task full screen.
+  const editMode = useStore((s) => (isMobile ? "pane" : s.editMode(s.view)));
   const shortcut = useStore((s) => s.shortcut);
   const shortcutError = useStore((s) => s.shortcutError);
   const narrow = useNarrow();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const addInput = useRef<HTMLInputElement>(null);
+  useTouchGestures();
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {
@@ -370,7 +388,7 @@ export function App() {
   };
   return (
     <div className={`app ${narrow ? "is-narrow" : ""} ${detached ? "is-detached" : ""}`}>
-      {detached ? (
+      {isMobile ? null : detached ? (
         <div
           className="drag-strip"
           data-tauri-drag-region
@@ -400,6 +418,20 @@ export function App() {
       </div>
       <TaskPopup task={popup} />
       <Composer />
+      {isMobile && (
+        <>
+          {!pane && !settingsOpen && !drawerOpen && (
+            <MobileBar
+              onSettings={() => setSettingsOpen(true)}
+              onAdd={() => {
+                setAddOpen(true);
+                addInput.current?.focus();
+              }}
+            />
+          )}
+          <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} />
+        </>
+      )}
       <ContextMenu />
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
     </div>

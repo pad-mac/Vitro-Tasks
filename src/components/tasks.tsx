@@ -1,5 +1,5 @@
 // Building blocks shared by the list, board, timeline and calendar views.
-import { useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { subtasksOf } from "../lib/views";
@@ -10,6 +10,11 @@ import { Check, Icon, Rich } from "./ui";
 
 export const DRAG_TYPE = "application/x-vitro-task";
 
+let dragging: string | null = null;
+
+/** The task being dragged right now (drag-over events cannot read the payload). */
+export const draggedTask = () => dragging;
+
 export function dragProps(taskId: string, payload = "") {
   return {
     draggable: true,
@@ -17,8 +22,98 @@ export function dragProps(taskId: string, payload = "") {
       e.dataTransfer.setData(DRAG_TYPE, taskId);
       e.dataTransfer.setData("text/plain", payload);
       e.dataTransfer.effectAllowed = "move";
+      dragging = taskId;
+      const el = e.currentTarget as HTMLElement;
+      requestAnimationFrame(() => el.classList.add("is-dragging"));
+    },
+    onDragEnd: (e: DragEvent) => {
+      dragging = null;
+      (e.currentTarget as HTMLElement).classList.remove("is-dragging");
+      useStore.getState().setDropHint(null);
     },
   };
+}
+
+/** Where a task dropped at `clientY` lands among a group's items (the dragged one left out). */
+export function insertionAt(container: Element, clientY: number, draggedId: string, selector: string): { index: number; before: string | null } {
+  const items = [...container.querySelectorAll<HTMLElement>(selector)].filter((el) => el.dataset.id !== draggedId);
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i].getBoundingClientRect();
+    if (clientY < r.top + r.height / 2) return { index: i, before: items[i].dataset.id ?? null };
+  }
+  return { index: items.length, before: null };
+}
+
+/** Touch drags (phone) send these to the group under the finger. */
+export interface TouchDragDetail {
+  id: string;
+  y: number;
+}
+
+/**
+ * Makes a group (list group or board column) a place to reorder tasks in:
+ * shows where the task would land and hands the drop to `onDrop` with the
+ * index among the group's other tasks. Works for mouse drags and touch drags.
+ */
+export function useReorderTarget(groupKey: string, selector: string, onDrop: (taskId: string, index: number) => void, enabled = true) {
+  const ref = useRef<HTMLElement>(null);
+  const setHint = useStore((s) => s.setDropHint);
+  const over = useStore((s) => s.dropHint?.group === groupKey);
+  const atEnd = useStore((s) => s.dropHint?.group === groupKey && s.dropHint.before === null);
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+  const hintAt = (id: string, y: number) => {
+    if (!ref.current) return;
+    const { before } = insertionAt(ref.current, y, id, selector);
+    setHint({ group: groupKey, before });
+  };
+  const dropAt = (id: string, y: number) => {
+    if (!ref.current) return;
+    const { index } = insertionAt(ref.current, y, id, selector);
+    setHint(null);
+    dropRef.current(id, index);
+  };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    const over = (e: Event) => {
+      const d = (e as CustomEvent<TouchDragDetail>).detail;
+      hintAt(d.id, d.y);
+    };
+    const drop = (e: Event) => {
+      const d = (e as CustomEvent<TouchDragDetail>).detail;
+      dropAt(d.id, d.y);
+    };
+    el.addEventListener("vitro:touchover", over);
+    el.addEventListener("vitro:touchdrop", drop);
+    return () => {
+      el.removeEventListener("vitro:touchover", over);
+      el.removeEventListener("vitro:touchdrop", drop);
+    };
+  });
+  const props = enabled
+    ? {
+        ref,
+        "data-drop-group": groupKey,
+        onDragOver: (e: DragEvent) => {
+          const id = draggedTask();
+          if (!id || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          hintAt(id, e.clientY);
+        },
+        onDragLeave: (e: DragEvent) => {
+          if (!(e.currentTarget as Node).contains(e.relatedTarget as Node) && useStore.getState().dropHint?.group === groupKey) setHint(null);
+        },
+        onDrop: (e: DragEvent) => {
+          const id = e.dataTransfer.getData(DRAG_TYPE);
+          if (!id) return;
+          e.preventDefault();
+          dropAt(id, e.clientY);
+        },
+      }
+    : { ref };
+  return { over: enabled && over, atEnd: enabled && atEnd, props };
 }
 
 /** Makes an element accept dropped tasks. Returns props plus whether a drag hovers. */
@@ -155,6 +250,7 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
 
 export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: boolean; depth?: number }) {
   const tasks = useStore((s) => s.tasks);
+  const dropBefore = useStore((s) => depth === 0 && s.dropHint?.before === task.id);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
@@ -165,8 +261,10 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
   return (
     <>
       <div
-        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
+        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${dropBefore ? "drop-before" : ""}`}
         style={{ paddingLeft: 10 + depth * 26 }}
+        data-id={task.id}
+        data-depth={depth}
         onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
         onContextMenu={onMenu}
         {...dragProps(task.id)}

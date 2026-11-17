@@ -18,6 +18,7 @@ import { entriesForDay, hiddenLists, tasksForView, type DayEntry } from "../lib/
 import type { Task } from "../shared/schema";
 import { anchorOf, useStore, type Anchor } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
+import { useSwipe } from "./Mobile";
 import { FloatingPanel, Icon, MenuItem, Popover } from "./ui";
 
 const HOUR_H = 48;
@@ -117,7 +118,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
   const time = timeOf(entry);
   return (
     <div
-      className={`cal-chip ${kind === "deadline" ? "is-deadline" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
+      className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
       style={{ ["--c" as string]: color }}
       title={`${kind === "deadline" ? "Deadline: " : ""}${plainText(task.title)}`}
       onClick={(e) => {
@@ -304,12 +305,18 @@ function useDayRange() {
   const openComposer = useStore((s) => s.openComposer);
   const composer = useStore((s) => s.composer);
   const [sel, setSel] = useState<{ a: string; b: string } | null>(null);
+  // On a touch screen a tap on a day adds a task there; dragging is left to swipes.
+  const tap = useRef<{ x: number; y: number; day: string } | null>(null);
   const cellAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-day]") ?? null;
   const handlers = {
     onPointerDown: (e: RPointerEvent<HTMLElement>) => {
       if (e.button !== 0 || (e.target as HTMLElement).closest(".cal-chip, button, input, .floating")) return;
       const cell = cellAt(e.clientX, e.clientY);
       if (!cell?.dataset.day) return;
+      if (e.pointerType === "touch") {
+        tap.current = { x: e.clientX, y: e.clientY, day: cell.dataset.day };
+        return;
+      }
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
@@ -323,13 +330,23 @@ function useDayRange() {
       if (day && day !== sel.b) setSel({ ...sel, b: day });
     },
     onPointerUp: (e: RPointerEvent<HTMLElement>) => {
+      const t = tap.current;
+      tap.current = null;
+      if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10) {
+        const cell = e.currentTarget.querySelector(`[data-day="${t.day}"]`) ?? e.currentTarget;
+        openComposer({ start_date: t.day }, anchorOf(cell));
+        return;
+      }
       if (!sel) return;
       const [from, to] = sel.a <= sel.b ? [sel.a, sel.b] : [sel.b, sel.a];
       const cell = e.currentTarget.querySelector(`[data-day="${to}"]`) ?? e.currentTarget;
       setSel(null);
       openComposer({ start_date: from, end_date: to > from ? to : null }, anchorOf(cell));
     },
-    onPointerCancel: () => setSel(null),
+    onPointerCancel: () => {
+      tap.current = null;
+      setSel(null);
+    },
   };
   // While dragging, or while the new-task card for an all-day range is open, show the range.
   const pending = composer && composer.base.start_date && !composer.base.start_time ? composer.base : null;
@@ -416,6 +433,7 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
   const openComposer = useStore((s) => s.openComposer);
   const composer = useStore((s) => s.composer);
   const [draft, setDraft] = useState<{ a: number; b: number } | null>(null);
+  const touchTap = useRef<{ x: number; y: number } | null>(null);
   const [resize, setResize] = useState<{ id: string; start: number; end: number } | null>(null);
   const yOf = (clientY: number) => clientY - (ref.current?.getBoundingClientRect().top ?? 0);
   const snap = (y: number) => clampMin(Math.round(((y / HOUR_H) * 60) / SNAP) * SNAP);
@@ -450,6 +468,10 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
       }}
       onPointerDown={(e) => {
         if (e.button !== 0 || (e.target as HTMLElement).closest(".week-event, .floating")) return;
+        if (e.pointerType === "touch") {
+          touchTap.current = { x: e.clientX, y: e.clientY };
+          return;
+        }
         capture(e.pointerId);
         const m = Math.min(snap(yOf(e.clientY)), 24 * 60 - SNAP);
         setDraft({ a: m, b: m });
@@ -458,7 +480,18 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
         if (draft) setDraft({ ...draft, b: snap(yOf(e.clientY)) });
         if (resize) setResize({ ...resize, end: Math.max(resize.start + SNAP, snap(yOf(e.clientY))) });
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        const tt = touchTap.current;
+        touchTap.current = null;
+        if (tt && Math.hypot(e.clientX - tt.x, e.clientY - tt.y) < 10) {
+          const a = Math.min(Math.floor(yOf(e.clientY) / 30) * 30, 23 * 60);
+          const r = ref.current!.getBoundingClientRect();
+          openComposer(
+            { start_date: day, start_time: toTime(a), end_time: toTime(Math.min(a + 60, 24 * 60 - 1)) },
+            { x: r.left, y: r.top + (a / 60) * HOUR_H, w: r.width, h: HOUR_H },
+          );
+          return;
+        }
         if (resize) {
           void updateTask(resize.id, { end_time: toTime(Math.min(resize.end, 24 * 60 - 1)) });
           setResize(null);
@@ -479,6 +512,7 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
         );
       }}
       onPointerCancel={() => {
+        touchTap.current = null;
         setDraft(null);
         setResize(null);
       }}
@@ -606,7 +640,7 @@ export function EditModeToggle({ view }: { view: import("../lib/views").ViewRef 
   return (
     <button
       type="button"
-      className="icon-btn icon-btn-lg"
+      className="icon-btn icon-btn-lg edit-mode-toggle"
       title={mode === "popup" ? "Editing in a popup. Click to edit in the side pane" : "Editing in the side pane. Click to edit in a popup"}
       onClick={() => void setMode(view, next)}
     >
@@ -665,9 +699,10 @@ export function CalendarView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayTick]);
   const onExpand = (day: string, anchor: Anchor) => setExpanded({ day, anchor });
+  const swipe = useSwipe(step, mode !== "week");
 
   return (
-    <div className="calendar" ref={rootRef}>
+    <div className="calendar" ref={rootRef} {...swipe}>
       <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
         <h1 data-tauri-drag-region={detached ? true : undefined}>
           {mode === "multiweek" ? rangeTitle(mwTop, addDays(mwTop, weeks * 7 - 1)) : `${MONTHS_LONG[tm - 1]} ${ty}`}

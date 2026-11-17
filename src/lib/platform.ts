@@ -5,6 +5,15 @@ export { isTauri };
 
 export const DEFAULT_SHORTCUT = "Ctrl+Space";
 
+/** Phone or tablet (the iOS app), or `?mobile` in a browser to preview the phone layout. */
+export const isMobile = (() => {
+  if (typeof navigator === "undefined") return false;
+  if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return true;
+  // iPadOS reports itself as a Mac with touch.
+  if (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) return true;
+  return typeof location !== "undefined" && new URLSearchParams(location.search).has("mobile");
+})();
+
 export function windowLabel(): string {
   if (!isTauri()) return new URLSearchParams(location.search).get("window") ?? "main";
   // Set synchronously by Tauri before any script runs.
@@ -80,6 +89,19 @@ export async function openExternal(url: string): Promise<void> {
  * name (browser download), or null when cancelled.
  */
 export async function saveTextFile(defaultName: string, text: string): Promise<string | null> {
+  // Phones: hand the file to the share sheet (Files, Mail, AirDrop, …).
+  if (isMobile && typeof navigator.share === "function") {
+    const file = new File([text], defaultName, { type: "text/csv" });
+    if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: defaultName });
+        return defaultName;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return null;
+        // Sharing files is not available here: fall through to the dialog.
+      }
+    }
+  }
   if (!isTauri()) {
     const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");

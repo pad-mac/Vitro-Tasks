@@ -1,5 +1,6 @@
 // Pure view logic: which tasks a view shows, and how they are grouped and sorted.
 import { addDays, todayKey } from "./dates";
+import { applyRanks, type Ranks } from "./order";
 import type { GroupBy, List, Section, SortBy, Task, ViewMode } from "../shared/schema";
 
 export type SmartId = "all" | "today" | "next7" | "inbox" | "deadlines" | "completed";
@@ -184,15 +185,15 @@ export function groupTasks(
   view: ViewRef,
   data: Data,
   today = todayKey(),
+  /** A custom order dragged into place (not used with the "Custom" sort, which uses positions). */
+  ranks?: Ranks,
 ): Group[] {
   const cmp = compareTasks(prefs.sort_by);
-  const make = (key: string, label: string, patch: Partial<Task>, pick: (t: Task) => boolean, tone?: "overdue"): Group => ({
-    key,
-    label,
-    patch,
-    tone,
-    tasks: tasks.filter(pick).sort(cmp),
-  });
+  const custom = ranks && prefs.sort_by !== "manual" ? ranks : null;
+  const make = (key: string, label: string, patch: Partial<Task>, pick: (t: Task) => boolean, tone?: "overdue"): Group => {
+    const sorted = tasks.filter(pick).sort(cmp);
+    return { key, label, patch, tone, tasks: custom ? applyRanks(sorted, custom) : sorted };
+  };
   let groupBy = prefs.group_by;
   // Sections only exist inside one concrete list.
   if (groupBy === "section" && view.kind !== "list") groupBy = "none";
