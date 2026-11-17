@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Phone only: haptic feedback.",
+  "platforms": ["iOS", "android"],
+  "windows": ["main"],
+  "permissions": [
+    "haptics:allow-impact-feedback",
+    "haptics:allow-selection-feedback"
+  ]
+}

@@ -25,9 +25,11 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
-# iOS: lets the page draw under the status bar and home indicator itself.
+# iOS: haptics, and native tweaks to the web view (safe areas, keyboard).
 [target.'cfg(target_os = "ios")'.dependencies]
+tauri-plugin-haptics = "2"
 objc2 = "0.6"
+block2 = "0.6"
 
 [profile.release]
 codegen-units = 1
