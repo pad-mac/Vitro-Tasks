@@ -269,7 +269,7 @@ export function TimelineView({ view, groups, sectioned }: { view: ViewRef; group
                         const titleX = inside && s !== null ? s * dayW + 8 : (lastDay + 1) * dayW + 4;
                         const overdue = it.task.status === 0 && it.task.deadline_date !== null && it.task.deadline_date < today;
                         return (
-                          <div key={it.task.id} onContextMenu={(ev) => { ev.preventDefault(); openMenu({ kind: "task", id: it.task.id, x: ev.clientX, y: ev.clientY }); }} className={`tl-item ${selectedId === it.task.id ? "is-selected" : ""} ${it.task.status ? "is-done" : ""} ${active ? "is-dragging" : ""}`} style={{ top }}>
+                          <div key={it.task.id} data-id={it.task.id} onContextMenu={(ev) => { ev.preventDefault(); openMenu({ kind: "task", id: it.task.id, x: ev.clientX, y: ev.clientY }); }} className={`tl-item ${selectedId === it.task.id ? "is-selected" : ""} ${it.task.status ? "is-done" : ""} ${active ? "is-dragging" : ""}`} style={{ top }}>
                             {s !== null && e !== null && d !== null && d > e && (
                               <i className="tl-link" style={{ left: (e + 1) * dayW, width: (d - e - 1) * dayW + dayW / 2 }} />
                             )}

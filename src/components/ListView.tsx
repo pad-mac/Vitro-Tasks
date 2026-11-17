@@ -50,7 +50,7 @@ function GroupBlock({ group, view, sectioned, sort, reorder }: { group: Group; v
       )}
       {!collapsed && group.tasks.map((t) => <TaskRow key={t.id} task={t} showList={view.kind !== "list" || t.list_id !== view.id} />)}
       {!collapsed && group.label && !group.tasks.length && <div className="group-empty">No tasks</div>}
-      {drop.atEnd && !collapsed && <div className="drop-end" />}
+      {!collapsed && drop.line}
     </section>
   );
 }

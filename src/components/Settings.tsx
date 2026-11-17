@@ -186,6 +186,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
             <Icon name="x" size={14} />
           </button>
         </header>
+        {isMobile && <h1 className="m-settings-title">Settings</h1>}
 
         <section>
           <span className="micro">Appearance</span>

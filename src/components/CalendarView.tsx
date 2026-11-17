@@ -180,6 +180,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
   return (
     <div
       className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
+      data-id={task.id}
       style={{ ["--c" as string]: color }}
       title={`${kind === "deadline" ? "Deadline: " : ""}${plainText(task.title)}`}
       onClick={(e) => {
@@ -208,6 +209,7 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
   return (
     <div
       className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
+      data-id={task.id}
       style={{
         ["--c" as string]: color,
         left: `calc(${(c0 / n) * 100}% + ${left ? 0 : 4}px)`,
@@ -700,24 +702,50 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
   const today = todayKey();
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
+  // Room the bottom bar takes over the end of the view.
+  const [barPad, setBarPad] = useState(0);
   const [anchor, setAnchor] = useState(() => startOfWeek(today));
   const [month, setMonth] = useState(today.slice(0, 7));
+  // The day whose tasks show under its week, and whether the view is split open
+  // (kept apart so the panel can close with an animation).
   const [focus, setFocus] = useState<string | null>(null);
+  const [split, setSplit] = useState(false);
+  const splitRef = useRef(false);
+  splitRef.current = split;
+  // Days being swept over (hold a day and move): they become a new task's span.
+  const [sweep, setSweep] = useState<[string, string] | null>(null);
   // The week in view when weeks are added or dropped, and how far into it the view starts.
   const keep = useRef<{ week: string; delta: number } | null>(null);
   const placed = useRef(false);
   const rowH = Math.max(64, Math.floor((height || 600) / rows));
   const capacity = Math.max(1, Math.floor((rowH - 30) / CHIP_H));
+  // While split, the open week has the height of a month row and the day's
+  // list takes the rest of the view, down to the bar.
+  const splitRowH = Math.max(64, Math.floor((height || 600) / 5));
+  const splitCapacity = Math.max(1, Math.floor((splitRowH - 30) / CHIP_H));
+  const panelH = Math.max(160, (height || 600) - barPad - splitRowH - 16);
   const weeks = useMemo(() => Array.from({ length: SPAN_WEEKS * 2 + 1 }, (_, i) => addDays(anchor, (i - SPAN_WEEKS) * 7)), [anchor]);
   const focusWeek = focus ? startOfWeek(focus) : null;
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
+    const measure = () => {
+      setHeight(el.clientHeight);
+      setBarPad(parseFloat(getComputedStyle(el).paddingBottom) || 0);
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setHeight(el.clientHeight);
+    measure();
     return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const r = (e as CustomEvent<{ a: string; b: string } | null>).detail;
+      setSweep(r ? (r.a <= r.b ? [r.a, r.b] : [r.b, r.a]) : null);
+    };
+    window.addEventListener("vitro:dayrange", on);
+    return () => window.removeEventListener("vitro:dayrange", on);
   }, []);
   const rowEl = (week: string) => ref.current?.querySelector<HTMLElement>(`[data-week="${week}"]`) ?? null;
   // First layout: the current week at the top.
@@ -736,21 +764,69 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     if (r && ref.current) ref.current.scrollTop = r.offsetTop + k.delta;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor]);
+
+  /** A short eased scroll (snapping is off meanwhile, or it would pull against it). */
+  const glide = useRef(0);
+  const scrollToY = (target: number) => {
+    const el = ref.current;
+    if (!el) return;
+    cancelAnimationFrame(glide.current);
+    const from = el.scrollTop;
+    const d = target - from;
+    if (Math.abs(d) < 1) return;
+    el.classList.add("no-snap");
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const p = Math.min(1, (t - t0) / 240);
+      el.scrollTop = from + d * (1 - (1 - p) ** 3);
+      if (p < 1) glide.current = requestAnimationFrame(step);
+      else el.classList.remove("no-snap");
+    };
+    glide.current = requestAnimationFrame(step);
+  };
+
+  const closeDay = () => {
+    if (!splitRef.current) return;
+    setSplit(false);
+    window.setTimeout(() => {
+      if (!splitRef.current) setFocus(null);
+    }, 240);
+  };
+  const openDay = (day: string) => {
+    if (split && focus === day) return closeDay();
+    const wasSplit = split;
+    setFocus(day);
+    // The title names the open day's month.
+    const m = day.slice(0, 7);
+    if (m !== month) {
+      setMonth(m);
+      onMonth(m);
+    }
+    if (wasSplit && focusWeek === startOfWeek(day)) return;
+    // Mount the panel closed, then let it grow while the week moves to the top.
+    requestAnimationFrame(() => {
+      setSplit(true);
+      const r = rowEl(startOfWeek(day));
+      if (r) scrollToY(r.offsetTop);
+    });
+  };
+
   // "Today": back to the current week.
   useEffect(() => {
     if (!todaySignal) return;
+    closeDay();
     const week = startOfWeek(todayKey());
     if (!rowEl(week)) {
       placed.current = false;
       setAnchor(week);
-    } else ref.current?.scrollTo({ top: rowEl(week)!.offsetTop, behavior: "smooth" });
+    } else scrollToY(rowEl(week)!.offsetTop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todaySignal]);
 
   const settle = useRef(0);
   const onScroll = () => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || splitRef.current) return;
     // The month of the week a third of the way down names the view.
     const probe = el.scrollTop + el.clientHeight / 3;
     const hit = [...el.querySelectorAll<HTMLElement>("[data-week]")].find((r) => r.offsetTop + r.offsetHeight > probe);
@@ -764,6 +840,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     // Near either end, more weeks come in once the scrolling has settled.
     clearTimeout(settle.current);
     settle.current = window.setTimeout(() => {
+      if (splitRef.current) return;
       const near = 6 * rowH;
       const top = el.scrollTop;
       const atEdge = top < near ? -1 : el.scrollHeight - top - el.clientHeight < near ? 1 : 0;
@@ -774,20 +851,26 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     }, 180);
   };
 
-  const openDay = (day: string) => {
-    if (focus === day) return setFocus(null);
-    setFocus(day);
-    requestAnimationFrame(() => {
-      const r = rowEl(startOfWeek(day));
-      if (r) ref.current?.scrollTo({ top: r.offsetTop, behavior: "smooth" });
-    });
-  };
   const onClick = (e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
     if (t.closest(".cal-chip, .m-day-panel")) return;
     const day = t.closest<HTMLElement>("[data-day]")?.dataset.day;
     if (day) openDay(day);
   };
+  // While split the calendar does not scroll; a swipe down above the list closes it.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    swipe.current = split && !(e.target as HTMLElement).closest(".m-day-panel") ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s0 = swipe.current;
+    swipe.current = null;
+    if (!s0) return;
+    const t = e.changedTouches[0];
+    const dy = t.clientY - s0.y;
+    if (dy > 36 && dy > Math.abs(t.clientX - s0.x)) closeDay();
+  };
+
   const dayEntries = focus ? entriesForDay(tasks, focus) : [];
   const dayTasks = [...new Map(dayEntries.map((e) => [e.task.id, e.task])).values()].filter((t) => !t.parent_id);
   const [fy, fm, fd] = (focus ?? today).split("-").map(Number);
@@ -799,37 +882,52 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
           <span key={w}>{w.slice(0, 1)}</span>
         ))}
       </div>
-      <div className="m-month-scroll" ref={ref} onScroll={onScroll} onClick={onClick}>
-        {weeks.map((ws) => (
-          <Fragment key={ws}>
-            <div className="m-week" data-week={ws} style={{ height: rowH }}>
-              <WeekRow
-                start={ws}
-                tasks={tasks}
-                month
-                titleMonth={month}
-                capacity={capacity}
-                range={focus && focusWeek === ws ? [focus, focus] : null}
-                onExpand={(day) => openDay(day)}
-              />
-            </div>
-            {focusWeek === ws && focus && (
-              <section className="m-day-panel" style={{ maxHeight: Math.max(220, (height || 600) - rowH - 8) }}>
-                <header>
-                  <b>{WEEKDAYS[(fromKey(focus).getDay() + 6) % 7]}, {fd}. {MONTHS_LONG[fm - 1]}{fy !== +today.slice(0, 4) ? ` ${fy}` : ""}</b>
-                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => setFocus(null)}>
-                    <Icon name="x" size={14} />
-                  </button>
-                </header>
-                {dayTasks.length ? (
-                  dayTasks.map((t) => <TaskRow key={t.id} task={t} showList />)
-                ) : (
-                  <p className="m-day-empty">Nothing on this day. Hold a day to add a task to it.</p>
-                )}
-              </section>
-            )}
-          </Fragment>
-        ))}
+      <div
+        className={`m-month-scroll ${split ? "is-split" : ""}`}
+        ref={ref}
+        onScroll={onScroll}
+        onClick={onClick}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        {weeks.map((ws) => {
+          const open = split && focusWeek === ws;
+          return (
+            <Fragment key={ws}>
+              <div className={`m-week ${focusWeek === ws ? "is-focus" : ""}`} data-week={ws} style={{ height: open ? splitRowH : rowH }}>
+                <WeekRow
+                  start={ws}
+                  tasks={tasks}
+                  month
+                  titleMonth={month}
+                  capacity={open ? splitCapacity : capacity}
+                  range={sweep ?? (focus && focusWeek === ws ? [focus, focus] : null)}
+                  onExpand={(day) => openDay(day)}
+                />
+              </div>
+              {focusWeek === ws && focus && (
+                <section className={`m-day-panel ${open ? "is-open" : ""}`} style={{ height: open ? panelH : 0 }}>
+                  <header>
+                    <b>
+                      {WEEKDAYS[(fromKey(focus).getDay() + 6) % 7]}, {fd}. {MONTHS_LONG[fm - 1]}
+                      {fy !== +today.slice(0, 4) ? ` ${fy}` : ""}
+                    </b>
+                    <button type="button" className="icon-btn" aria-label="Close" onClick={closeDay}>
+                      <Icon name="x" size={14} />
+                    </button>
+                  </header>
+                  <div className="m-day-list">
+                    {dayTasks.length ? (
+                      dayTasks.map((t) => <TaskRow key={t.id} task={t} showList />)
+                    ) : (
+                      <p className="m-day-empty">Nothing on this day. Hold a day to add a task to it, or hold and move across days for a longer one.</p>
+                    )}
+                  </div>
+                </section>
+              )}
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );

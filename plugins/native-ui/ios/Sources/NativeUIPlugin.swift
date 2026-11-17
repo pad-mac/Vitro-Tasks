@@ -20,6 +20,7 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
   private var dark: Bool?
   private var background: UIColor?
   private var raised: UIColor?
+  private var greeted = false
 
   override func load(webview: WKWebView) {
     if Thread.isMainThread {
@@ -54,11 +55,15 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       bar = b
     }
     applyStyle()
-    emit("ready", [:])
   }
 
   func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
     guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+    // The page is listening now: tell it the native parts are there.
+    if !greeted {
+      greeted = true
+      emit("ready", [:])
+    }
     switch type {
     case "bar":
       if bar == nil { attach(0) }

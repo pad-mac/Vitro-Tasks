@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { QuickAdd } from "./QuickAdd";
 import { seedDemo } from "./lib/demo";
+import { hasNative, postNative } from "./lib/native";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 /** Readable text colour on top of a highlight colour. */
@@ -22,6 +23,8 @@ import { useStore } from "./store";
 
 const isQuickAdd = windowLabel() === "quickadd";
 if (isMobile) document.documentElement.classList.add("is-mobile");
+// iOS app: the bar, the task menu and the keyboard are native.
+if (hasNative()) document.documentElement.classList.add("is-native");
 
 // The on-screen keyboard: how much of the window it covers, for sheets that sit on top of it.
 if (isMobile && window.visualViewport) {
@@ -44,6 +47,11 @@ function Root() {
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && mq.matches);
       document.documentElement.dataset.theme = dark ? "dark" : "light";
+      // The native parts (bar, menus, keyboard) follow the app's theme.
+      if (isMobile) {
+        const css = getComputedStyle(document.documentElement);
+        postNative({ type: "theme", dark: theme === "system" ? null : dark, bg: css.getPropertyValue("--bg").trim(), raised: css.getPropertyValue("--raised").trim() });
+      }
     };
     apply();
     mq.addEventListener("change", apply);

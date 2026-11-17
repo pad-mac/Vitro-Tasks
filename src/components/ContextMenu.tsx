@@ -26,7 +26,7 @@ function SubHead({ title, onBack, children }: { title: string; onBack: () => voi
   );
 }
 
-function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number }; close: () => void }) {
+function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: number; y: number }; page?: "date" | "deadline" | "move"; close: () => void }) {
   const task = useStore((s) => s.tasks.find((t) => t.id === id));
   const lists = useStore((s) => s.lists);
   const update = useStore((s) => s.updateTask);
@@ -35,7 +35,7 @@ function TaskMenu({ id, at, close }: { id: string; at: { x: number; y: number };
   const wontDo = useStore((s) => s.setWontDo);
   const toggle = useStore((s) => s.toggleTask);
   const addSubtaskTo = useStore((s) => s.addSubtaskTo);
-  const [page, setPage] = useState<"main" | "move" | "date" | "deadline">("main");
+  const [page, setPage] = useState<"main" | "move" | "date" | "deadline">(initial ?? "main");
   const [edge, setEdge] = useState<"start" | "end">("start");
   if (!task) return null;
   const today = todayKey();
@@ -329,7 +329,7 @@ function WindowMenu({ close }: { close: () => void }) {
 function MenuBody({ menu, close }: { menu: MenuTarget; close: () => void }) {
   switch (menu.kind) {
     case "task":
-      return <TaskMenu id={menu.id} at={menu} close={close} />;
+      return <TaskMenu id={menu.id} at={menu} page={menu.page} close={close} />;
     case "list":
       return <ListMenu id={menu.id} close={close} />;
     case "layer":
@@ -348,7 +348,7 @@ export function ContextMenu() {
   return (
     <FloatingPanel
       key={`${shown.kind}:${shown.id}:${shown.x}:${shown.y}`}
-      anchor={{ x: shown.x, y: shown.y, w: 0, h: 0 }}
+      anchor={{ x: shown.x, y: shown.y, w: 0, h: "h" in shown ? (shown.h ?? 0) : 0 }}
       placement="below"
       onClose={close}
       className="context-menu"

@@ -11,11 +11,10 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
   const toggle = useStore((s) => s.toggleTask);
   const showDetails = useStore((s) => s.showDetails);
   const onMenu = useTaskMenu(task.id);
-  const dropBefore = useStore((s) => s.dropHint?.before === task.id);
   return (
     <article
       data-id={task.id}
-      className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${dropBefore ? "drop-before" : ""}`}
+      className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
       onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
       onContextMenu={onMenu}
       {...dragProps(task.id)}
@@ -107,8 +106,8 @@ function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef;
           <Lane key={s.key} sub={s} showListFor={(t) => view.kind !== "list" || t.list_id !== view.id} />
         ))}
         {!group.tasks.length && !adding && <div className="column-empty">No tasks</div>}
-        {drop.atEnd && <div className="drop-end" />}
       </div>
+      {drop.line}
     </section>
   );
 }

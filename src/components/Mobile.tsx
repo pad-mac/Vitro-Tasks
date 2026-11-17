@@ -2,6 +2,8 @@
 // (long press for the menu, long press and drag to reorder).
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { haptic, isMobile } from "../lib/platform";
+import { hasNative, onNative, postNative } from "../lib/native";
+import { dismissNativeMenu, showNativeTaskMenu } from "../lib/nativeMenu";
 import { parseQuick } from "../lib/quickparse";
 import { defaultsForView } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
@@ -13,45 +15,73 @@ import { useCreateTask, type TouchDragDetail } from "./tasks";
 import { TaskDetail } from "./TaskDetail";
 import { Icon, usePresence } from "./ui";
 
-export function MobileBar({ settingsOpen, onSettings, onCloseSettings, onAdd }: { settingsOpen: boolean; onSettings: () => void; onCloseSettings: () => void; onAdd: () => void }) {
+/**
+ * The bottom bar. In the iOS app the native glass bar draws it (and handles
+ * the tabs); the page keeps an invisible + under the native one, because the
+ * text field has to be focused inside the tap for the keyboard to open.
+ */
+export function MobileBar({
+  settingsOpen,
+  hidden,
+  onSettings,
+  onCloseSettings,
+  onAdd,
+}: {
+  settingsOpen: boolean;
+  hidden: boolean;
+  onSettings: () => void;
+  onCloseSettings: () => void;
+  onAdd: () => void;
+}) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const lastTaskView = useStore((s) => s.lastTaskView);
-  const sync = useStore((s) => s.sync);
+  const syncError = useStore((s) => s.sync.status === "error");
   const inCalendar = view.kind === "calendar";
+  const active = settingsOpen ? "settings" : inCalendar ? "calendar" : "tasks";
+  const tabs = {
+    tasks: () => {
+      onCloseSettings();
+      setView(lastTaskView);
+    },
+    calendar: () => {
+      onCloseSettings();
+      setView({ kind: "calendar" });
+    },
+    settings: onSettings,
+  };
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  useEffect(() => onNative("tab", (p) => tabsRef.current[p.id as keyof typeof tabs]?.()), []);
+  useEffect(() => postNative({ type: "bar", visible: !hidden, active, badge: syncError }), [hidden, active, syncError]);
+  const press = (down: boolean) => () => postNative({ type: "press", down });
   return (
-    <nav className="m-bar">
+    <nav className={`m-bar ${hidden ? "is-hidden" : ""}`} aria-hidden={hidden}>
       <div className="m-tabs">
-        <button
-          type="button"
-          className={!inCalendar && !settingsOpen ? "is-active" : ""}
-          onClick={() => {
-            onCloseSettings();
-            setView(lastTaskView);
-          }}
-        >
+        <button type="button" className={active === "tasks" ? "is-active" : ""} onClick={tabs.tasks}>
           <Icon name="tasks" size={21} />
           <span>Tasks</span>
         </button>
-        <button
-          type="button"
-          className={inCalendar && !settingsOpen ? "is-active" : ""}
-          onClick={() => {
-            onCloseSettings();
-            setView({ kind: "calendar" });
-          }}
-        >
+        <button type="button" className={active === "calendar" ? "is-active" : ""} onClick={tabs.calendar}>
           <Icon name="calendar" size={21} />
           <span>Calendar</span>
         </button>
-        <button type="button" className={`m-settings sync-${sync.status} ${settingsOpen ? "is-active" : ""}`} onClick={onSettings}>
+        <button type="button" className={active === "settings" ? "is-active" : ""} onClick={tabs.settings}>
           <Icon name="settings" size={21} />
           <span>Settings</span>
-          <i className="sync-dot" />
+          {syncError && <i className="m-badge" />}
         </button>
       </div>
       {/* Focus has to happen inside the tap itself, or iOS keeps the keyboard closed. */}
-      <button type="button" className="m-add pearl" aria-label="Add task" onClick={onAdd}>
+      <button
+        type="button"
+        className="m-add pearl"
+        aria-label="Add task"
+        onClick={onAdd}
+        onTouchStart={press(true)}
+        onTouchEnd={press(false)}
+        onTouchCancel={press(false)}
+      >
         <Icon name="plus" size={24} />
       </button>
     </nav>
@@ -132,6 +162,7 @@ export function MobileAdd({
             {preset?.start_date && !parseQuick(value).start_date && (
               <span className="qa-chip">
                 <Icon name="calendar" size={12} /> {formatDateTime(preset.start_date, null)}
+                {preset.end_date && preset.end_date > preset.start_date ? ` – ${formatDateTime(preset.end_date, null)}` : ""}
               </span>
             )}
             {value.trim() ? <ParsedChips value={value} /> : <span className="qa-hint">tomorrow 14:00 · ^fri deadline · !high · #list</span>}
@@ -142,34 +173,94 @@ export function MobileAdd({
   );
 }
 
-const PRESS_MS = 420;
+const LIFT_MS = 380;
+const MENU_MS = 560;
 const SLOP = 8;
 const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
 const DRAGGABLE = '.task-row[data-depth="0"], .card';
+// Items that get the task menu (native on iOS).
+const TASK_ITEM = ".task-row[data-id], .card[data-id], .cal-chip[data-id], .tl-item[data-id]";
+
+/** The app's own menu for a held item, next to it rather than on top of it. */
+function openWebMenu(el: HTMLElement) {
+  const r = el.getBoundingClientRect();
+  const id = el.dataset.id;
+  if (id && el.matches(TASK_ITEM)) {
+    useStore.getState().openMenu({ kind: "task", id, x: r.left + 12, y: r.top - 4, h: r.height + 8 });
+    return;
+  }
+  // Lists and other items: their own handler opens the menu at this point (below the item).
+  el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 12, clientY: r.bottom + 4 }));
+}
+
+export interface DayRange {
+  a: string;
+  b: string;
+}
 
 /**
- * Touch gestures for the phone: hold an item to open its menu; hold and move
- * a task to drag it to another place (the list or board group under the finger
- * shows where it lands).
+ * Touch gestures for the phone:
+ * - hold an item: it lifts; keep holding and its menu opens (the native one on iOS);
+ * - hold a task and move: drag it to another place (the group under the finger shows where it lands);
+ * - hold a calendar day: add a task on it; hold and move across days: add one spanning them.
  */
 export function useTouchGestures() {
   useEffect(() => {
     if (!isMobile) return;
-    let timer = 0;
+    let liftTimer = 0;
+    let menuTimer = 0;
     let el: HTMLElement | null = null;
     let start = { x: 0, y: 0 };
     let armed = false;
     let drag: ReturnType<typeof startDrag> | null = null;
+    let range: DayRange | null = null;
+    // The item whose native menu is open (it stays lifted until the menu closes).
+    let menuEl: HTMLElement | null = null;
+    // The item whose menu (native or the app's own) this press already opened.
+    let pressMenu: HTMLElement | null = null;
+    // The native menu could not open while the finger was down: the app's own opens on release.
+    let webMenuOnRelease: HTMLElement | null = null;
+    let fingerDown = false;
     let swallowClickUntil = 0;
 
     const reset = () => {
-      clearTimeout(timer);
-      el?.classList.remove("is-lifted");
+      clearTimeout(liftTimer);
+      clearTimeout(menuTimer);
+      if (el && el !== menuEl) el.classList.remove("is-lifted");
       el = null;
       armed = false;
     };
+    const showRange = () => window.dispatchEvent(new CustomEvent<DayRange | null>("vitro:dayrange", { detail: range && { ...range } }));
+    const moveRange = (x: number, y: number) => {
+      const day = document.elementFromPoint(x, y)?.closest<HTMLElement>(".m-week .cal-cell[data-day]")?.dataset.day;
+      if (range && day && day !== range.b) {
+        range.b = day;
+        haptic("selection");
+        showRange();
+      }
+    };
+    const openMenu = (item: HTMLElement) => {
+      const id = item.dataset.id!;
+      pressMenu = item;
+      const closed = () => {
+        item.classList.remove("is-lifted");
+        if (menuEl === item) menuEl = null;
+      };
+      const shown = showNativeTaskMenu(id, item.getBoundingClientRect(), closed, () => {
+        closed();
+        if (fingerDown) webMenuOnRelease = item;
+        else openWebMenu(item);
+      });
+      if (shown) {
+        menuEl = item;
+        swallowClickUntil = Date.now() + 800;
+      }
+    };
     const onStart = (e: TouchEvent) => {
       reset();
+      pressMenu = null;
+      webMenuOnRelease = null;
+      fingerDown = true;
       if (e.touches.length !== 1) return;
       const target = e.target as HTMLElement;
       if (target.closest("input, textarea, [contenteditable='true'], .check")) return;
@@ -177,20 +268,30 @@ export function useTouchGestures() {
       if (!item) return;
       el = item;
       start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      timer = window.setTimeout(() => {
+      liftTimer = window.setTimeout(() => {
         armed = true;
         el?.classList.add("is-lifted");
         haptic("medium");
-      }, PRESS_MS);
+      }, LIFT_MS);
+      if (hasNative() && item.matches(TASK_ITEM)) {
+        menuTimer = window.setTimeout(() => {
+          if (el === item && armed) openMenu(item);
+        }, MENU_MS);
+      }
     };
     const onMove = (e: TouchEvent) => {
+      const t = e.touches[0];
       if (drag) {
         e.preventDefault();
-        drag.move(e.touches[0].clientX, e.touches[0].clientY);
+        drag.move(t.clientX, t.clientY);
+        return;
+      }
+      if (range) {
+        e.preventDefault();
+        moveRange(t.clientX, t.clientY);
         return;
       }
       if (!el) return;
-      const t = e.touches[0];
       const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y) > SLOP;
       if (!armed) {
         if (moved) reset();
@@ -198,39 +299,66 @@ export function useTouchGestures() {
       }
       if (!moved) return;
       e.preventDefault();
+      clearTimeout(menuTimer);
       const id = el.dataset.id;
       if (id && el.matches(DRAGGABLE)) {
+        // Moving a held task drags it, also out of its open menu.
+        if (menuEl === el) dismissNativeMenu();
         el.classList.remove("is-lifted");
         drag = startDrag(el, id, start, t.clientX, t.clientY);
         haptic("selection");
         el = null;
-      } else reset();
+      } else if (el.matches(".cal-cell") && el.dataset.day) {
+        range = { a: el.dataset.day, b: el.dataset.day };
+        el.classList.remove("is-lifted");
+        el = null;
+        showRange();
+        moveRange(t.clientX, t.clientY);
+      } else if (el !== menuEl) reset();
     };
     const onEnd = () => {
-      if (drag) {
+      fingerDown = false;
+      if (webMenuOnRelease) {
+        openWebMenu(webMenuOnRelease);
+        webMenuOnRelease = null;
+        swallowClickUntil = Date.now() + 500;
+      } else if (drag) {
         drag.drop();
         drag = null;
         haptic("light");
         swallowClickUntil = Date.now() + 500;
+      } else if (range) {
+        const [from, to] = range.a <= range.b ? [range.a, range.b] : [range.b, range.a];
+        range = null;
+        showRange();
+        openAddSheet({ start_date: from, end_date: to > from ? to : null });
+        swallowClickUntil = Date.now() + 500;
+      } else if (el && el === pressMenu) {
+        // Letting go of a task whose menu is open leaves the menu open.
+        swallowClickUntil = Date.now() + 500;
       } else if (armed && el) {
-        // Holding a calendar day adds a task on it; holding anything else opens its menu.
         if (el.matches(".cal-cell") && el.dataset.day) openAddSheet({ start_date: el.dataset.day });
-        else el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y }));
+        else openWebMenu(el);
         swallowClickUntil = Date.now() + 500;
       }
       reset();
     };
     const onCancel = () => {
+      fingerDown = false;
       drag?.cancel();
       drag = null;
+      if (range) {
+        range = null;
+        showRange();
+      }
       reset();
     };
-    // A long press must not also count as a tap that opens the task.
+    // A long press must not also count as a tap (opening the task, or closing the menu it just opened).
     const onClick = (e: MouseEvent) => {
       if (Date.now() < swallowClickUntil) {
         e.preventDefault();
         e.stopPropagation();
-        swallowClickUntil = 0;
+        if (e.type === "click") swallowClickUntil = 0;
       }
     };
     document.addEventListener("touchstart", onStart, { passive: true });
@@ -238,7 +366,9 @@ export function useTouchGestures() {
     document.addEventListener("touchend", onEnd);
     document.addEventListener("touchcancel", onCancel);
     document.addEventListener("click", onClick, true);
+    document.addEventListener("mousedown", onClick, true);
     return () => {
+      document.removeEventListener("mousedown", onClick, true);
       document.removeEventListener("touchstart", onStart);
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", onEnd);
@@ -253,10 +383,12 @@ function startDrag(el: HTMLElement, id: string, from: { x: number; y: number }, 
   const r = el.getBoundingClientRect();
   const ghost = el.cloneNode(true) as HTMLElement;
   ghost.classList.add("drag-ghost");
-  ghost.classList.remove("is-selected", "drop-before");
+  ghost.classList.remove("is-selected", "is-lifted");
   Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-  document.body.appendChild(ghost);
+  // Inside the app, so the copy keeps the narrow layout of the row.
+  (el.closest(".app") ?? document.body).appendChild(ghost);
   el.classList.add("is-dragging");
+  document.documentElement.classList.add("is-touch-dragging");
   const scroller = el.closest<HTMLElement>(".list-view, .column-body");
   const board = el.closest<HTMLElement>(".kanban");
   let last = { x, y };
@@ -267,16 +399,19 @@ function startDrag(el: HTMLElement, id: string, from: { x: number; y: number }, 
     target.dispatchEvent(new CustomEvent<TouchDragDetail>(name, { detail: { id, y: last.y } }));
   const hover = () => {
     const under = document.elementFromPoint(last.x, last.y)?.closest("[data-drop-group]") ?? null;
-    if (under !== group && !under) useStore.getState().setDropHint(null);
-    group = under;
+    // Gaps between groups keep the last group, so its line does not blink.
+    if (under) group = under;
     if (group) send("vitro:touchover", group);
   };
-  // Near the edges the list (or the board, sideways) scrolls along.
+  // Near the edges the list (or the board, sideways) scrolls along, faster closer to the edge.
+  const barTop = document.querySelector(".m-tabs")?.getBoundingClientRect().top ?? innerHeight;
+  const speed = (depth: number) => Math.round(Math.min(14, Math.max(2, (depth / 52) * 14)));
   const tick = () => {
     const sc = scroller?.getBoundingClientRect();
     if (scroller && sc) {
-      if (last.y < sc.top + 56) scroller.scrollTop -= 7;
-      else if (last.y > sc.bottom - 56) scroller.scrollTop += 7;
+      const bottom = Math.min(sc.bottom, barTop - 8);
+      if (last.y < sc.top + 52) scroller.scrollTop -= speed(sc.top + 52 - last.y);
+      else if (last.y > bottom - 52) scroller.scrollTop += speed(last.y - bottom + 52);
     }
     const bc = board?.getBoundingClientRect();
     if (board && bc) {
@@ -293,6 +428,7 @@ function startDrag(el: HTMLElement, id: string, from: { x: number; y: number }, 
     cancelAnimationFrame(raf);
     ghost.remove();
     el.classList.remove("is-dragging");
+    document.documentElement.classList.remove("is-touch-dragging");
     useStore.getState().setDropHint(null);
   };
   place();

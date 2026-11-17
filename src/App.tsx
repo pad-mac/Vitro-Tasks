@@ -299,6 +299,23 @@ function runAction(id: ActionId, narrow: boolean): boolean {
 const KEEPS_SELECTION =
   ".task-row, .card, .cal-chip, .week-event, .tl-item, .tl-chip, .tl-title, .layer, .floating, button, input, textarea, a, .add-bar, .rich-view";
 
+/** Whether a text field has the focus (on the phone: the keyboard is up). */
+function useTyping() {
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    if (!isMobile) return;
+    const check = () => setTyping(isTyping(document.activeElement));
+    const onOut = () => setTimeout(check, 0);
+    document.addEventListener("focusin", check);
+    document.addEventListener("focusout", onOut);
+    return () => {
+      document.removeEventListener("focusin", check);
+      document.removeEventListener("focusout", onOut);
+    };
+  }, []);
+  return typing;
+}
+
 export function App() {
   const ready = useStore((s) => s.ready);
   const fatal = useStore((s) => s.fatal);
@@ -325,6 +342,10 @@ export function App() {
   }, []);
   useTouchGestures();
   useEdgeSwipe();
+  // The phone's bar steps aside for sheets, menus and the keyboard.
+  const menu = useStore((s) => s.menu);
+  const composer = useStore((s) => s.composer);
+  const typing = useTyping();
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {
@@ -430,14 +451,13 @@ export function App() {
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {isMobile && (
         <>
-          {!drawerOpen && (
-            <MobileBar
-              settingsOpen={settingsOpen}
-              onSettings={() => setSettingsOpen(!settingsOpen)}
-              onCloseSettings={() => setSettingsOpen(false)}
-              onAdd={() => openAdd(null)}
-            />
-          )}
+          <MobileBar
+            settingsOpen={settingsOpen}
+            hidden={drawerOpen || addOpen || !!selected || !!menu || !!composer || typing}
+            onSettings={() => setSettingsOpen(!settingsOpen)}
+            onCloseSettings={() => setSettingsOpen(false)}
+            onAdd={() => openAdd(null)}
+          />
           <MobileTaskSheet task={selected} />
           <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} onOpen={openAdd} preset={addPreset} />
         </>

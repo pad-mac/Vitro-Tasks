@@ -31,6 +31,9 @@ import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./sh
 export interface DropHint {
   group: string;
   before: string | null;
+  /** Index among the group's other tasks, and where the line goes (px from the top of the group). */
+  index: number;
+  y: number;
 }
 
 export const LIST_COLORS = ["#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a"];
@@ -57,7 +60,8 @@ export const anchorOf = (el: Element): Anchor => {
 };
 
 export type MenuTarget =
-  | { kind: "task" | "list"; id: string; x: number; y: number }
+  /** `h`: height of the item the menu belongs to (it opens below the item, or above it when there is no room). `page`: open straight on a sub page. */
+  | { kind: "task" | "list"; id: string; x: number; y: number; h?: number; page?: "date" | "deadline" | "move" }
   | { kind: "layer"; id: "tasks" | "calendar"; x: number; y: number }
   | { kind: "window"; id: string; x: number; y: number };
 
@@ -670,7 +674,7 @@ export const useStore = create<State>((set, get) => {
 
     setDropHint(hint) {
       const cur = get().dropHint;
-      if (cur === hint || (cur && hint && cur.group === hint.group && cur.before === hint.before)) return;
+      if (cur === hint || (cur && hint && cur.group === hint.group && cur.before === hint.before && Math.abs(cur.y - hint.y) < 0.5)) return;
       set({ dropHint: hint });
     },
 

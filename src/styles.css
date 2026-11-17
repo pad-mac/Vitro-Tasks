@@ -334,7 +334,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .add-bar:focus-within { border-color: var(--text); background: transparent; }
 .add-bar input { flex: 1; color: var(--text); }
 .add-bar input::placeholder, .detail input::placeholder, textarea::placeholder { color: var(--faint); }
-.group { border-radius: 10px; margin-top: 4px; transition: background var(--fast); }
+.group { position: relative; border-radius: 10px; margin-top: 4px; transition: background var(--fast); }
 .group.is-drop { background: color-mix(in oklab, var(--hover) 60%, transparent); }
 .group-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 4px; }
 .group-label { font-weight: 600; font-size: 14.5px; }
@@ -367,7 +367,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 /* ---------- Board ---------- */
 
 .kanban { flex: 1; display: flex; gap: 14px; padding: 0 22px 18px; overflow: auto; align-items: flex-start; }
-.column { width: 300px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: var(--r-lg); transition: background var(--fast), box-shadow var(--fast); }
+.column { position: relative; width: 300px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: var(--r-lg); transition: background var(--fast), box-shadow var(--fast); }
 .column.is-drop { background: var(--hover); }
 .column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; }
 .column-head .group-label { font-size: 15px; }
@@ -651,9 +651,9 @@ label.btn { cursor: pointer; }
 
 /* ---------- Reordering ---------- */
 
-.task-row.drop-before::before, .card.drop-before::before { content: ""; position: absolute; left: 6px; right: 6px; top: -2px; height: 2px; border-radius: 1px; background: var(--hl-ink); pointer-events: none; animation: fade var(--fast); }
-.card.drop-before::before { top: -5px; left: 2px; right: 2px; }
-.drop-end { height: 2px; margin: 4px 6px; border-radius: 1px; background: var(--hl-ink); animation: fade var(--fast); }
+/* Where a dragged task lands: one line per group that glides between the rows. */
+.drop-line { position: absolute; left: 6px; right: 6px; top: 0; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--hl-ink); pointer-events: none; z-index: 3; transition: transform 90ms cubic-bezier(0.2, 0, 0, 1); animation: fade var(--fast); will-change: transform; }
+.column > .drop-line { left: 4px; right: 4px; }
 .is-dragging { opacity: 0.4; }
 
 /* ---------- List suggestions (typing #) ---------- */
@@ -783,14 +783,23 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .drag-ghost { position: fixed; z-index: 200; margin: 0; pointer-events: none; background: var(--raised); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); opacity: 0.97; will-change: transform; }
 
 /* Bottom bar: a frosted pill with the three places, and the add button beside it. */
-.m-bar { position: fixed; left: 16px; right: 16px; bottom: var(--bar-gap); z-index: 85; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); }
+.m-bar { position: fixed; left: 16px; right: 16px; bottom: var(--bar-gap); z-index: 85; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); transition: opacity 160ms, transform 160ms cubic-bezier(0.2, 0, 0, 1); }
+/* It steps aside for sheets, menus and the keyboard. */
+.m-bar.is-hidden { opacity: 0; transform: translateY(12px); }
+.m-bar.is-hidden .m-tabs, .m-bar.is-hidden .m-add { pointer-events: none; }
 /* Glass: mostly see-through, blurred, with a light rim and top edge. */
 .m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 58px; padding: 4px; border-radius: 29px; background: color-mix(in oklab, var(--raised) 46%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid color-mix(in oklab, var(--text) 14%, transparent); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), inset 0 1px 0 color-mix(in oklab, white 45%, transparent), inset 0 -1px 0 color-mix(in oklab, white 8%, transparent); }
 .m-tabs button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 26px; color: var(--muted); font-size: 10.5px; font-weight: 500; letter-spacing: 0.01em; transition: background var(--fast), color var(--fast); }
 .m-tabs button.is-active { color: var(--text); background: color-mix(in oklab, var(--active) 85%, transparent); }
-.m-tabs .sync-dot { position: absolute; top: 9px; left: calc(50% + 8px); border: 1.5px solid var(--raised); box-sizing: content-box; }
+.m-badge { position: absolute; top: 8px; left: calc(50% + 7px); width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
 .m-add { pointer-events: auto; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .m-add.pearl { box-shadow: inset 0 1px 0 var(--pearl-edge), 0 10px 26px rgba(0, 0, 0, 0.14); }
+/* iOS app: the glass bar is native. The page keeps an invisible + under the
+   native one (its tap has to happen here so the keyboard can open). */
+.is-native .m-tabs { visibility: hidden; }
+.is-native .m-add { opacity: 0; }
+/* Touch drags: the board must not snap back while it scrolls along. */
+.is-touch-dragging .kanban { scroll-snap-type: none; }
 
 /* The add sheet sits on top of the keyboard. */
 .m-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.2); opacity: 0; pointer-events: none; transition: opacity 200ms; }
@@ -810,7 +819,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .modal { width: 100%; max-height: none; height: 100%; border: 0; border-radius: 0; padding-top: var(--top-gap); padding-bottom: calc(var(--bar-h) + 12px); background: var(--bg); box-shadow: none; animation: none; }
 .is-mobile .overlay { background: var(--bg); animation: fade var(--fast); }
 .is-mobile .floating, .is-mobile .pop-panel { z-index: 95; }
-.is-mobile .modal header { position: sticky; top: 0; z-index: 2; background: var(--float); }
+/* No dialog header: a large title like the other screens; the bar closes it. */
+.is-mobile .modal > header { display: none; }
+.m-settings-title { margin: 0; padding: 12px 22px 2px; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
 .is-mobile .data-row { flex-wrap: wrap; }
 .is-mobile .data-row > .btn { width: 100%; }
 .selectable { user-select: text; -webkit-user-select: text; word-break: break-all; }
@@ -847,6 +858,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-month .month-dow span { font-size: 11.5px; font-weight: 500; padding: 2px 0 6px; }
 .m-month-scroll { position: relative; overflow-anchor: none; flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: var(--bar-h); scroll-padding-top: 0; }
 .m-week { scroll-snap-align: start; scroll-snap-stop: normal; display: flex; }
+.m-week.is-focus { transition: height 220ms cubic-bezier(0.2, 0, 0, 1); }
+.m-month-scroll.no-snap, .m-month-scroll.is-split { scroll-snap-type: none; }
+/* Split open: the calendar stays put; only the day's list scrolls. */
+.m-month-scroll.is-split { overflow: hidden; }
 .m-week .cal-week { flex: 1; height: 100%; border-top: 1px solid var(--line-soft); }
 .m-week:first-child .cal-week { border-top: 0; }
 /* No vertical lines; numbers centred; today and the open day as circles. */
@@ -860,8 +875,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .cal-chip.is-timed::before { left: 1px; top: 3px; bottom: 3px; width: 2px; }
 .is-mobile .cal-more { font-size: 10.5px; padding: 0 5px; }
 .is-mobile .edge-handle { display: none; }
-/* The day's list opens under its week. */
-.m-day-panel { scroll-snap-align: none; margin: 4px 8px 8px; padding: 4px 4px 8px; background: var(--raised); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08); overflow-y: auto; animation: pop var(--fast); }
-.m-day-panel > header { position: sticky; top: -4px; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 6px 12px; background: var(--raised); font-size: 14px; }
+/* The day's list opens under its week and fills the view down to the bar. */
+.m-day-panel { scroll-snap-align: none; display: flex; flex-direction: column; margin: 0 8px; background: var(--raised); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08); overflow: hidden; opacity: 0; transition: height 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms cubic-bezier(0.2, 0, 0, 1), opacity 160ms; }
+.m-day-panel.is-open { opacity: 1; margin: 4px 8px 12px; }
+.m-day-panel > header { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 6px 12px; font-size: 14px; }
+.m-day-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 4px 8px; }
 .m-day-panel .task-row { padding-right: 8px; }
 .m-day-empty { margin: 6px 12px 10px; color: var(--faint); font-size: 13.5px; }

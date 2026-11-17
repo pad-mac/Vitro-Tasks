@@ -39,14 +39,33 @@ export function dragProps(taskId: string, payload = "") {
   };
 }
 
-/** Where a task dropped at `clientY` lands among a group's items (the dragged one left out). */
-export function insertionAt(container: Element, clientY: number, draggedId: string, selector: string): { index: number; before: string | null } {
+/**
+ * Where a task dropped at `clientY` lands among a group's items (the dragged
+ * one left out), and where the line showing it goes (px from the group's top).
+ * `prev` (the index shown so far) adds a little stickiness at boundaries, so a
+ * resting finger does not make the line jump back and forth.
+ */
+export function insertionAt(container: Element, clientY: number, draggedId: string, selector: string, prev?: number): { index: number; before: string | null; y: number } {
   const items = [...container.querySelectorAll<HTMLElement>(selector)].filter((el) => el.dataset.id !== draggedId);
-  for (let i = 0; i < items.length; i++) {
-    const r = items[i].getBoundingClientRect();
-    if (clientY < r.top + r.height / 2) return { index: i, before: items[i].dataset.id ?? null };
+  const rects = items.map((el) => el.getBoundingClientRect());
+  const mids = rects.map((r) => r.top + r.height / 2);
+  let index = mids.findIndex((m) => clientY < m);
+  if (index === -1) index = items.length;
+  const STICK = 6;
+  if (prev !== undefined && prev <= items.length) {
+    if (index > prev && clientY < mids[index - 1] + STICK) index--;
+    else if (index < prev && clientY > mids[index] - STICK) index++;
   }
-  return { index: items.length, before: null };
+  const top = container.getBoundingClientRect().top;
+  let y: number;
+  if (!rects.length) {
+    const empty = container.querySelector(".group-empty, .column-empty, .group-head, .column-head");
+    const r = empty?.getBoundingClientRect();
+    y = r ? (empty!.matches(".group-head, .column-head") ? r.bottom + 4 : r.top) - top : 6;
+  } else if (index === 0) y = rects[0].top - top - 1;
+  else if (index < rects.length) y = (rects[index - 1].bottom + rects[index].top) / 2 - top;
+  else y = rects[rects.length - 1].bottom - top + 1;
+  return { index, before: items[index]?.dataset.id ?? null, y };
 }
 
 /** Touch drags (phone) send these to the group under the finger. */
@@ -63,18 +82,20 @@ export interface TouchDragDetail {
 export function useReorderTarget(groupKey: string, selector: string, onDrop: (taskId: string, index: number) => void, enabled = true) {
   const ref = useRef<HTMLElement>(null);
   const setHint = useStore((s) => s.setDropHint);
-  const over = useStore((s) => s.dropHint?.group === groupKey);
-  const atEnd = useStore((s) => s.dropHint?.group === groupKey && s.dropHint.before === null);
+  const hint = useStore((s) => (s.dropHint?.group === groupKey ? s.dropHint : null));
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
   const hintAt = (id: string, y: number) => {
     if (!ref.current) return;
-    const { before } = insertionAt(ref.current, y, id, selector);
-    setHint({ group: groupKey, before });
+    const cur = useStore.getState().dropHint;
+    const { index, before, y: lineY } = insertionAt(ref.current, y, id, selector, cur?.group === groupKey ? cur.index : undefined);
+    setHint({ group: groupKey, before, index, y: lineY });
   };
   const dropAt = (id: string, y: number) => {
     if (!ref.current) return;
-    const { index } = insertionAt(ref.current, y, id, selector);
+    // Lands where the line was shown.
+    const cur = useStore.getState().dropHint;
+    const index = cur?.group === groupKey ? cur.index : insertionAt(ref.current, y, id, selector).index;
     setHint(null);
     dropRef.current(id, index);
   };
@@ -118,7 +139,9 @@ export function useReorderTarget(groupKey: string, selector: string, onDrop: (ta
         },
       }
     : { ref };
-  return { over: enabled && over, atEnd: enabled && atEnd, props };
+  // One line per group that glides to where the task would land.
+  const line = enabled && hint ? <div className="drop-line" style={{ transform: `translateY(${hint.y}px)` }} /> : null;
+  return { over: enabled && !!hint, line, props };
 }
 
 /** Makes an element accept dropped tasks. Returns props plus whether a drag hovers. */
@@ -168,6 +191,7 @@ export function useCreateTask() {
       patch.list_id = list.id;
       if (base.list_id !== list.id) patch.section_id = null;
     }
+    if (patch.end_date && (!patch.start_date || patch.end_date <= patch.start_date)) patch.end_date = null;
     return addTask(patch);
   };
 }
@@ -255,7 +279,6 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
 
 export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: boolean; depth?: number }) {
   const tasks = useStore((s) => s.tasks);
-  const dropBefore = useStore((s) => depth === 0 && s.dropHint?.before === task.id);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
@@ -266,7 +289,7 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
   return (
     <>
       <div
-        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${dropBefore ? "drop-before" : ""}`}
+        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
         style={{ paddingLeft: 10 + depth * 26 }}
         data-id={task.id}
         data-depth={depth}
