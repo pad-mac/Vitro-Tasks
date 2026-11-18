@@ -15,6 +15,25 @@ let dragging: string | null = null;
 /** The task being dragged right now (drag-over events cannot read the payload). */
 export const draggedTask = () => dragging;
 
+// A drag that began natively (iOS: out of a task's open menu). WebKit turns it
+// into drag events in the page, but without the app's own data type.
+let nativeDrag = false;
+export function startNativeDrag(taskId: string) {
+  dragging = taskId;
+  nativeDrag = true;
+  document.documentElement.classList.add("is-touch-dragging");
+  document.querySelectorAll(`[data-id="${CSS.escape(taskId)}"]`).forEach((el) => el.classList.add("is-dragging"));
+}
+export function endNativeDrag() {
+  if (!nativeDrag) return;
+  nativeDrag = false;
+  document.querySelectorAll(".is-dragging").forEach((el) => el.classList.remove("is-dragging"));
+  document.documentElement.classList.remove("is-touch-dragging");
+  dragging = null;
+  useStore.getState().setDropHint(null);
+}
+const carriesTask = (e: DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE) || nativeDrag;
+
 export function dragProps(taskId: string, payload = "") {
   return {
     draggable: true,
@@ -63,7 +82,11 @@ export function insertionAt(container: Element, clientY: number, draggedId: stri
     const r = empty?.getBoundingClientRect();
     y = r ? (empty!.matches(".group-head, .column-head") ? r.bottom + 4 : r.top) - top : 6;
   } else if (index === 0) y = rects[0].top - top - 1;
-  else if (index < rects.length) y = (rects[index - 1].bottom + rects[index].top) / 2 - top;
+  else if (index < rects.length) {
+    const gap = rects[index].top - rects[index - 1].bottom;
+    // A wide gap is where the dragged item sits: the line goes just above the next item, not into the item.
+    y = gap > 14 ? rects[index].top - top - 3 : (rects[index - 1].bottom + rects[index].top) / 2 - top;
+  }
   else y = rects[rects.length - 1].bottom - top + 1;
   return { index, before: items[index]?.dataset.id ?? null, y };
 }
@@ -123,19 +146,23 @@ export function useReorderTarget(groupKey: string, selector: string, onDrop: (ta
         "data-drop-group": groupKey,
         onDragOver: (e: DragEvent) => {
           const id = draggedTask();
-          if (!id || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+          if (!id || !carriesTask(e)) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           hintAt(id, e.clientY);
+        },
+        onDragEnter: (e: DragEvent) => {
+          if (draggedTask() && carriesTask(e)) e.preventDefault();
         },
         onDragLeave: (e: DragEvent) => {
           if (!(e.currentTarget as Node).contains(e.relatedTarget as Node) && useStore.getState().dropHint?.group === groupKey) setHint(null);
         },
         onDrop: (e: DragEvent) => {
-          const id = e.dataTransfer.getData(DRAG_TYPE);
+          const id = e.dataTransfer.getData(DRAG_TYPE) || (nativeDrag ? draggedTask() : null);
           if (!id) return;
           e.preventDefault();
           dropAt(id, e.clientY);
+          if (nativeDrag) endNativeDrag();
         },
       }
     : { ref };

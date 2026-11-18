@@ -1,19 +1,15 @@
 // Phone layout pieces: the bottom bar, the add sheet, and touch gestures
 // (long press for the menu, long press and drag to reorder).
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef } from "react";
 import { haptic, isMobile } from "../lib/platform";
 import { hasNative, onNative, postNative } from "../lib/native";
-import { dismissNativeMenu, showNativeTaskMenu } from "../lib/nativeMenu";
-import { parseQuick } from "../lib/quickparse";
-import { defaultsForView } from "../lib/views";
-import { ParsedChips } from "../QuickAdd";
-import { formatDateTime, todayKey } from "../lib/dates";
-import type { Task } from "../shared/schema";
+import { showNativeTaskMenu } from "../lib/nativeMenu";
 import { useStore } from "../store";
-import { SuggestList, useListSuggest } from "./ListSuggest";
-import { useCreateTask, type TouchDragDetail } from "./tasks";
-import { TaskDetail } from "./TaskDetail";
-import { Icon, usePresence } from "./ui";
+import { openAddSheet } from "./PhoneSheets";
+import { type TouchDragDetail } from "./tasks";
+import { Icon } from "./ui";
+
+export { MobileAdd, MobileTaskSheet, openAddSheet } from "./PhoneSheets";
 
 /**
  * The bottom bar. In the iOS app the native glass bar draws it (and handles
@@ -88,93 +84,7 @@ export function MobileBar({
   );
 }
 
-let openAddImpl: ((base: Partial<Task> | null) => void) | null = null;
-
-/** Opens the add sheet with defaults (call it from a touch or click handler, so the keyboard comes up). */
-export function openAddSheet(base: Partial<Task> | null = null) {
-  openAddImpl?.(base);
-}
-
-/** The add sheet. It stays mounted (off screen) so the tap on + can focus it right away. */
-export function MobileAdd({
-  open,
-  onClose,
-  inputRef,
-  onOpen,
-  preset,
-}: {
-  open: boolean;
-  onClose: () => void;
-  inputRef: RefObject<HTMLInputElement | null>;
-  onOpen: (base: Partial<Task> | null) => void;
-  preset: Partial<Task> | null;
-}) {
-  const view = useStore((s) => s.view);
-  const create = useCreateTask();
-  const [value, setValue] = useState("");
-  const suggest = useListSuggest(value, setValue, inputRef as RefObject<HTMLInputElement>);
-  const title = parseQuick(value).title;
-  useEffect(() => {
-    openAddImpl = onOpen;
-    return () => {
-      openAddImpl = null;
-    };
-  }, [onOpen]);
-  const base = preset ?? (view.kind === "calendar" ? { start_date: todayKey() } : defaultsForView(view));
-  const submit = () => {
-    if (!title) return;
-    void create(value, base);
-    setValue("");
-    onClose();
-  };
-  return (
-    <>
-      <div className={`m-scrim ${open ? "is-open" : ""}`} onClick={onClose} />
-      <div className={`m-sheet m-add-sheet ${open ? "is-open" : ""}`} aria-hidden={!open}>
-        <div className="m-add-row">
-          <input
-            ref={inputRef}
-            value={value}
-            placeholder="What needs doing?"
-            enterKeyHint="done"
-            autoCapitalize="sentences"
-            tabIndex={open ? 0 : -1}
-            {...suggest.inputProps}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (suggest.onKeyDown(e)) return;
-              if (e.key === "Enter") submit();
-              if (e.key === "Escape") onClose();
-            }}
-            onBlur={() => {
-              // Closing the keyboard closes an empty sheet.
-              if (!value.trim()) setTimeout(onClose, 50);
-            }}
-          />
-          <button type="button" className="m-send" disabled={!title} aria-label="Add" onPointerDown={(e) => e.preventDefault()} onClick={submit}>
-            <Icon name="arrowup" size={18} />
-          </button>
-        </div>
-        {suggest.open ? (
-          <SuggestList s={suggest} className="m-suggest" />
-        ) : (
-          <div className="m-add-foot">
-            {preset?.start_date && !parseQuick(value).start_date && (
-              <span className="qa-chip">
-                <Icon name="calendar" size={12} /> {formatDateTime(preset.start_date, null)}
-                {preset.end_date && preset.end_date > preset.start_date ? ` – ${formatDateTime(preset.end_date, null)}` : ""}
-              </span>
-            )}
-            {value.trim() ? <ParsedChips value={value} /> : <span className="qa-hint">tomorrow 14:00 · ^fri deadline · !high · #list</span>}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-const LIFT_MS = 380;
-const MENU_MS = 560;
+const LIFT_MS = 350;
 const SLOP = 8;
 const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
 const DRAGGABLE = '.task-row[data-depth="0"], .card';
@@ -200,33 +110,25 @@ export interface DayRange {
 
 /**
  * Touch gestures for the phone:
- * - hold an item: it lifts; keep holding and its menu opens (the native one on iOS);
- * - hold a task and move: drag it to another place (the group under the finger shows where it lands);
+ * - hold an item: it lifts. Move while still holding: it drags (as long as
+ *   you like, there is no menu in the way). Let go without moving: its menu
+ *   opens (the native one on iOS, where the task can also be dragged out of it);
  * - hold a calendar day: add a task on it; hold and move across days: add one spanning them.
  */
 export function useTouchGestures() {
   useEffect(() => {
     if (!isMobile) return;
     let liftTimer = 0;
-    let menuTimer = 0;
     let el: HTMLElement | null = null;
     let start = { x: 0, y: 0 };
     let armed = false;
     let drag: ReturnType<typeof startDrag> | null = null;
     let range: DayRange | null = null;
-    // The item whose native menu is open (it stays lifted until the menu closes).
-    let menuEl: HTMLElement | null = null;
-    // The item whose menu (native or the app's own) this press already opened.
-    let pressMenu: HTMLElement | null = null;
-    // The native menu could not open while the finger was down: the app's own opens on release.
-    let webMenuOnRelease: HTMLElement | null = null;
-    let fingerDown = false;
     let swallowClickUntil = 0;
 
     const reset = () => {
       clearTimeout(liftTimer);
-      clearTimeout(menuTimer);
-      if (el && el !== menuEl) el.classList.remove("is-lifted");
+      el?.classList.remove("is-lifted");
       el = null;
       armed = false;
     };
@@ -239,28 +141,28 @@ export function useTouchGestures() {
         showRange();
       }
     };
+    /** Native menu for a task; the task itself hides while its picture is lifted. */
     const openMenu = (item: HTMLElement) => {
       const id = item.dataset.id!;
-      pressMenu = item;
-      const closed = () => {
-        item.classList.remove("is-lifted");
-        if (menuEl === item) menuEl = null;
-      };
-      const shown = showNativeTaskMenu(id, item.getBoundingClientRect(), closed, () => {
-        closed();
-        if (fingerDown) webMenuOnRelease = item;
-        else openWebMenu(item);
+      // The picture for the menu: the task as a plain card, without the lift.
+      item.classList.remove("is-lifted");
+      item.classList.add("is-menu-shot");
+      const show = () => item.classList.remove("is-menu-source", "is-menu-shot");
+      const shown = showNativeTaskMenu(id, item.getBoundingClientRect(), item.matches(DRAGGABLE), {
+        shown: () => item.classList.add("is-menu-source"),
+        closed: show,
+        failed: () => {
+          show();
+          openWebMenu(item);
+        },
       });
-      if (shown) {
-        menuEl = item;
-        swallowClickUntil = Date.now() + 800;
+      if (!shown) {
+        show();
+        openWebMenu(item);
       }
     };
     const onStart = (e: TouchEvent) => {
       reset();
-      pressMenu = null;
-      webMenuOnRelease = null;
-      fingerDown = true;
       if (e.touches.length !== 1) return;
       const target = e.target as HTMLElement;
       if (target.closest("input, textarea, [contenteditable='true'], .check")) return;
@@ -273,11 +175,6 @@ export function useTouchGestures() {
         el?.classList.add("is-lifted");
         haptic("medium");
       }, LIFT_MS);
-      if (hasNative() && item.matches(TASK_ITEM)) {
-        menuTimer = window.setTimeout(() => {
-          if (el === item && armed) openMenu(item);
-        }, MENU_MS);
-      }
     };
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -294,16 +191,14 @@ export function useTouchGestures() {
       if (!el) return;
       const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y) > SLOP;
       if (!armed) {
+        // Moving before the item lifted is scrolling.
         if (moved) reset();
         return;
       }
       if (!moved) return;
       e.preventDefault();
-      clearTimeout(menuTimer);
       const id = el.dataset.id;
       if (id && el.matches(DRAGGABLE)) {
-        // Moving a held task drags it, also out of its open menu.
-        if (menuEl === el) dismissNativeMenu();
         el.classList.remove("is-lifted");
         drag = startDrag(el, id, start, t.clientX, t.clientY);
         haptic("selection");
@@ -314,15 +209,10 @@ export function useTouchGestures() {
         el = null;
         showRange();
         moveRange(t.clientX, t.clientY);
-      } else if (el !== menuEl) reset();
+      } else reset();
     };
     const onEnd = () => {
-      fingerDown = false;
-      if (webMenuOnRelease) {
-        openWebMenu(webMenuOnRelease);
-        webMenuOnRelease = null;
-        swallowClickUntil = Date.now() + 500;
-      } else if (drag) {
+      if (drag) {
         drag.drop();
         drag = null;
         haptic("light");
@@ -333,18 +223,16 @@ export function useTouchGestures() {
         showRange();
         openAddSheet({ start_date: from, end_date: to > from ? to : null });
         swallowClickUntil = Date.now() + 500;
-      } else if (el && el === pressMenu) {
-        // Letting go of a task whose menu is open leaves the menu open.
-        swallowClickUntil = Date.now() + 500;
       } else if (armed && el) {
-        if (el.matches(".cal-cell") && el.dataset.day) openAddSheet({ start_date: el.dataset.day });
-        else openWebMenu(el);
+        const item = el;
+        if (item.matches(".cal-cell") && item.dataset.day) openAddSheet({ start_date: item.dataset.day });
+        else if (hasNative() && item.matches(TASK_ITEM)) openMenu(item);
+        else openWebMenu(item);
         swallowClickUntil = Date.now() + 500;
       }
       reset();
     };
     const onCancel = () => {
-      fingerDown = false;
       drag?.cancel();
       drag = null;
       if (range) {
@@ -514,84 +402,3 @@ export function useEdgeSwipe() {
  * A task opens in a sheet over the lower part of the screen; pull it up for
  * full-screen editing, pull it down (or tap above it) to close it.
  */
-export function MobileTaskSheet({ task }: { task: Task | null }) {
-  const select = useStore((s) => s.select);
-  const [shown, closing] = usePresence(task, 240);
-  const [full, setFull] = useState(false);
-  const [drag, setDrag] = useState(0);
-  const gesture = useRef<{ y: number; x: number; lastY: number; lastT: number; v: number; active: boolean } | null>(null);
-  const bodyScroll = useRef<HTMLElement | null>(null);
-  const id = task?.id ?? null;
-  useEffect(() => {
-    if (id) setFull(false);
-  }, [id]);
-  if (!shown) return null;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, [contenteditable='true'], .floating, .pop-panel")) return;
-    const inHead = !!target.closest(".m-grabber, .detail-head");
-    const body = target.closest<HTMLElement>(".detail-body");
-    bodyScroll.current = body;
-    // Half open: any pull moves the sheet. Full screen: only the top bar, or a pull down from the top of the text.
-    if (full && !inHead && !(body && body.scrollTop <= 0)) return;
-    const t = e.touches[0];
-    gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false };
-  };
-  const onTouchMove = (e: React.TouchEvent) => {
-    const g = gesture.current;
-    if (!g) return;
-    const t = e.touches[0];
-    const dy = t.clientY - g.y;
-    if (!g.active) {
-      if (Math.abs(dy) < 8) return;
-      if (Math.abs(t.clientX - g.x) > Math.abs(dy)) {
-        gesture.current = null;
-        return;
-      }
-      // Full screen with the text scrolled down: let the text scroll.
-      if (full && dy < 0) {
-        gesture.current = null;
-        return;
-      }
-      g.active = true;
-    }
-    const now = Date.now();
-    g.v = (t.clientY - g.lastY) / Math.max(1, now - g.lastT);
-    g.lastY = t.clientY;
-    g.lastT = now;
-    // Pulling past full height meets resistance.
-    setDrag(full ? Math.max(0, dy) : dy < 0 ? dy * 0.6 : dy);
-  };
-  const onTouchEnd = () => {
-    const g = gesture.current;
-    gesture.current = null;
-    if (!g?.active) return;
-    const dy = g.lastY - g.y;
-    setDrag(0);
-    if (!full && (dy < -50 || g.v < -0.5)) {
-      setFull(true);
-      haptic("light");
-    } else if (full && (dy > 90 || g.v > 0.6)) setFull(false);
-    else if (!full && (dy > 90 || g.v > 0.6)) select(null);
-  };
-
-  return (
-    <>
-      <div className={`m-scrim m-task-scrim ${closing ? "" : "is-open"}`} onClick={() => select(null)} />
-      <div
-        className={`m-task-sheet ${full ? "is-full" : ""} ${closing ? "is-closing" : ""} ${drag ? "is-dragging" : ""}`}
-        style={drag ? { transform: `translateY(${drag}px)` } : undefined}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
-      >
-        <div className="m-grabber" onClick={() => setFull(!full)}>
-          <i />
-        </div>
-        <TaskDetail key={shown.id} task={shown} variant="pane" />
-      </div>
-    </>
-  );
-}
