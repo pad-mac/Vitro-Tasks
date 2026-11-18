@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
+import { HoldMenu } from "./components/HoldMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
 import { postNative } from "./lib/native";
@@ -470,6 +471,7 @@ export function App() {
           />
           <MobileTaskSheet task={selected} />
           <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} onOpen={openAdd} preset={addPreset} />
+          <HoldMenu />
         </>
       )}
     </div>

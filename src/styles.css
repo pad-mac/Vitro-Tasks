@@ -656,6 +656,8 @@ label.btn { cursor: pointer; }
 /* Where a dragged task lands: one line per group that glides between the rows. */
 .drop-line { position: absolute; left: 6px; right: 6px; top: 0; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--hl-ink); pointer-events: none; z-index: 3; transition: transform 90ms cubic-bezier(0.2, 0, 0, 1); animation: fade var(--fast); will-change: transform; }
 .column > .drop-line { left: 4px; right: 4px; }
+/* Above the dragged copy under the finger, so the place it lands stays visible. */
+.is-touch-dragging .drop-line { z-index: 330; }
 .is-dragging { opacity: 0.4; }
 /* Phone: the dragged task leaves its place empty (the copy under the finger is the task). */
 .is-mobile :is(.task-row, .card).is-dragging { opacity: 1; visibility: hidden; }
@@ -787,7 +789,57 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* Long press lifts the item; a drag carries a copy of it. */
 .is-mobile .is-lifted { transform: scale(0.985); background: var(--active); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), background 180ms; }
-.drag-ghost { position: fixed; z-index: 200; margin: 0; pointer-events: none; background: var(--raised); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); opacity: 0.97; will-change: transform; }
+.floating-copy { position: fixed; z-index: 310; margin: 0; background: var(--raised); border-radius: 14px; will-change: transform; transition: transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 220ms, opacity 160ms; }
+.drag-ghost { pointer-events: none; transition: none; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); }
+.drag-ghost.is-catching { transition: transform 140ms cubic-bezier(0.2, 0.9, 0.25, 1); }
+.drag-ghost.is-landing { transition: transform 180ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 180ms, opacity 160ms; box-shadow: none; }
+
+/* Holding a task: the lifted copy, a light dim, and the menu next to it. */
+.hold-lift.is-up { transform: translateY(var(--shift, 0px)) scale(1.02); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18); }
+.hold-layer { position: fixed; inset: 0; z-index: 300; }
+.hold-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.2); animation: hold-in 160ms ease-out both; }
+:root[data-theme="dark"] .hold-scrim { background: rgba(0, 0, 0, 0.45); }
+.hold-menu {
+  position: fixed; z-index: 320; overflow-y: auto; overscroll-behavior: contain;
+  padding: 6px 0; border-radius: 22px; font-family: Inter, system-ui, sans-serif;
+  background: color-mix(in oklab, var(--float) 70%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8);
+  border: 0.5px solid color-mix(in oklab, var(--text) 12%, transparent);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: hold-menu-in 190ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+.hold-layer.is-closing { pointer-events: none; }
+.hold-layer.is-waiting { pointer-events: none; }
+.hold-layer.is-waiting .hold-scrim, .hold-layer.is-waiting .hold-menu { visibility: hidden; animation: none; }
+.hold-layer.is-closing .hold-scrim { animation: hold-out 160ms ease-in both; }
+.hold-layer.is-closing .hold-menu { animation: hold-menu-out 140ms ease-in both; }
+@keyframes hold-in { from { opacity: 0; } }
+@keyframes hold-out { to { opacity: 0; } }
+@keyframes hold-menu-in { from { opacity: 0; transform: scale(0.94); } }
+@keyframes hold-menu-out { to { opacity: 0; transform: scale(0.96); } }
+.hm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 2px 8px; }
+.hm-cell {
+  height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 14px; color: var(--text); font-size: 12.5px; font-weight: 500; letter-spacing: -0.005em;
+}
+.hm-cell .icon:not(.flag-icon) { color: var(--text); }
+.hm-cell.is-active { background: color-mix(in oklab, var(--text) 7%, transparent); }
+.hm-cell.is-active span { font-weight: 650; }
+.hm-sep { height: 0.5px; margin: 5px 20px; background: color-mix(in oklab, var(--text) 16%, transparent); }
+.hm-item { width: 100%; height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 20px; color: var(--text); font-size: 16.5px; letter-spacing: -0.01em; text-align: left; }
+.hm-item > .icon:first-child { flex: none; color: var(--text); }
+.hm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-value { flex: none; color: var(--muted); font-size: 14px; }
+.hm-item > .icon:last-child:not(:first-child) { color: var(--muted); }
+.hm-item.is-danger, .hm-item.is-danger > .icon:first-child { color: var(--red); }
+.hm-cell.is-hot, .hm-item.is-hot { background: color-mix(in oklab, var(--text) 11%, transparent); }
+.hm-item.is-hot { border-radius: 0; }
+/* The pickers that open from it (date, deadline, move) share its glass. */
+.is-mobile .context-menu {
+  background: color-mix(in oklab, var(--float) 70%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8);
+  border: 0.5px solid color-mix(in oklab, var(--text) 12%, transparent); border-radius: 22px;
+}
 
 /* Bottom bar: a frosted pill with the three places, and the add button beside it. */
 .m-bar { position: fixed; left: 16px; right: 16px; bottom: var(--bar-gap); z-index: 85; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); transition: opacity 160ms, transform 160ms cubic-bezier(0.2, 0, 0, 1); }

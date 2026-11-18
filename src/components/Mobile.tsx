@@ -2,8 +2,8 @@
 // (long press for the menu, long press and drag to reorder).
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { haptic, isMobile } from "../lib/platform";
-import { hasNative, onNative, postNative } from "../lib/native";
-import { isLifted, liftedSince, reportTouch } from "../lib/nativeMenu";
+import { onNative, postNative } from "../lib/native";
+import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
 import { defaultsForView } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
@@ -308,23 +308,17 @@ export function MobileAdd({
 }
 
 const LIFT_MS = 380;
-// Native hold did not answer (no lift seen) by then: the page's own menu and drag take over.
-const FALLBACK_MS = 900;
+// A held task whose menu needs room it has to make: the menu waits this long for the finger to rest.
+const REVEAL_MS = 220;
 const SLOP = 8;
 const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
 const DRAGGABLE = '.task-row[data-depth="0"], .card';
-// Items that get the task menu (native on iOS).
+// Items that get the task menu.
 const TASK_ITEM = ".task-row[data-id], .card[data-id], .cal-chip[data-id], .tl-item[data-id]";
 
-/** The app's own menu for a held item, next to it rather than on top of it. */
+/** The app's own menu for a held list (or other item): below it. */
 function openWebMenu(el: HTMLElement) {
   const r = el.getBoundingClientRect();
-  const id = el.dataset.id;
-  if (id && el.matches(TASK_ITEM)) {
-    useStore.getState().openMenu({ kind: "task", id, x: r.left + 12, y: r.top - 4, h: r.height + 8 });
-    return;
-  }
-  // Lists and other items: their own handler opens the menu at this point (below the item).
   el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 12, clientY: r.bottom + 4 }));
 }
 
@@ -335,27 +329,33 @@ export interface DayRange {
 
 /**
  * Touch gestures for the phone.
- * - Tasks in the iOS app: the system handles holding them (lift, menu, drag;
- *   see lib/nativeMenu.ts); the page only reports which task is under the
- *   finger, and drives the drag it reports.
- * - Elsewhere (and in a browser): hold an item and it lifts; move while
- *   holding to drag a task, let go to open its menu.
+ * - Hold a task: it lifts and its menu opens (HoldMenu). With the finger
+ *   still down, sliding onto the menu picks an entry on release; moving any
+ *   other way drags the task instead. After letting go the menu stays; tap an
+ *   entry, or press the lifted task and move it to drag it.
+ * - Hold a list (or another item): it lifts, its menu opens on release.
  * - Hold a calendar day: add a task on it; hold and move across days: add one spanning them.
  */
 export function useTouchGestures() {
   useEffect(() => {
     if (!isMobile) return;
     let liftTimer = 0;
+    let revealTimer = 0;
     let el: HTMLElement | null = null;
     let start = { x: 0, y: 0 };
-    let startedAt = 0;
     let armed = false;
+    // A task is held with the finger still down: "wait" until the finger says
+    // what it wants, "select" once it slid onto the menu.
+    let held: { draggable: boolean; mode: "wait" | "select"; at: { x: number; y: number } } | null = null;
+    // The finger pressed the lifted task while its menu was open.
+    let liftPress: { x: number; y: number } | null = null;
     let drag: DragDriver | null = null;
     let range: DayRange | null = null;
     let swallowClickUntil = 0;
 
     const reset = () => {
       clearTimeout(liftTimer);
+      clearTimeout(revealTimer);
       el?.classList.remove("is-lifted");
       el = null;
       armed = false;
@@ -369,28 +369,46 @@ export function useTouchGestures() {
         showRange();
       }
     };
+    /** The held task becomes a drag. `keep`: the copy stays where it is under the finger. */
+    const dragHeld = (from: { x: number; y: number }, x: number, y: number, keep: boolean) => {
+      const d = holdMenu.toDrag();
+      if (!d) return;
+      drag = dragCopy(d.el, d.id, from, keep ? d.shift : 0, x, y);
+    };
     const onStart = (e: TouchEvent) => {
       reset();
-      if (e.touches.length !== 1 || isLifted()) return;
+      held = null;
+      liftPress = null;
+      if (e.touches.length !== 1) return;
       const target = e.target as HTMLElement;
+      const p = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      if (holdMenu.isOpen()) {
+        if (target.closest(".hold-lift")) liftPress = p;
+        else if (!target.closest(".hold-menu")) {
+          // A touch anywhere else closes the menu (and is not a tap on what lies under it).
+          holdMenu.close();
+          swallowClickUntil = Date.now() + 600;
+        }
+        return;
+      }
       const item = target.closest("input, textarea, [contenteditable='true'], .check") ? null : target.closest<HTMLElement>(LONG_PRESS);
-      const native = hasNative() && !!item?.matches(TASK_ITEM);
-      // Tell the native side what is under the finger (or that nothing is).
-      reportTouch(native ? item : null, native && item!.matches(DRAGGABLE));
       if (!item) return;
       el = item;
-      start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      startedAt = Date.now();
-      liftTimer = window.setTimeout(
-        () => {
-          // The native hold took over: nothing to do here.
-          if (native && liftedSince(startedAt)) return void (el = null);
-          armed = true;
-          el?.classList.add("is-lifted");
-          haptic("medium");
-        },
-        native ? FALLBACK_MS : LIFT_MS,
-      );
+      start = p;
+      liftTimer = window.setTimeout(() => {
+        if (!el) return;
+        if (el.matches(TASK_ITEM)) {
+          held = { draggable: el.matches(DRAGGABLE), mode: "wait", at: start };
+          holdMenu.open(el);
+          el = null;
+          // A menu that needs the task moved aside comes out once the finger rests (moving first drags).
+          revealTimer = window.setTimeout(() => holdMenu.reveal(), REVEAL_MS);
+          return;
+        }
+        armed = true;
+        el.classList.add("is-lifted");
+        haptic("medium");
+      }, LIFT_MS);
     };
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -404,6 +422,40 @@ export function useTouchGestures() {
         moveRange(t.clientX, t.clientY);
         return;
       }
+      if (liftPress) {
+        e.preventDefault();
+        if (Math.hypot(t.clientX - liftPress.x, t.clientY - liftPress.y) > SLOP) {
+          dragHeld(liftPress, t.clientX, t.clientY, true);
+          liftPress = null;
+        }
+        return;
+      }
+      if (held) {
+        e.preventDefault();
+        if (held.mode === "select") return holdMenu.setHot(holdMenu.itemAt(t.clientX, t.clientY));
+        const dx = t.clientX - held.at.x;
+        const dy = t.clientY - held.at.y;
+        // Not moved yet: nothing under the resting finger counts (the menu may have opened under it).
+        if (Math.hypot(dx, dy) <= SLOP) return;
+        if (holdMenu.isWaiting()) {
+          clearTimeout(revealTimer);
+          if (held.draggable) dragHeld(held.at, t.clientX, t.clientY, false);
+          else holdMenu.reveal();
+          if (held.draggable) held = null;
+          return;
+        }
+        const key = holdMenu.itemAt(t.clientX, t.clientY);
+        if (key || holdMenu.toward(held.at, dx, dy) || !held.draggable) {
+          if (key) {
+            held.mode = "select";
+            holdMenu.setHot(key);
+          }
+          return;
+        }
+        dragHeld(held.at, t.clientX, t.clientY, false);
+        held = null;
+        return;
+      }
       if (!el) return;
       const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y) > SLOP;
       if (!armed) {
@@ -413,13 +465,7 @@ export function useTouchGestures() {
       }
       if (!moved) return;
       e.preventDefault();
-      const id = el.dataset.id;
-      if (id && el.matches(DRAGGABLE)) {
-        el.classList.remove("is-lifted");
-        drag = startDrag(el, id, start, t.clientX, t.clientY);
-        haptic("selection");
-        el = null;
-      } else if (el.matches(".cal-cell") && el.dataset.day) {
+      if (el.matches(".cal-cell") && el.dataset.day) {
         range = { a: el.dataset.day, b: el.dataset.day };
         el.classList.remove("is-lifted");
         el = null;
@@ -433,6 +479,19 @@ export function useTouchGestures() {
         drag = null;
         haptic("light");
         swallowClickUntil = Date.now() + 500;
+      } else if (liftPress) {
+        // A tap on the lifted task opens it.
+        const id = holdMenu.heldId();
+        holdMenu.close();
+        if (id) useStore.getState().select(id);
+        swallowClickUntil = Date.now() + 500;
+      } else if (held) {
+        holdMenu.reveal();
+        const key = held.mode === "select" ? holdMenu.hot() : null;
+        // Let go on an entry: pick it. Anywhere else the menu stays open.
+        if (key) holdMenu.act(key);
+        else holdMenu.setHot(null);
+        swallowClickUntil = Date.now() + 500;
       } else if (range) {
         const [from, to] = range.a <= range.b ? [range.a, range.b] : [range.b, range.a];
         range = null;
@@ -444,6 +503,8 @@ export function useTouchGestures() {
         else openWebMenu(el);
         swallowClickUntil = Date.now() + 500;
       }
+      held = null;
+      liftPress = null;
       reset();
     };
     const onCancel = () => {
@@ -453,35 +514,19 @@ export function useTouchGestures() {
         range = null;
         showRange();
       }
+      if (held) holdMenu.setHot(null);
+      held = null;
+      liftPress = null;
       reset();
     };
     // A long press must not also count as a tap (opening the task, or closing the menu it just opened).
     const onClick = (e: MouseEvent) => {
-      if (Date.now() < swallowClickUntil || isLifted()) {
+      if (Date.now() < swallowClickUntil) {
         e.preventDefault();
         e.stopPropagation();
         if (e.type === "click") swallowClickUntil = 0;
       }
     };
-    // A drag the native side started (out of a held task, or its open menu).
-    let native: DragDriver | null = null;
-    const offs = [
-      onNative("dragStart", (p) => {
-        native?.cancel();
-        native = dragDriver(String(p.id ?? ""), null);
-      }),
-      onNative("dragMove", (p) => native?.move(Number(p.x), Number(p.y))),
-      onNative("dragDrop", (p) => {
-        native?.move(Number(p.x), Number(p.y));
-        native?.drop();
-        native = null;
-        swallowClickUntil = Date.now() + 500;
-      }),
-      onNative("dragEnd", () => {
-        native?.cancel();
-        native = null;
-      }),
-    ];
     document.addEventListener("touchstart", onStart, { passive: true });
     document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", onEnd);
@@ -489,7 +534,6 @@ export function useTouchGestures() {
     document.addEventListener("click", onClick, true);
     document.addEventListener("mousedown", onClick, true);
     return () => {
-      offs.forEach((off) => off());
       document.removeEventListener("mousedown", onClick, true);
       document.removeEventListener("touchstart", onStart);
       document.removeEventListener("touchmove", onMove);
@@ -507,15 +551,18 @@ interface DragDriver {
 }
 
 /**
- * Drives a drag of task `id` from finger positions (a touch, or what the
- * native side reports): the group under the finger shows where it would land,
- * and near the edges the list (or the board, sideways) scrolls along.
- * `ghost` is the copy that follows a touch drag (the native drag draws its own).
+ * Drives a touch drag of task `id`: `copy` follows the finger (offset by
+ * `shift` px from where it was taken), the group under the finger shows where
+ * it would land, and near the edges the list (or the board, sideways) scrolls
+ * along. On the drop the copy glides into the task's new place.
  */
-function dragDriver(id: string, ghost: { el: HTMLElement; from: { x: number; y: number } } | null): DragDriver {
+function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number }, shift: number, x: number, y: number): DragDriver {
   const sources = [...document.querySelectorAll<HTMLElement>(`:is(.task-row, .card)[data-id="${CSS.escape(id)}"]`)];
   sources.forEach((s) => s.classList.add("is-dragging"));
   document.documentElement.classList.add("is-touch-dragging");
+  copy.classList.add("drag-ghost", "is-catching");
+  setTimeout(() => copy.classList.remove("is-catching"), 140);
+  const origin = { left: parseFloat(copy.style.left), top: parseFloat(copy.style.top) };
   let last: { x: number; y: number } | null = null;
   let group: Element | null = null;
   let raf = 0;
@@ -553,20 +600,44 @@ function dragDriver(id: string, ghost: { el: HTMLElement; from: { x: number; y: 
     raf = requestAnimationFrame(tick);
   };
   const place = () => {
-    if (ghost && last) ghost.el.style.transform = `translate(${last.x - ghost.from.x}px, ${last.y - ghost.from.y}px) scale(1.02)`;
+    if (last) copy.style.transform = `translate(${last.x - from.x}px, ${last.y - from.y + shift}px) scale(1.02)`;
   };
-  const end = () => {
-    if (done) return;
-    done = true;
-    cancelAnimationFrame(raf);
-    ghost?.el.remove();
+  const clear = () => {
     sources.forEach((s) => s.classList.remove("is-dragging"));
     // Rows React redrew meanwhile.
     document.querySelectorAll(":is(.task-row, .card).is-dragging").forEach((s) => s.classList.remove("is-dragging"));
     document.documentElement.classList.remove("is-touch-dragging");
     useStore.getState().setDropHint(null);
   };
+  const end = (glide: boolean) => {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(raf);
+    clear();
+    if (!glide) return void copy.remove();
+    // The task stays hidden until the copy has landed where it is now.
+    hideTask(id);
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      copy.remove();
+      if (!holdMenu.heldId()) hideTask(null);
+    };
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const r = taskRect(id);
+        copy.classList.add("is-landing");
+        if (r) copy.style.transform = `translate(${r.left - origin.left}px, ${r.top - origin.top}px)`;
+        else copy.style.opacity = "0";
+        setTimeout(finish, 190);
+      }),
+    );
+    setTimeout(finish, 600);
+  };
   raf = requestAnimationFrame(tick);
+  last = { x, y };
+  place();
   return {
     move(x: number, y: number) {
       last = { x, y };
@@ -575,25 +646,10 @@ function dragDriver(id: string, ghost: { el: HTMLElement; from: { x: number; y: 
     drop() {
       hover();
       if (group) send("vitro:touchdrop", group);
-      end();
+      end(true);
     },
-    cancel: end,
+    cancel: () => end(false),
   };
-}
-
-/** Touch drag (page side): a copy of the item follows the finger. */
-function startDrag(el: HTMLElement, id: string, from: { x: number; y: number }, x: number, y: number) {
-  const r = el.getBoundingClientRect();
-  const ghost = el.cloneNode(true) as HTMLElement;
-  ghost.classList.add("drag-ghost");
-  ghost.classList.remove("is-selected", "is-lifted");
-  ghost.removeAttribute("data-id");
-  Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-  // Inside the app, so the copy keeps the narrow layout of the row.
-  (el.closest(".app") ?? document.body).appendChild(ghost);
-  const driver = dragDriver(id, { el: ghost, from });
-  driver.move(x, y);
-  return driver;
 }
 
 export function useSwipe(onPage: (dir: number) => void, vertical: boolean) {

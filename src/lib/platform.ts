@@ -1,5 +1,6 @@
 // Thin wrappers around Tauri so the same UI also runs in a plain browser tab.
 import { isTauri } from "../db/driver";
+import { hasNative, postNative } from "./native";
 
 export { isTauri };
 
@@ -86,7 +87,10 @@ export async function openExternal(url: string): Promise<void> {
 
 /** A short tap of the phone's haptic engine (no-op elsewhere). */
 export function haptic(kind: "light" | "medium" | "selection" = "medium"): void {
-  if (!isMobile || !isTauri()) return;
+  if (!isMobile) return;
+  // The iOS app keeps its generators ready (no delay on the first tick).
+  if (hasNative()) return postNative({ type: "haptic", kind });
+  if (!isTauri()) return;
   void import("@tauri-apps/plugin-haptics")
     .then((h) => (kind === "selection" ? h.selectionFeedback() : h.impactFeedback(kind)))
     .catch(() => {});
