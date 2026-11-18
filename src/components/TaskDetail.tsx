@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
@@ -47,6 +47,61 @@ function autoGrow(el: HTMLTextAreaElement | null) {
 }
 
 type Draft = ReturnType<typeof useDraft>;
+
+/**
+ * The description and the subtasks share the room below the title: each may
+ * take up to half of it, and whatever one does not need, the other may use.
+ * Each scrolls on its own once it is cut (`is-cut`).
+ */
+function useSplit(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement | null>, b: RefObject<HTMLElement | null>) {
+  const ro = useRef<ResizeObserver | null>(null);
+  const fit = useRef(() => {});
+  fit.current = () => {
+    const B = body.current;
+    const A = a.current;
+    if (!B || !A) return;
+    const S = b.current;
+    const parts = S ? [A, S] : [A];
+    for (const el of parts) {
+      el.style.maxHeight = "";
+      el.classList.remove("is-cut");
+    }
+    const ha = A.scrollHeight;
+    const hb = S?.scrollHeight ?? 0;
+    const avail = B.clientHeight - (B.scrollHeight - ha - hb);
+    // Watch what can grow: the body itself and the contents of both parts.
+    ro.current?.disconnect();
+    ro.current?.observe(B);
+    for (const el of parts) for (const c of el.children) ro.current?.observe(c);
+    if (ha + hb <= avail + 1) return;
+    const half = avail / 2;
+    let ma = half;
+    let mb = half;
+    if (!S) ma = avail;
+    else if (ha <= half) mb = avail - ha;
+    else if (hb <= half) ma = avail - hb;
+    const cut = (el: HTMLElement, h: number, max: number) => {
+      if (h <= max + 1) return;
+      el.style.maxHeight = `${Math.max(0, Math.floor(max))}px`;
+      el.classList.add("is-cut");
+    };
+    cut(A, ha, ma);
+    if (S) cut(S, hb, mb);
+  };
+  useEffect(() => {
+    let frame = 0;
+    ro.current = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => fit.current());
+    });
+    fit.current();
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.current?.disconnect();
+    };
+  }, []);
+  useLayoutEffect(() => fit.current());
+}
 
 /**
  * A text field that shows its links as clickable links while not being edited.
@@ -183,6 +238,10 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
   const title = useDraft(task.title, task.id, (v) => void update(task.id, { title: v }));
   const notes = useDraft(task.notes, task.id, (v) => void update(task.id, { notes: v }));
   const subRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<HTMLDivElement>(null);
+  const subsRef = useRef<HTMLElement>(null);
+  useSplit(bodyRef, notesRef, subsRef);
   useEffect(() => {
     if (focusSubtask) subRef.current?.focus();
   }, [focusSubtask, task.id]);
@@ -242,12 +301,11 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
     />
   );
   const priority = <PriorityPicker priority={task.priority} onPick={(p) => void update(task.id, { priority: p })} />;
-  const below = variant === "sheet";
   const listPart = (
     <>
-      {!task.parent_id && <ListPicker prefer={below ? "below" : "above"} listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
+      {!task.parent_id && <ListPicker prefer="above" listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
       {!task.parent_id && listSections.length > 0 && (
-        <Popover prefer={below ? "below" : "above"} trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
+        <Popover prefer="above" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
           {(close) => (
             <div className="menu menu-scroll">
               <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
@@ -263,7 +321,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
     </>
   );
   const more = (
-    <Popover prefer={below ? "below" : "above"} align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
+    <Popover prefer="above" align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
       {(close) => (
         <div className="menu">
           <MenuItem onClick={() => { void update(task.id, { pinned: task.pinned ? 0 : 1 }); close(); }}>
@@ -305,6 +363,50 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
           </button>
         )}
       </header>
+      <div className="detail-body" ref={bodyRef}>
+        {parent && (
+          <button type="button" className="crumb" onClick={() => select(parent.id, anchor)}>
+            <span className="flip"><Icon name="chevron" size={12} /></span> {parent.title}
+          </button>
+        )}
+        <RichField draft={title} className="detail-title" rows={1} placeholder="What would you like to do?" singleLine />
+        <div className="detail-sec detail-notes-sec" ref={notesRef}>
+          <RichField draft={notes} className="detail-notes" rows={2} placeholder="Description" />
+        </div>
+
+        {!task.parent_id && (
+          <>
+            <i className="detail-sep" />
+            <section className="subtasks detail-sec" ref={subsRef}>
+              {subs.map((s) => (
+                <div key={s.id} className={`subtask ${s.status ? "is-done" : ""}`}>
+                  <Check done={s.status !== 0} wontDo={s.status === 2} priority={s.priority} onToggle={() => void toggle(s.id)} />
+                  <span className="task-title" onClick={() => select(s.id, anchor)}><Rich text={s.title} /></span>
+                  <button type="button" className="icon-btn hover-reveal" title="Delete subtask" onClick={() => void del(s.id)}>
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              ))}
+              <div className="subtask subtask-add">
+                <span className="subtask-plus"><Icon name="plus" size={14} /></span>
+                <input
+                  ref={subRef}
+                  value={sub}
+                  placeholder="Add Subtask"
+                  onChange={(e) => setSub(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && sub.trim()) {
+                      void addTask({ title: sub.trim(), parent_id: task.id, list_id: task.list_id });
+                      setSub("");
+                    }
+                  }}
+                />
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+
       {variant === "sheet" && (
         <div className="detail-bar">
           {full && back}
@@ -315,46 +417,6 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
           {more}
         </div>
       )}
-
-      <div className="detail-body">
-        {parent && (
-          <button type="button" className="crumb" onClick={() => select(parent.id, anchor)}>
-            <span className="flip"><Icon name="chevron" size={12} /></span> {parent.title}
-          </button>
-        )}
-        <RichField draft={title} className="detail-title" rows={1} placeholder="What would you like to do?" singleLine />
-        <RichField draft={notes} className="detail-notes" rows={2} placeholder="Description" />
-
-        {!task.parent_id && (
-          <section className="subtasks">
-            {subs.map((s) => (
-              <div key={s.id} className={`subtask ${s.status ? "is-done" : ""}`}>
-                <Check done={s.status !== 0} wontDo={s.status === 2} priority={s.priority} onToggle={() => void toggle(s.id)} />
-                <span className="task-title" onClick={() => select(s.id, anchor)}><Rich text={s.title} /></span>
-                <button type="button" className="icon-btn hover-reveal" title="Delete subtask" onClick={() => void del(s.id)}>
-                  <Icon name="x" size={12} />
-                </button>
-              </div>
-            ))}
-            <div className="subtask subtask-add">
-              <Icon name="plus" size={14} />
-              <input
-                ref={subRef}
-                value={sub}
-                placeholder="Add Subtask"
-                onChange={(e) => setSub(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && sub.trim()) {
-                    void addTask({ title: sub.trim(), parent_id: task.id, list_id: task.list_id });
-                    setSub("");
-                  }
-                }}
-              />
-            </div>
-          </section>
-        )}
-      </div>
-
       {variant !== "sheet" && (
         <footer className="detail-foot">
           {listPart}

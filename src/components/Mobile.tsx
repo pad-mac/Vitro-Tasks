@@ -312,7 +312,7 @@ const LIFT_MS = 380;
 // A held task whose menu needs room it has to make: the menu waits this long for the finger to rest.
 const REVEAL_MS = 220;
 // How far off the menu the finger may stray (while sliding over it) before the task is dragged instead.
-const OFF_MENU = 14;
+const OFF_MENU = 4;
 const SLOP = 8;
 const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
 const DRAGGABLE = '.task-row[data-depth="0"], .card';
@@ -457,7 +457,8 @@ export function useTouchGestures() {
           return;
         }
         const key = holdMenu.itemAt(t.clientX, t.clientY);
-        if (key || !held.draggable || holdMenu.inMenu(t.clientX, t.clientY, OFF_MENU) || holdMenu.toward(held.at, dx, dy)) {
+        // Anywhere off the menu (also the gap between it and the task), a move that does not head into it drags.
+        if (key || !held.draggable || holdMenu.inMenu(t.clientX, t.clientY) || holdMenu.toward(held.at, dx, dy)) {
           if (key) {
             held.mode = "select";
             holdMenu.setHot(key);
@@ -739,7 +740,7 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   const [full, setFull] = useState(false);
   const [typing, setTyping] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const gesture = useRef<{ y: number; x: number; lastY: number; lastT: number; v: number; active: boolean } | null>(null);
+  const gesture = useRef<{ y: number; x: number; lastY: number; lastT: number; v: number; active: boolean; keyboard?: boolean } | null>(null);
   const id = task?.id ?? null;
   useEffect(() => {
     if (id) setFull(false);
@@ -771,6 +772,12 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, [contenteditable='true'], .floating, .pop-panel")) return;
     const inHead = !!target.closest(".m-grabber, .detail-head, .detail-bar");
+    // Writing: a swipe down on the rows above the keyboard puts the keyboard away first.
+    if (typing && inHead) {
+      const t = e.touches[0];
+      gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false, keyboard: true };
+      return;
+    }
     const body = target.closest<HTMLElement>(".detail-body");
     // Half open: any pull moves the sheet. Full screen: only the top rows, or a pull down from the top of the text.
     if (full && !inHead && !(body && body.scrollTop <= 0)) return;
@@ -783,6 +790,13 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
     if (!g || !el) return;
     const t = e.touches[0];
     const dy = t.clientY - g.y;
+    if (g.keyboard) {
+      if (dy > 18 && dy > Math.abs(t.clientX - g.x)) {
+        (document.activeElement as HTMLElement | null)?.blur();
+        gesture.current = null;
+      }
+      return;
+    }
     if (!g.active) {
       if (Math.abs(dy) < 8) return;
       if (Math.abs(t.clientX - g.x) > Math.abs(dy)) {

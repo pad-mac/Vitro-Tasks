@@ -139,7 +139,7 @@ export const holdMenu = {
   toward(from: { x: number; y: number }, dx: number, dy: number): boolean {
     const m = document.querySelector(".hold-layer:not(.is-waiting) .hold-menu")?.getBoundingClientRect();
     if (!m) return false;
-    const pad = 6;
+    const pad = 2;
     let t0 = 0;
     let t1 = Infinity;
     for (const [p, d, lo, hi] of [
