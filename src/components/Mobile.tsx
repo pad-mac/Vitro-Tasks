@@ -43,18 +43,30 @@ export function MobileBar({
   const active = settingsOpen ? "settings" : inCalendar ? "calendar" : "tasks";
   const tabs = {
     tasks: () => {
+      holdMenu.close();
       onCloseSettings();
       setView(lastTaskView);
     },
     calendar: () => {
+      holdMenu.close();
       onCloseSettings();
       setView({ kind: "calendar" });
     },
-    settings: onSettings,
+    settings: () => {
+      holdMenu.close();
+      onSettings();
+    },
   };
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  useEffect(() => onNative("tab", (p) => tabsRef.current[p.id as keyof typeof tabs]?.()), []);
+  useEffect(
+    () =>
+      onNative("tab", (p) => {
+        holdMenu.close();
+        tabsRef.current[p.id as keyof typeof tabs]?.();
+      }),
+    [],
+  );
   useEffect(() => postNative({ type: "bar", visible: !hidden, active, badge: syncError }), [hidden, active, syncError]);
   const press = (down: boolean) => () => postNative({ type: "press", down });
   return (
@@ -740,11 +752,31 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   const [full, setFull] = useState(false);
   const [typing, setTyping] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const gesture = useRef<{ y: number; x: number; lastY: number; lastT: number; v: number; active: boolean; keyboard?: boolean } | null>(null);
+  const gesture = useRef<{
+    y: number;
+    x: number;
+    lastY: number;
+    lastT: number;
+    v: number;
+    active: boolean;
+    keyboard?: boolean;
+    scroller?: HTMLElement | null;
+  } | null>(null);
   const id = task?.id ?? null;
   useEffect(() => {
     if (id) setFull(false);
   }, [id]);
+  // While the sheet follows the finger, nothing under it scrolls (React's touch handlers cannot prevent that).
+  const mounted = !!shown;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => {
+      if (gesture.current?.active) e.preventDefault();
+    };
+    el.addEventListener("touchmove", hold, { passive: false });
+    return () => el.removeEventListener("touchmove", hold);
+  }, [mounted]);
   if (!shown) return null;
 
   /** Settles the sheet at `next` (a height, or closed), starting from where it is drawn now. */
@@ -770,19 +802,22 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   };
   const onTouchStart = (e: React.TouchEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, [contenteditable='true'], .floating, .pop-panel")) return;
+    if (target.closest(".floating, .pop-panel")) return;
+    // A field being written in keeps its touches (caret, selection); a field not in use can be pulled like the rest.
+    const field = target.closest<HTMLElement>("input, textarea, [contenteditable='true'], .rich-view");
+    const active = document.activeElement;
+    if (field && active && (field === active || field.contains(active))) return;
     const inHead = !!target.closest(".m-grabber, .detail-head, .detail-bar");
+    const t = e.touches[0];
     // Writing: a swipe down on the rows above the keyboard puts the keyboard away first.
     if (typing && inHead) {
-      const t = e.touches[0];
       gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false, keyboard: true };
       return;
     }
-    const body = target.closest<HTMLElement>(".detail-body");
-    // Half open: any pull moves the sheet. Full screen: only the top rows, or a pull down from the top of the text.
-    if (full && !inHead && !(body && body.scrollTop <= 0)) return;
-    const t = e.touches[0];
-    gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false };
+    // A part that scrolls (a long description, many subtasks) keeps its moves, except a pull down from its top.
+    const sec = target.closest<HTMLElement>(".detail-sec");
+    const scroller = full && sec && sec.scrollHeight > sec.clientHeight + 1 ? sec : null;
+    gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false, scroller };
   };
   const onTouchMove = (e: React.TouchEvent) => {
     const g = gesture.current;
@@ -803,8 +838,8 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
         gesture.current = null;
         return;
       }
-      // Full screen with the text scrolled down: let the text scroll.
-      if (full && dy < 0) {
+      // Full screen: up is nothing to the sheet; a scrolled part scrolls.
+      if ((full && dy < 0) || (g.scroller && (dy < 0 || g.scroller.scrollTop > 0))) {
         gesture.current = null;
         return;
       }

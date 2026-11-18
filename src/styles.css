@@ -386,6 +386,8 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .card.is-selected { background: var(--active); }
 .card-top { display: flex; gap: 11px; align-items: flex-start; }
 .card-top .check { margin-top: 2px; }
+/* The title's first line is centered on the check (half a point higher, for the eye: lowercase sits low in its line). */
+.card-top .task-title { margin-top: calc(9.5px - 0.5lh); }
 .card .task-title { white-space: normal; display: block; }
 .card-notes { margin: 5px 0 0 27px; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-foot { display: flex; align-items: center; margin: 6px 0 0 27px; }
@@ -472,6 +474,9 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cal-chip.is-deadline { background: none; border: 1px solid color-mix(in srgb, var(--signal) 50%, transparent); color: var(--signal); }
 .cal-chip-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
 .cal-chip-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; flex: none; }
+:root { --span-inset: 4px; }
+.is-narrow { --span-inset: 2px; }
+.is-mobile .app { --span-inset: 1px; }
 .cal-span { position: absolute; z-index: 1; }
 /* Start and end edges of all-day entries: drag to change the range. */
 .cal-chip:not(.cal-span) { position: relative; }
@@ -603,11 +608,18 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .subtasks { display: flex; flex-direction: column; gap: 1px; margin: 0 -8px; }
 .subtask { display: flex; align-items: center; gap: 11px; min-height: 34px; padding: 0 8px; border-radius: 7px; transition: background var(--fast); }
 .subtask:hover { background: var(--hover); }
-.subtask .task-title { cursor: pointer; }
+.subtask-title { flex: 1; min-width: 0; padding: 0; color: var(--text); text-overflow: ellipsis; }
+.subtask.is-done .subtask-title { color: var(--faint); text-decoration: line-through; }
+/* Small round buttons at the end of a subtask: delete, open. */
+.sub-btn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--hover); color: var(--muted); transition: background var(--fast), color var(--fast); }
+.sub-btn:hover { background: color-mix(in oklab, var(--text) 12%, transparent); color: var(--text); }
+.sub-btn .icon { display: block; }
+.subtask .sub-btn + .sub-btn { margin-left: -4px; }
 .subtask-add { color: var(--faint); }
 /* The plus takes the place of a subtask's check, so the suggestion starts where subtask titles do. */
 .subtask-plus { flex: none; width: 16px; height: 16px; display: grid; place-items: center; }
-.subtask-add input { padding: 0; }
+.subtask-add input { padding: 0; color: var(--text); }
+.subtask-add input::placeholder { color: var(--faint); }
 .subtask-add input { flex: 1; }
 .detail-foot { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 14px 0 16px; flex: none; }
 .foot-trigger { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 7px; font-size: 13.5px; transition: background var(--fast); }
@@ -785,6 +797,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .timeline { padding-bottom: var(--bar-h); }
 .is-mobile .column-body { padding-bottom: var(--bar-h); }
 .is-mobile .detail-pane { padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* The view's title starts where the tasks' titles do. */
+.is-mobile .view-head > .icon-btn-lg + h1 { margin-left: -5px; }
+/* The sheet keeps the home bar's room itself (once), and lets its bottom row sit a little into it. */
+.is-mobile .m-task-sheet .detail-pane { padding-bottom: 0; }
 .is-mobile .detail-head { height: 58px; }
 .is-mobile .sidebar-wrap.is-drawer { width: min(320px, 86vw) !important; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .is-mobile .menu-item { min-height: 40px; }
@@ -949,7 +965,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* A task opens in a sheet; pulled up it fills the screen. */
 .m-task-scrim { z-index: 88; }
-.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 46%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: env(safe-area-inset-bottom, 0px); transition: transform 280ms cubic-bezier(0.2, 0.9, 0.25, 1); animation: sheet-in 280ms cubic-bezier(0.2, 0.9, 0.25, 1); will-change: transform; }
+.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 46%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: max(6px, calc(env(safe-area-inset-bottom, 0px) - 12px)); transition: transform 280ms cubic-bezier(0.2, 0.9, 0.25, 1); animation: sheet-in 280ms cubic-bezier(0.2, 0.9, 0.25, 1); will-change: transform; }
 /* The sheet goes on below its edge, so it never shows a gap while it glides or is pulled up. */
 .m-task-sheet::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--float); pointer-events: none; }
 /* Typing: the keyboard takes the lower half, so the sheet takes more of what is left. */
@@ -1008,8 +1024,13 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .subtasks { margin: 0 calc(-1 * var(--m-g)); gap: 0; }
 .m-task-sheet .detail-sep { height: 1px; background: var(--line); }
 .m-task-sheet .subtask { min-height: 48px; padding: 0 10px 0 var(--m-g); gap: 14px; border-radius: 0; }
-.m-task-sheet .subtask .task-title { flex: 1; min-width: 0; font-size: 16px; }
-.m-task-sheet .subtask .icon-btn { width: 40px; height: 40px; border-radius: 50%; }
+.m-task-sheet .subtask-title { height: 48px; font-size: 16px; }
+/* 30px buttons, the row's height as their touch area. */
+.m-task-sheet .sub-btn { position: relative; width: 30px; height: 30px; }
+.m-task-sheet .sub-btn::before { content: ""; position: absolute; inset: -9px -4px; }
+.m-task-sheet .sub-btn .icon { width: 13px; height: 13px; }
+.m-task-sheet .subtask { padding-right: var(--m-g); gap: 14px; }
+.m-task-sheet .subtask .sub-btn + .sub-btn { margin-left: -4px; }
 .m-task-sheet .subtask-plus { width: 20px; height: 20px; }
 .m-task-sheet .subtask-plus .icon { width: 16px; height: 16px; }
 .m-task-sheet .subtask-add input { height: 48px; font-size: 16px; }

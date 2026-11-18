@@ -212,8 +212,9 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
       data-id={task.id}
       style={{
         ["--c" as string]: color,
-        left: `calc(${(c0 / n) * 100}% + ${left ? 0 : 4}px)`,
-        width: `calc(${((c1 - c0 + 1) / n) * 100}% - ${(left ? 0 : 4) + (right ? 0 : 4)}px)`,
+        // Inset like the day's own chips (the cell's padding), so bars and chips start in line.
+        left: `calc(${(c0 / n) * 100}% + ${left ? "0px" : "var(--span-inset)"})`,
+        width: `calc(${((c1 - c0 + 1) / n) * 100}% - ${left ? "0px" : "var(--span-inset)"} - ${right ? "0px" : "var(--span-inset)"})`,
         top: top + lane * CHIP_H,
       }}
       title={plainText(task.title)}

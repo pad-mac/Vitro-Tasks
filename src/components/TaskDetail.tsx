@@ -55,6 +55,7 @@ type Draft = ReturnType<typeof useDraft>;
  */
 function useSplit(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement | null>, b: RefObject<HTMLElement | null>) {
   const ro = useRef<ResizeObserver | null>(null);
+  const watched = useRef(new Set<Element>());
   const fit = useRef(() => {});
   fit.current = () => {
     const B = body.current;
@@ -62,31 +63,39 @@ function useSplit(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement 
     if (!B || !A) return;
     const S = b.current;
     const parts = S ? [A, S] : [A];
-    for (const el of parts) {
-      el.style.maxHeight = "";
-      el.classList.remove("is-cut");
-    }
+    // Watch what can grow: the body and the contents of both parts. Only new
+    // elements are added (observing again would report again, every frame).
+    const now = new Set<Element>([B, ...parts.flatMap((el) => [...el.children])]);
+    for (const el of watched.current) if (!now.has(el)) ro.current?.unobserve(el);
+    for (const el of now) if (!watched.current.has(el)) ro.current?.observe(el);
+    watched.current = now;
+    // Measured as they are: scrollHeight is a part's full content even while
+    // it is cut, so nothing is reset (which would throw away its scroll).
+    const cs = getComputedStyle(B);
+    const gap = parseFloat(cs.rowGap) || 0;
+    const kids = [...B.children].filter((el) => (el as HTMLElement).offsetParent !== null || el === A);
+    let fixed = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + gap * Math.max(0, kids.length - 1);
+    for (const el of kids) if (el !== A && el !== S) fixed += (el as HTMLElement).offsetHeight;
+    const avail = B.clientHeight - fixed;
     const ha = A.scrollHeight;
     const hb = S?.scrollHeight ?? 0;
-    const avail = B.clientHeight - (B.scrollHeight - ha - hb);
-    // Watch what can grow: the body itself and the contents of both parts.
-    ro.current?.disconnect();
-    ro.current?.observe(B);
-    for (const el of parts) for (const c of el.children) ro.current?.observe(c);
-    if (ha + hb <= avail + 1) return;
-    const half = avail / 2;
-    let ma = half;
-    let mb = half;
-    if (!S) ma = avail;
-    else if (ha <= half) mb = avail - ha;
-    else if (hb <= half) ma = avail - hb;
-    const cut = (el: HTMLElement, h: number, max: number) => {
-      if (h <= max + 1) return;
-      el.style.maxHeight = `${Math.max(0, Math.floor(max))}px`;
-      el.classList.add("is-cut");
+    let ma = Infinity;
+    let mb = Infinity;
+    if (ha + hb > avail + 1) {
+      const half = avail / 2;
+      if (!S) ma = avail;
+      else if (ha <= half) mb = avail - ha;
+      else if (hb <= half) ma = avail - hb;
+      else ma = mb = half;
+    }
+    const set = (el: HTMLElement, h: number, max: number) => {
+      const cut = h > max + 1;
+      const value = cut ? `${Math.max(0, Math.floor(max))}px` : "";
+      if (el.style.maxHeight !== value) el.style.maxHeight = value;
+      el.classList.toggle("is-cut", cut);
     };
-    cut(A, ha, ma);
-    if (S) cut(S, hb, mb);
+    set(A, ha, ma);
+    if (S) set(S, hb, mb);
   };
   useEffect(() => {
     let frame = 0;
@@ -98,6 +107,7 @@ function useSplit(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement 
     return () => {
       cancelAnimationFrame(frame);
       ro.current?.disconnect();
+      watched.current.clear();
     };
   }, []);
   useLayoutEffect(() => fit.current());
@@ -212,6 +222,46 @@ function PriorityPicker({ priority, onPick }: { priority: number; onPick: (p: nu
         </div>
       )}
     </Popover>
+  );
+}
+
+/**
+ * A subtask in the editor: its title is edited in place (Enter moves on to
+ * "Add Subtask" for the next one); the arrow opens it on its own.
+ */
+function SubtaskRow({ task, onOpen, onNext }: { task: Task; onOpen: () => void; onNext: () => void }) {
+  const update = useStore((s) => s.updateTask);
+  const toggle = useStore((s) => s.toggleTask);
+  const del = useStore((s) => s.deleteTask);
+  const title = useDraft(task.title, task.id, (v) => {
+    if (v.trim()) void update(task.id, { title: v.trim() });
+  });
+  return (
+    <div className={`subtask ${task.status ? "is-done" : ""}`}>
+      <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+      <input
+        className="subtask-title"
+        {...title}
+        onBlur={() => {
+          // Emptied: keep the old title (delete it with the x).
+          if (!title.value.trim()) title.onChange({ target: { value: task.title } });
+          title.onBlur();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            title.onBlur();
+            onNext();
+          }
+        }}
+      />
+      <button type="button" className="sub-btn" title="Delete subtask" onClick={() => void del(task.id)}>
+        <Icon name="x" size={11} />
+      </button>
+      <button type="button" className="sub-btn" title="Open subtask" onClick={onOpen}>
+        <Icon name="chevron" size={12} />
+      </button>
+    </div>
   );
 }
 
@@ -379,13 +429,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
             <i className="detail-sep" />
             <section className="subtasks detail-sec" ref={subsRef}>
               {subs.map((s) => (
-                <div key={s.id} className={`subtask ${s.status ? "is-done" : ""}`}>
-                  <Check done={s.status !== 0} wontDo={s.status === 2} priority={s.priority} onToggle={() => void toggle(s.id)} />
-                  <span className="task-title" onClick={() => select(s.id, anchor)}><Rich text={s.title} /></span>
-                  <button type="button" className="icon-btn hover-reveal" title="Delete subtask" onClick={() => void del(s.id)}>
-                    <Icon name="x" size={12} />
-                  </button>
-                </div>
+                <SubtaskRow key={s.id} task={s} onOpen={() => select(s.id, anchor)} onNext={() => subRef.current?.focus()} />
               ))}
               <div className="subtask subtask-add">
                 <span className="subtask-plus"><Icon name="plus" size={14} /></span>
