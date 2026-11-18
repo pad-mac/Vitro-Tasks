@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { QuickAdd } from "./QuickAdd";
 import { seedDemo } from "./lib/demo";
-import { hasNative, postNative } from "./lib/native";
+import { hasNative, onNative, postNative } from "./lib/native";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 /** Readable text colour on top of a highlight colour. */
@@ -26,10 +26,23 @@ if (isMobile) document.documentElement.classList.add("is-mobile");
 // iOS app: the bar, the task menu and the keyboard are native.
 if (hasNative()) document.documentElement.classList.add("is-native");
 
-// The on-screen keyboard: how much of the window it covers, for sheets that sit on top of it.
+// The on-screen keyboard: how much of the window it covers, for sheets that
+// make room for it. In the iOS app the native side reports it (with the
+// keyboard's own animation time); in a browser the visual viewport tells.
+if (isMobile) {
+  onNative("keyboard", (p) => {
+    const root = document.documentElement;
+    root.style.setProperty("--kb-ms", `${Math.round(Number(p.duration ?? 0.25) * 1000)}ms`);
+    root.style.setProperty("--kb", `${Number(p.height ?? 0)}px`);
+    root.classList.toggle("has-keyboard", Number(p.height) > 0);
+  });
+}
 if (isMobile && window.visualViewport) {
   const vv = window.visualViewport;
-  const onResize = () => document.documentElement.style.setProperty("--kb", `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`);
+  const onResize = () => {
+    if (document.documentElement.classList.contains("is-native")) return;
+    document.documentElement.style.setProperty("--kb", `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`);
+  };
   vv.addEventListener("resize", onResize);
   vv.addEventListener("scroll", onResize);
 }

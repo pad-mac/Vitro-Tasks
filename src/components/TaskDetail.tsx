@@ -8,7 +8,7 @@ import { Check, DateField, DeadlineField, Flag, FloatingPanel, Icon, MenuItem, P
 import { hasLink } from "../lib/rich";
 
 /** Text field that edits locally and saves shortly after typing stops, or on blur. */
-function useDraft(value: string, taskId: string, save: (v: string) => void) {
+export function useDraft(value: string, taskId: string, save: (v: string) => void) {
   const [draft, setDraft] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latest = useRef({ draft, value, save });
@@ -46,13 +46,13 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-type Draft = ReturnType<typeof useDraft>;
+export type Draft = ReturnType<typeof useDraft>;
 
 /**
  * A text field that shows its links as clickable links while not being edited.
  * Clicking anywhere else in the text switches to editing.
  */
-function RichField({
+export function RichField({
   draft,
   className,
   placeholder,
