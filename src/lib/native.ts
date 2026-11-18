@@ -1,5 +1,5 @@
-// Bridge to the native iOS parts (plugins/native-ui): the glass tab bar, the
-// task context menu and the keyboard. Messages go out through a WebKit message
+// Bridge to the native iOS parts (plugins/native-ui): the glass tab bar,
+// haptics and the keyboard. Messages go out through a WebKit message
 // handler; answers come back through window.__vitroNative(name, payload).
 
 type Payload = Record<string, unknown>;
