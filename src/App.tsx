@@ -3,6 +3,7 @@ import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
+import { postNative } from "./lib/native";
 import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
@@ -346,6 +347,15 @@ export function App() {
   const menu = useStore((s) => s.menu);
   const composer = useStore((s) => s.composer);
   const typing = useTyping();
+  // iOS: while a sheet is open, the colour behind the web view is the sheet's,
+  // so the keyboard's rounded corners show the sheet, not the screen behind.
+  const theme = useStore((s) => s.theme);
+  const sheetOpen = addOpen || !!selected || !!composer;
+  useEffect(() => {
+    if (!isMobile) return;
+    const css = getComputedStyle(document.documentElement);
+    postNative({ type: "backdrop", color: sheetOpen ? css.getPropertyValue("--float").trim() : null });
+  }, [sheetOpen, theme]);
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {

@@ -653,18 +653,35 @@ final class PressController: NSObject, UIContextMenuInteractionDelegate, UIDragI
   }
 
   func dragInteraction(_ interaction: UIDragInteraction, previewForLifting item: UIDragItem, session: UIDragSession) -> UITargetedDragPreview? {
-    guard let a = anchor, a.window != nil, let t = lifted else { return nil }
+    guard let a = anchor, a.window != nil, let host = a.superview, let t = lifted else { return nil }
     let parameters = UIDragPreviewParameters()
     parameters.visiblePath = UIBezierPath(roundedRect: a.bounds, cornerRadius: t.radius)
     if let bg = background { parameters.backgroundColor = bg }
-    return UITargetedDragPreview(view: a, parameters: parameters)
+    // A copy travels with the finger, so the picture itself can leave the
+    // task's old place empty during the drag.
+    let copy: UIView
+    if let image = t.image {
+      copy = UIImageView(image: image)
+    } else if let snap = a.snapshotView(afterScreenUpdates: false) {
+      copy = snap
+    } else {
+      return UITargetedDragPreview(view: a, parameters: parameters)
+    }
+    copy.frame = a.bounds
+    return UITargetedDragPreview(view: copy, parameters: parameters, target: UIDragPreviewTarget(container: host, center: a.center))
   }
 
   func dragInteraction(_ interaction: UIDragInteraction, sessionWillBegin session: UIDragSession) {
     guard let t = lifted else { return }
     dragging = true
     addCatcher()
+    UIView.animate(withDuration: 0.12) { self.anchor?.alpha = 0 }
     emit("dragStart", ["id": t.id])
+  }
+
+  /// A drag that is called off flies back; the picture is there again when it lands.
+  func dragInteraction(_ interaction: UIDragInteraction, item: UIDragItem, willAnimateCancelWith animator: UIDragAnimating) {
+    animator.addAnimations { [weak self] in self?.anchor?.alpha = 1 }
   }
 
   func dragInteraction(_ interaction: UIDragInteraction, sessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool {

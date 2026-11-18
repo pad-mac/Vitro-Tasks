@@ -31,9 +31,9 @@ import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./sh
 export interface DropHint {
   group: string;
   before: string | null;
-  /** Index among the group's other tasks, and where the line goes (px from the top of the group). */
+  /** Index among the group's other tasks, and where the line goes (px from the top of the group; none over the task's own place). */
   index: number;
-  y: number;
+  y: number | null;
 }
 
 export const LIST_COLORS = ["#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a"];
@@ -674,7 +674,7 @@ export const useStore = create<State>((set, get) => {
 
     setDropHint(hint) {
       const cur = get().dropHint;
-      if (cur === hint || (cur && hint && cur.group === hint.group && cur.before === hint.before && Math.abs(cur.y - hint.y) < 0.5)) return;
+      if (cur === hint || (cur && hint && cur.group === hint.group && cur.before === hint.before && (cur.y === hint.y || (cur.y !== null && hint.y !== null && Math.abs(cur.y - hint.y) < 0.5)))) return;
       set({ dropHint: hint });
     },
 
