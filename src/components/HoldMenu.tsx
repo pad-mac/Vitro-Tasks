@@ -120,6 +120,11 @@ export const holdMenu = {
   itemAt(x: number, y: number): string | null {
     return document.elementFromPoint(x, y)?.closest<HTMLElement>(".hold-menu [data-hm]")?.dataset.hm ?? null;
   },
+  /** The point is on the menu (or within `pad` px of it). */
+  inMenu(x: number, y: number, pad = 0): boolean {
+    const m = document.querySelector(".hold-layer:not(.is-waiting) .hold-menu")?.getBoundingClientRect();
+    return !!m && x >= m.left - pad && x <= m.right + pad && y >= m.top - pad && y <= m.bottom + pad;
+  },
   setHot(key: string | null) {
     if (key === hot) return;
     hot = key;
@@ -128,18 +133,29 @@ export const holdMenu = {
   },
   hot: () => hot,
   /**
-   * True if a move from `from` by (dx, dy) heads for the menu (within 60° of
-   * the way to its nearest point).
+   * True if a move from `from` by (dx, dy), carried on in a straight line,
+   * would reach the menu. A pull past its side does not, so that drags.
    */
   toward(from: { x: number; y: number }, dx: number, dy: number): boolean {
-    const m = document.querySelector(".hold-menu")?.getBoundingClientRect();
+    const m = document.querySelector(".hold-layer:not(.is-waiting) .hold-menu")?.getBoundingClientRect();
     if (!m) return false;
-    const nx = Math.min(Math.max(from.x, m.left), m.right) - from.x;
-    const ny = Math.min(Math.max(from.y, m.top), m.bottom) - from.y;
-    const a = Math.hypot(nx, ny);
-    const b = Math.hypot(dx, dy);
-    if (!a) return true;
-    return (nx * dx + ny * dy) / (a * b) > 0.5;
+    const pad = 6;
+    let t0 = 0;
+    let t1 = Infinity;
+    for (const [p, d, lo, hi] of [
+      [from.x, dx, m.left - pad, m.right + pad],
+      [from.y, dy, m.top - pad, m.bottom + pad],
+    ]) {
+      if (Math.abs(d) < 1e-6) {
+        if (p < lo || p > hi) return false;
+        continue;
+      }
+      const a = (lo - p) / d;
+      const b = (hi - p) / d;
+      t0 = Math.max(t0, Math.min(a, b));
+      t1 = Math.min(t1, Math.max(a, b));
+    }
+    return t0 <= t1;
   },
   close() {
     if (!hold || hold.closing) return;
@@ -230,7 +246,7 @@ export function HoldMenu() {
     if (!h || !el || h.closing) return;
     const r = h.rect;
     const { top, bottom } = bounds();
-    const width = Math.min(304, innerWidth - 2 * EDGE);
+    const width = Math.min(244, innerWidth - 2 * EDGE);
     el.style.width = `${width}px`;
     el.style.left = `${Math.round((innerWidth - width) / 2)}px`;
     el.style.maxHeight = "";
@@ -279,9 +295,8 @@ export function HoldMenu() {
       <div ref={ref} className="hold-menu" role="menu">
         <div className="hm-row">
           {dates.map(([key, icon, label, d]) => (
-            <button type="button" key={key} data-hm={key} className={cls(key, `hm-cell ${active(d) ? "is-active" : ""}`)} onClick={() => holdMenu.act(key)}>
+            <button type="button" key={key} data-hm={key} aria-label={label} className={cls(key, `hm-cell ${active(d) ? "is-active" : ""}`)} onClick={() => holdMenu.act(key)}>
               <Icon name={icon} size={22} />
-              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -291,21 +306,21 @@ export function HoldMenu() {
               type="button"
               key={p}
               data-hm={`prio:${p}`}
+              aria-label={PRIORITY_LABELS[p]}
               className={cls(`prio:${p}`, `hm-cell ${task.priority === p ? "is-active" : ""}`)}
               onClick={() => holdMenu.act(`prio:${p}`)}
             >
               <Flag priority={p} size={21} />
-              <span>{PRIORITY_LABELS[p]}</span>
             </button>
           ))}
         </div>
         <div className="hm-sep" />
-        {item("pin", <Icon name="pin" size={20} />, task.pinned ? "Unpin" : "Pin")}
-        {!task.parent_id && item("subtask", <Icon name="subtask" size={20} />, "Add Subtask")}
-        {!task.parent_id && item("move", <Icon name="move" size={20} />, "Move to", <Icon name="chevron" size={13} />)}
+        {item("pin", <Icon name="pin" size={17} />, task.pinned ? "Unpin" : "Pin")}
+        {!task.parent_id && item("subtask", <Icon name="subtask" size={17} />, "Add Subtask")}
+        {!task.parent_id && item("move", <Icon name="move" size={17} />, "Move to", <Icon name="chevron" size={12} />)}
         {item(
           "deadline",
-          <Icon name="deadline" size={20} />,
+          <Icon name="deadline" size={17} />,
           task.deadline_date ? "Deadline" : "Add Deadline",
           task.deadline_date ? (
             <span className="hm-value">
@@ -315,10 +330,10 @@ export function HoldMenu() {
           ) : null,
         )}
         <div className="hm-sep" />
-        {task.status === 0 ? item("wontdo", <Icon name="ban" size={20} />, "Won't Do") : item("reopen", <Icon name="tasks" size={20} />, "Reopen")}
-        {item("duplicate", <Icon name="copy" size={20} />, "Duplicate")}
+        {task.status === 0 ? item("wontdo", <Icon name="ban" size={17} />, "Won't Do") : item("reopen", <Icon name="tasks" size={17} />, "Reopen")}
+        {item("duplicate", <Icon name="copy" size={17} />, "Duplicate")}
         <div className="hm-sep" />
-        {item("delete", <Icon name="trash" size={20} />, "Delete", null, true)}
+        {item("delete", <Icon name="trash" size={17} />, "Delete", null, true)}
       </div>
     </div>
   );

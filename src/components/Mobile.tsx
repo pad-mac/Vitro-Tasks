@@ -1,6 +1,7 @@
 // Phone layout pieces: the bottom bar, the add sheet, and touch gestures
 // (long press for the menu, long press and drag to reorder).
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { haptic, isMobile } from "../lib/platform";
 import { onNative, postNative } from "../lib/native";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
@@ -310,6 +311,8 @@ export function MobileAdd({
 const LIFT_MS = 380;
 // A held task whose menu needs room it has to make: the menu waits this long for the finger to rest.
 const REVEAL_MS = 220;
+// How far off the menu the finger may stray (while sliding over it) before the task is dragged instead.
+const OFF_MENU = 14;
 const SLOP = 8;
 const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
 const DRAGGABLE = '.task-row[data-depth="0"], .card';
@@ -432,7 +435,16 @@ export function useTouchGestures() {
       }
       if (held) {
         e.preventDefault();
-        if (held.mode === "select") return holdMenu.setHot(holdMenu.itemAt(t.clientX, t.clientY));
+        if (held.mode === "select") {
+          const key = holdMenu.itemAt(t.clientX, t.clientY);
+          // Slid off the menu again (back over the task, or past its side): now it drags.
+          if (!key && held.draggable && !holdMenu.inMenu(t.clientX, t.clientY, OFF_MENU)) {
+            dragHeld(held.at, t.clientX, t.clientY, false);
+            held = null;
+            return;
+          }
+          return holdMenu.setHot(key);
+        }
         const dx = t.clientX - held.at.x;
         const dy = t.clientY - held.at.y;
         // Not moved yet: nothing under the resting finger counts (the menu may have opened under it).
@@ -445,7 +457,7 @@ export function useTouchGestures() {
           return;
         }
         const key = holdMenu.itemAt(t.clientX, t.clientY);
-        if (key || holdMenu.toward(held.at, dx, dy) || !held.draggable) {
+        if (key || !held.draggable || holdMenu.inMenu(t.clientX, t.clientY, OFF_MENU) || holdMenu.toward(held.at, dx, dy)) {
           if (key) {
             held.mode = "select";
             holdMenu.setHot(key);
@@ -716,35 +728,59 @@ export function useEdgeSwipe() {
 
 /**
  * A task opens in a sheet over the lower part of the screen; pull it up for
- * full-screen editing, pull it down (or tap above it) to close it.
+ * full-screen editing, pull it down (or tap above it) to close it. A long
+ * pull down from full screen closes it too. The sheet only ever moves by
+ * transform: switching between the two heights keeps it where the finger
+ * left it and glides from there.
  */
 export function MobileTaskSheet({ task }: { task: Task | null }) {
   const select = useStore((s) => s.select);
-  const [shown, closing] = usePresence(task, 240);
+  const [shown, closing] = usePresence(task, 220);
   const [full, setFull] = useState(false);
-  const [drag, setDrag] = useState(0);
+  const [typing, setTyping] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ y: number; x: number; lastY: number; lastT: number; v: number; active: boolean } | null>(null);
-  const bodyScroll = useRef<HTMLElement | null>(null);
   const id = task?.id ?? null;
   useEffect(() => {
     if (id) setFull(false);
   }, [id]);
   if (!shown) return null;
 
+  /** Settles the sheet at `next` (a height, or closed), starting from where it is drawn now. */
+  const glide = (next: boolean | "close") => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove("is-pulling");
+    if (next === "close") {
+      el.style.transition = "transform 190ms cubic-bezier(0.2, 0.7, 0.3, 1)";
+      el.style.transform = "translateY(100%)";
+      select(null);
+      return;
+    }
+    const from = el.getBoundingClientRect().top;
+    flushSync(() => setFull(next));
+    el.style.transition = "none";
+    el.style.transform = "";
+    const natural = el.getBoundingClientRect().top;
+    el.style.transform = `translateY(${from - natural}px)`;
+    void el.offsetHeight;
+    el.style.transition = "";
+    el.style.transform = "";
+  };
   const onTouchStart = (e: React.TouchEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, [contenteditable='true'], .floating, .pop-panel")) return;
-    const inHead = !!target.closest(".m-grabber, .detail-head");
+    const inHead = !!target.closest(".m-grabber, .detail-head, .detail-bar");
     const body = target.closest<HTMLElement>(".detail-body");
-    bodyScroll.current = body;
-    // Half open: any pull moves the sheet. Full screen: only the top bar, or a pull down from the top of the text.
+    // Half open: any pull moves the sheet. Full screen: only the top rows, or a pull down from the top of the text.
     if (full && !inHead && !(body && body.scrollTop <= 0)) return;
     const t = e.touches[0];
     gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false };
   };
   const onTouchMove = (e: React.TouchEvent) => {
     const g = gesture.current;
-    if (!g) return;
+    const el = ref.current;
+    if (!g || !el) return;
     const t = e.touches[0];
     const dy = t.clientY - g.y;
     if (!g.active) {
@@ -759,42 +795,49 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
         return;
       }
       g.active = true;
+      el.classList.add("is-pulling");
     }
     const now = Date.now();
     g.v = (t.clientY - g.lastY) / Math.max(1, now - g.lastT);
     g.lastY = t.clientY;
     g.lastT = now;
     // Pulling past full height meets resistance.
-    setDrag(full ? Math.max(0, dy) : dy < 0 ? dy * 0.6 : dy);
+    el.style.transform = `translateY(${full ? Math.max(0, dy) : dy < 0 ? dy * 0.6 : dy}px)`;
   };
   const onTouchEnd = () => {
     const g = gesture.current;
     gesture.current = null;
     if (!g?.active) return;
     const dy = g.lastY - g.y;
-    setDrag(0);
-    if (!full && (dy < -50 || g.v < -0.5)) {
-      setFull(true);
-      haptic("light");
-    } else if (full && (dy > 90 || g.v > 0.6)) setFull(false);
-    else if (!full && (dy > 90 || g.v > 0.6)) select(null);
+    if (!full) {
+      if (dy < -50 || g.v < -0.5) {
+        haptic("light");
+        glide(true);
+      } else if (dy > 80 || g.v > 0.6) glide("close");
+      else glide(false);
+    } else if (dy > innerHeight * 0.5 || (dy > 140 && g.v > 1.1)) glide("close");
+    else if (dy > 90 || g.v > 0.6) glide(false);
+    else glide(true);
   };
+  const editing = (el: EventTarget | null) => !!(el as HTMLElement | null)?.closest?.("input, textarea, [contenteditable='true']");
 
   return (
     <>
       <div className={`m-scrim m-task-scrim ${closing ? "" : "is-open"}`} onClick={() => select(null)} />
       <div
-        className={`m-task-sheet ${full ? "is-full" : ""} ${closing ? "is-closing" : ""} ${drag ? "is-pulling" : ""}`}
-        style={drag ? { transform: `translateY(${drag}px)` } : undefined}
+        ref={ref}
+        className={`m-task-sheet ${full ? "is-full" : ""} ${typing ? "is-typing" : ""} ${closing ? "is-closing" : ""}`}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={onTouchEnd}
+        onFocusCapture={(e) => editing(e.target) && setTyping(true)}
+        onBlurCapture={() => setTimeout(() => setTyping(editing(document.activeElement) && !!ref.current?.contains(document.activeElement)), 50)}
       >
-        <div className="m-grabber" onClick={() => setFull(!full)}>
+        <div className="m-grabber" onClick={() => glide(!full)}>
           <i />
         </div>
-        <TaskDetail key={shown.id} task={shown} variant="pane" />
+        <TaskDetail key={shown.id} task={shown} variant="sheet" full={full} />
       </div>
     </>
   );

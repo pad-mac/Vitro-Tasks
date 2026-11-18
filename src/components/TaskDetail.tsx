@@ -113,12 +113,12 @@ function RichField({
   );
 }
 
-function ListPicker({ listId, onPick }: { listId: string | null; onPick: (id: string | null) => void }) {
+function ListPicker({ listId, onPick, prefer = "above" }: { listId: string | null; onPick: (id: string | null) => void; prefer?: "above" | "below" }) {
   const lists = useStore((s) => s.lists);
   const list = lists.find((l) => l.id === listId);
   return (
     <Popover
-      prefer="above"
+      prefer={prefer}
       trigger={
         <span className="foot-trigger">
           {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={14} />}
@@ -160,7 +160,12 @@ function PriorityPicker({ priority, onPick }: { priority: number; onPick: (p: nu
   );
 }
 
-export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "popup" }) {
+/**
+ * The task editor. `sheet`: the phone's sheet (`full`: pulled up to full
+ * screen), with the list, deadline, priority and more in a row of their own
+ * under the date, so long dates get the whole first row.
+ */
+export function TaskDetail({ task, variant, full = false }: { task: Task; variant: "pane" | "popup" | "sheet"; full?: boolean }) {
   const anchor = useStore((s) => s.anchor);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
@@ -188,61 +193,128 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
   const parent = task.parent_id ? tasks.find((t) => t.id === task.parent_id) : null;
   const open = task.status === 0;
 
+  const back = (
+    <button type="button" className="icon-btn pane-back" title="Back" onClick={() => select(null)}>
+      <Icon name="back" size={16} />
+    </button>
+  );
+  const dates = (
+    <>
+      <DateField
+        ghost
+        date={task.start_date}
+        time={task.start_time}
+        placeholder="Date"
+        tone={open && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
+        onChange={(d, t) =>
+          void update(task.id, {
+            start_date: d,
+            start_time: d ? t : null,
+            ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
+          })
+        }
+      />
+      {task.start_date && (
+        <>
+          <span className="arrow">–</span>
+          <DateField
+            ghost
+            icon=""
+            className="is-end"
+            date={task.end_date ?? (task.end_time ? task.start_date : null)}
+            time={task.end_time}
+            placeholder="End"
+            onChange={(d, t) => {
+              const ok = d !== null && d >= task.start_date!;
+              void update(task.id, { end_date: ok && d > task.start_date! ? d : null, end_time: ok ? t : null });
+            }}
+          />
+        </>
+      )}
+    </>
+  );
+  const deadline = (
+    <DeadlineField
+      date={task.deadline_date}
+      time={task.deadline_time}
+      open={open}
+      onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
+    />
+  );
+  const priority = <PriorityPicker priority={task.priority} onPick={(p) => void update(task.id, { priority: p })} />;
+  const below = variant === "sheet";
+  const listPart = (
+    <>
+      {!task.parent_id && <ListPicker prefer={below ? "below" : "above"} listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
+      {!task.parent_id && listSections.length > 0 && (
+        <Popover prefer={below ? "below" : "above"} trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
+          {(close) => (
+            <div className="menu menu-scroll">
+              <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
+              {listSections.map((s) => (
+                <MenuItem key={s.id} active={s.id === task.section_id} onClick={() => { void update(task.id, { section_id: s.id }); close(); }}>
+                  {s.name}
+                </MenuItem>
+              ))}
+            </div>
+          )}
+        </Popover>
+      )}
+    </>
+  );
+  const more = (
+    <Popover prefer={below ? "below" : "above"} align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
+      {(close) => (
+        <div className="menu">
+          <MenuItem onClick={() => { void update(task.id, { pinned: task.pinned ? 0 : 1 }); close(); }}>
+            <Icon name="pin" size={15} /> {task.pinned ? "Unpin" : "Pin"}
+          </MenuItem>
+          <MenuItem onClick={() => { void duplicate(task.id); close(); }}>
+            <Icon name="copy" size={15} /> Duplicate
+          </MenuItem>
+          {open && (
+            <MenuItem onClick={() => { void wontDo(task.id); close(); }}>
+              <Icon name="ban" size={15} /> Won't Do
+            </MenuItem>
+          )}
+          <MenuItem danger onClick={() => { void del(task.id); close(); }}>
+            <Icon name="trash" size={15} /> Delete
+          </MenuItem>
+        </div>
+      )}
+    </Popover>
+  );
+
   return (
-    <aside className={`detail detail-${variant}`}>
+    <aside className={`detail detail-${variant === "sheet" ? "pane detail-sheet" : variant}`}>
       <header className="detail-head">
-        {variant === "pane" && (
-          <button type="button" className="icon-btn pane-back" title="Back" onClick={() => select(null)}>
-            <Icon name="back" size={16} />
-          </button>
-        )}
+        {variant === "pane" && back}
         <Check done={!open} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
         <i className="vr" />
-        <DateField
-          ghost
-          date={task.start_date}
-          time={task.start_time}
-          placeholder="Date"
-          tone={open && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
-          onChange={(d, t) =>
-            void update(task.id, {
-              start_date: d,
-              start_time: d ? t : null,
-              ...(d && task.end_date && task.end_date >= d ? {} : { end_date: null, end_time: null }),
-            })
-          }
-        />
-        {task.start_date && (
+        {dates}
+        {variant !== "sheet" && (
           <>
-            <span className="arrow">–</span>
-            <DateField
-              ghost
-              icon=""
-              className="is-end"
-              date={task.end_date ?? (task.end_time ? task.start_date : null)}
-              time={task.end_time}
-              placeholder="End"
-              onChange={(d, t) => {
-                const ok = d !== null && d >= task.start_date!;
-                void update(task.id, { end_date: ok && d > task.start_date! ? d : null, end_time: ok ? t : null });
-              }}
-            />
+            <span className="push" />
+            {deadline}
+            {priority}
           </>
         )}
-        <span className="push" />
-        <DeadlineField
-          date={task.deadline_date}
-          time={task.deadline_time}
-          open={open}
-          onChange={(d, t) => void update(task.id, { deadline_date: d, deadline_time: d ? t : null })}
-        />
-        <PriorityPicker priority={task.priority} onPick={(p) => void update(task.id, { priority: p })} />
         {variant === "pane" && (
           <button type="button" className="icon-btn pane-close" title="Close" onClick={() => select(null)}>
             <Icon name="x" size={14} />
           </button>
         )}
       </header>
+      {variant === "sheet" && (
+        <div className="detail-bar">
+          {full && back}
+          {listPart}
+          <span className="push" />
+          {deadline}
+          {priority}
+          {more}
+        </div>
+      )}
 
       <div className="detail-body">
         {parent && (
@@ -283,44 +355,13 @@ export function TaskDetail({ task, variant }: { task: Task; variant: "pane" | "p
         )}
       </div>
 
-      <footer className="detail-foot">
-        {!task.parent_id && <ListPicker listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
-        {!task.parent_id && listSections.length > 0 && (
-          <Popover prefer="above" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
-            {(close) => (
-              <div className="menu menu-scroll">
-                <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>
-                {listSections.map((s) => (
-                  <MenuItem key={s.id} active={s.id === task.section_id} onClick={() => { void update(task.id, { section_id: s.id }); close(); }}>
-                    {s.name}
-                  </MenuItem>
-                ))}
-              </div>
-            )}
-          </Popover>
-        )}
-        <span className="push" />
-        <Popover prefer="above" align="right" title="More" trigger={<span className="icon-btn"><Icon name="dots" /></span>}>
-          {(close) => (
-            <div className="menu">
-              <MenuItem onClick={() => { void update(task.id, { pinned: task.pinned ? 0 : 1 }); close(); }}>
-                <Icon name="pin" size={15} /> {task.pinned ? "Unpin" : "Pin"}
-              </MenuItem>
-              <MenuItem onClick={() => { void duplicate(task.id); close(); }}>
-                <Icon name="copy" size={15} /> Duplicate
-              </MenuItem>
-              {open && (
-                <MenuItem onClick={() => { void wontDo(task.id); close(); }}>
-                  <Icon name="ban" size={15} /> Won't Do
-                </MenuItem>
-              )}
-              <MenuItem danger onClick={() => { void del(task.id); close(); }}>
-                <Icon name="trash" size={15} /> Delete
-              </MenuItem>
-            </div>
-          )}
-        </Popover>
-      </footer>
+      {variant !== "sheet" && (
+        <footer className="detail-foot">
+          {listPart}
+          <span className="push" />
+          {more}
+        </footer>
+      )}
     </aside>
   );
 }
