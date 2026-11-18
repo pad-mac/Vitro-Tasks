@@ -106,52 +106,13 @@ mod desktop {
 /// Native adjustments to the iOS web view.
 #[cfg(target_os = "ios")]
 mod ios {
-    use block2::RcBlock;
-    use objc2::encode::{Encode, Encoding};
     use objc2::msg_send;
-    use objc2::runtime::{AnyClass, AnyObject, Bool};
-    use std::ffi::CStr;
-    use std::ptr::{null_mut, NonNull};
+    use objc2::runtime::{AnyObject, Bool};
 
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct CGPoint {
-        x: f64,
-        y: f64,
-    }
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct CGSize {
-        width: f64,
-        height: f64,
-    }
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct CGRect {
-        origin: CGPoint,
-        size: CGSize,
-    }
-    unsafe impl Encode for CGPoint {
-        const ENCODING: Encoding = Encoding::Struct("CGPoint", &[f64::ENCODING, f64::ENCODING]);
-    }
-    unsafe impl Encode for CGSize {
-        const ENCODING: Encoding = Encoding::Struct("CGSize", &[f64::ENCODING, f64::ENCODING]);
-    }
-    unsafe impl Encode for CGRect {
-        const ENCODING: Encoding = Encoding::Struct("CGRect", &[CGPoint::ENCODING, CGSize::ENCODING]);
-    }
-
-    unsafe fn ns_string(s: &CStr) -> *mut AnyObject {
-        let cls = AnyClass::get(c"NSString").expect("NSString");
-        msg_send![cls, stringWithUTF8String: s.as_ptr()]
-    }
-
-    /// - The page draws under the status bar and home indicator itself
-    ///   (viewport-fit=cover), so the scroll view must not inset it, bounce or
-    ///   pan as a whole; scrolling happens inside the page.
-    /// - When the keyboard opens, the web view gets shorter instead of the page
-    ///   being pushed up, so sheets sit on top of the keyboard and the rest of
-    ///   the screen stays where it is.
+    /// The page draws under the status bar and home indicator itself
+    /// (viewport-fit=cover), so the scroll view must not inset it, bounce or
+    /// pan as a whole; scrolling happens inside the page. (The keyboard is
+    /// handled in plugins/native-ui.)
     pub unsafe fn setup(wk: *mut AnyObject) {
         if wk.is_null() {
             return;
@@ -163,44 +124,6 @@ mod ios {
             let _: () = msg_send![scroll, setBounces: Bool::NO];
             let _: () = msg_send![scroll, setScrollEnabled: Bool::NO];
         }
-        let Some(center_cls) = AnyClass::get(c"NSNotificationCenter") else {
-            return;
-        };
-        let center: *mut AnyObject = msg_send![center_cls, defaultCenter];
-        let name = ns_string(c"UIKeyboardWillChangeFrameNotification");
-        let wk_addr = wk as usize;
-        let block = RcBlock::new(move |note: NonNull<AnyObject>| {
-            let wk = wk_addr as *mut AnyObject;
-            let info: *mut AnyObject = msg_send![note.as_ptr(), userInfo];
-            if info.is_null() {
-                return;
-            }
-            let value: *mut AnyObject = msg_send![info, objectForKey: ns_string(c"UIKeyboardFrameEndUserInfoKey")];
-            if value.is_null() {
-                return;
-            }
-            let kb: CGRect = msg_send![value, CGRectValue];
-            let sup: *mut AnyObject = msg_send![wk, superview];
-            if sup.is_null() {
-                return;
-            }
-            let bounds: CGRect = msg_send![sup, bounds];
-            // The keyboard frame is in screen coordinates.
-            let kb_local: CGRect = msg_send![sup, convertRect: kb, fromView: null_mut::<AnyObject>()];
-            let covered = (bounds.origin.y + bounds.size.height - kb_local.origin.y).clamp(0.0, bounds.size.height);
-            let frame = CGRect {
-                origin: bounds.origin,
-                size: CGSize { width: bounds.size.width, height: bounds.size.height - covered },
-            };
-            let _: () = msg_send![wk, setFrame: frame];
-        });
-        let _observer: *mut AnyObject = msg_send![
-            center,
-            addObserverForName: name,
-            object: null_mut::<AnyObject>(),
-            queue: null_mut::<AnyObject>(),
-            usingBlock: &*block
-        ];
     }
 }
 

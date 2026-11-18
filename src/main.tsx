@@ -34,6 +34,18 @@ if (isMobile && window.visualViewport) {
   vv.addEventListener("scroll", onResize);
 }
 
+// iOS: if the web view is ever left short without a keyboard (the keyboard
+// went away without the usual notice), ask the native side to fit it again.
+if (isMobile) {
+  const check = () => {
+    const typing = document.activeElement?.matches("input, textarea, [contenteditable='true']");
+    if (!typing && innerHeight < screen.height - 40) postNative({ type: "fit" });
+  };
+  document.addEventListener("focusout", () => setTimeout(check, 500));
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && setTimeout(check, 300));
+  window.addEventListener("resize", () => setTimeout(check, 800));
+}
+
 function Root() {
   const theme = useStore((s) => s.theme);
   const highlight = useStore((s) => s.highlight);

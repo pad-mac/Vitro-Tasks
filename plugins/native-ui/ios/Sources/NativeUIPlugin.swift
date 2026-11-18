@@ -1,6 +1,6 @@
-// Native parts around the web view on iOS: the glass tab bar, the context
-// menu for tasks, and keyboard tweaks (no form bar above the keyboard, the
-// keyboard follows the app's theme).
+// Native parts around the web view on iOS: the glass tab bar, holding a task
+// (lift, context menu, drag), the keyboard (the web view makes room for it,
+// no form bar above it, its look follows the app's theme).
 //
 // The page talks to this plugin with
 //   window.webkit.messageHandlers.vitroNative.postMessage({ type, ... })
@@ -15,12 +15,14 @@ import WebKit
 final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
   private weak var webview: WKWebView?
   private var bar: GlassBar?
-  private var menu: MenuPresenter?
-  private var menuToken: Double = 0
+  private var press: PressController?
+  private var greeted = false
   private var dark: Bool?
   private var background: UIColor?
   private var raised: UIColor?
-  private var greeted = false
+  /// Colour behind the web view while a sheet is open (it shows around the keyboard's rounded corners).
+  private var backdrop: UIColor?
+  private var keyboardUp = false
 
   override func load(webview: WKWebView) {
     if Thread.isMainThread {
@@ -34,6 +36,11 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     self.webview = webview
     webview.configuration.userContentController.add(self, name: "vitroNative")
     KeyboardTweaks.install()
+    ScrollLock.install(webview.scrollView)
+    let press = PressController(webview: webview, emit: { [weak self] name, payload in self?.emit(name, payload) })
+    press.install()
+    self.press = press
+    watchKeyboard()
     attach(0)
   }
 
@@ -73,16 +80,19 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       }
     case "press":
       bar?.press(body["down"] as? Bool ?? false)
+    case "touch":
+      press?.touch(body)
     case "theme":
       dark = body["dark"] as? Bool
       background = UIColor(hexString: body["bg"] as? String)
       raised = UIColor(hexString: body["raised"] as? String)
+      press?.background = raised ?? background
       applyStyle()
-    case "menu":
-      presentMenu(body)
-    case "menuDismiss":
-      menuToken = -1
-      menu?.dismiss()
+    case "backdrop":
+      backdrop = UIColor(hexString: body["color"] as? String)
+      applyStyle()
+    case "fit":
+      if !keyboardUp { resize(0) }
     default:
       break
     }
@@ -101,9 +111,11 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     webview.window?.overrideUserInterfaceStyle = style
     webview.superview?.overrideUserInterfaceStyle = style
     if let bg = background {
-      webview.superview?.backgroundColor = bg
       webview.backgroundColor = bg
       webview.scrollView.backgroundColor = bg
+    }
+    if let color = backdrop ?? background {
+      webview.superview?.backgroundColor = color
     }
   }
 
@@ -115,92 +127,53 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     webview.evaluateJavaScript("window.__vitroNative && window.__vitroNative('\(name)', \(json))", completionHandler: nil)
   }
 
-  // MARK: Task menu
+  // MARK: Keyboard
 
-  private func presentMenu(_ body: [String: Any]) {
-    let token = number(body["token"])
-    guard let webview = webview, let host = webview.superview,
-      let r = body["rect"] as? [String: Any],
-      let items = body["items"] as? [[String: Any]]
-    else {
-      emit("menuFailed", ["token": token])
-      return
-    }
-    menu?.cleanup()
-    menu = nil
-    menuToken = token
-    let rect = CGRect(x: number(r["x"]), y: number(r["y"]), width: number(r["w"]), height: number(r["h"]))
-    let radius = CGFloat(number(body["radius"], 12))
-    let config = WKSnapshotConfiguration()
-    config.rect = rect
-    config.afterScreenUpdates = false
-    webview.takeSnapshot(with: config) { [weak self] image, _ in
-      guard let self = self, self.menuToken == token else { return }
-      let frame = webview.convert(rect, to: host)
-      let presenter = MenuPresenter(
-        host: host, frame: frame, image: image,
-        menu: UIMenu(title: "", children: self.elements(items, token)),
-        radius: radius, background: self.raised ?? self.background)
-      presenter.onClose = { [weak self, weak presenter] in
-        guard let self = self else { return }
-        if let p = presenter, self.menu === p { self.menu = nil }
-        self.emit("menuClosed", ["token": token])
-      }
-      self.menu = presenter
-      if !presenter.present() {
-        presenter.cleanup()
-        self.menu = nil
-        self.emit("menuFailed", ["token": token])
-      }
-    }
+  /// The web view gets shorter while the keyboard is up, so sheets sit on top
+  /// of it and the rest of the screen stays where it is. It always returns to
+  /// full height when the keyboard goes, when the app comes back, and when the
+  /// page notices it is short without a keyboard.
+  private func watchKeyboard() {
+    let center = NotificationCenter.default
+    center.addObserver(self, selector: #selector(keyboardChanges(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    center.addObserver(self, selector: #selector(keyboardHides(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+    center.addObserver(self, selector: #selector(keyboardShown), name: UIResponder.keyboardDidShowNotification, object: nil)
+    center.addObserver(self, selector: #selector(keyboardGone), name: UIResponder.keyboardDidHideNotification, object: nil)
+    center.addObserver(self, selector: #selector(becameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
   }
 
-  private func elements(_ items: [[String: Any]], _ token: Double) -> [UIMenuElement] {
-    return items.map { element($0, token) }
+  @objc private func keyboardChanges(_ note: Notification) {
+    guard let host = webview?.superview,
+      let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+    else { return }
+    let local = host.convert(end, from: nil)
+    // A keyboard that does not reach the bottom edge (floating, or on its way out) covers nothing.
+    let covered = local.maxY >= host.bounds.maxY - 1 ? max(0, min(host.bounds.height, host.bounds.maxY - local.minY)) : 0
+    resize(covered)
   }
 
-  private func element(_ item: [String: Any], _ token: Double) -> UIMenuElement {
-    let title = item["title"] as? String ?? ""
-    let image = symbol(item["icon"] as? String, item["color"] as? String)
-    if let children = item["children"] as? [[String: Any]] {
-      var options: UIMenu.Options = []
-      if item["inline"] as? Bool == true { options.insert(.displayInline) }
-      let kids = elements(children, token)
-      if #available(iOS 16.0, *), let size = item["size"] as? String {
-        let elementSize: UIMenu.ElementSize = size == "small" ? .small : size == "medium" ? .medium : .large
-        return UIMenu(
-          title: title, subtitle: nil, image: image, identifier: nil, options: options,
-          preferredElementSize: elementSize, children: kids)
-      }
-      return UIMenu(title: title, image: image, identifier: nil, options: options, children: kids)
-    }
-    let id = item["id"] as? String ?? ""
-    var attributes: UIMenuElement.Attributes = []
-    if item["destructive"] as? Bool == true { attributes.insert(.destructive) }
-    if item["disabled"] as? Bool == true { attributes.insert(.disabled) }
-    let state: UIMenuElement.State = item["checked"] as? Bool == true ? .on : .off
-    let action = UIAction(
-      title: title, image: image, identifier: nil, discoverabilityTitle: nil,
-      attributes: attributes, state: state
-    ) { [weak self] _ in
-      self?.emit("menuAction", ["token": token, "id": id])
-    }
-    if #available(iOS 15.0, *), let subtitle = item["subtitle"] as? String {
-      action.subtitle = subtitle
-    }
-    return action
+  @objc private func keyboardHides(_ note: Notification) {
+    resize(0)
   }
 
-  private func symbol(_ name: String?, _ hex: String?) -> UIImage? {
-    guard let name = name, let image = UIImage(systemName: name) else { return nil }
-    if let color = UIColor(hexString: hex) {
-      return image.withTintColor(color, renderingMode: .alwaysOriginal)
-    }
-    return image
+  @objc private func keyboardShown() {
+    keyboardUp = true
   }
 
-  private func number(_ value: Any?, _ fallback: Double = 0) -> Double {
-    return (value as? NSNumber)?.doubleValue ?? fallback
+  @objc private func keyboardGone() {
+    keyboardUp = false
+    resize(0)
+  }
+
+  @objc private func becameActive() {
+    if !keyboardUp { resize(0) }
+  }
+
+  private func resize(_ covered: CGFloat) {
+    guard let webview = webview, let host = webview.superview else { return }
+    let b = host.bounds
+    let frame = CGRect(x: b.minX, y: b.minY, width: b.width, height: b.height - covered)
+    if webview.frame != frame { webview.frame = frame }
   }
 }
 
@@ -457,99 +430,173 @@ final class TabItem: UIControl {
   }
 }
 
-// MARK: - Context menu
+// MARK: - Holding a task
 
-/// Shows a system context menu for a task in the page: a picture of the task
-/// is lifted out of the page and the menu sits below (or above) it, the way
-/// iOS does it for its own lists.
-final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate {
-  var onClose: (() -> Void)?
+/// What the page reported when a touch began on a task.
+struct PressTarget {
+  let id: String
+  let rect: CGRect
+  let items: [[String: Any]]
+  let movable: Bool
+  let radius: CGFloat
+  let time: Date
+  var image: UIImage?
+}
 
-  private let anchor: UIView
-  private let preview: UIImageView
-  private let menu: UIMenu
-  private let radius: CGFloat
-  private let background: UIColor?
-  private var interaction: UIContextMenuInteraction?
-  private var closed = false
+/// Holding a task works like in the system's own lists: the system context
+/// menu and drag interactions sit on the web view, and the page says at the
+/// start of each touch which task (if any) is under the finger, with its
+/// menu. A picture of the task (taken right then) is what lifts; the page
+/// hides the task itself meanwhile. Moving while holding, or dragging the
+/// picture out of the open menu, starts a drag; a full-screen catcher then
+/// reports where the finger is, and the page shows and does the drop.
+final class PressController: NSObject, UIContextMenuInteractionDelegate, UIDragInteractionDelegate, UIDropInteractionDelegate {
+  var background: UIColor?
 
-  init(host: UIView, frame: CGRect, image: UIImage?, menu: UIMenu, radius: CGFloat, background: UIColor?) {
-    anchor = UIView(frame: frame)
-    preview = UIImageView(image: image)
-    self.menu = menu
-    self.radius = radius
-    self.background = background
+  private weak var webview: WKWebView?
+  private let emit: (String, [String: Any]) -> Void
+  private var target: PressTarget?
+  /// The task that is lifted right now (menu open or being dragged).
+  private var lifted: PressTarget?
+  private var anchor: UIView?
+  private var session = 0
+  private var menuShown = false
+  private var dragging = false
+  private var catcher: UIView?
+
+  init(webview: WKWebView, emit: @escaping (String, [String: Any]) -> Void) {
+    self.webview = webview
+    self.emit = emit
     super.init()
-    anchor.backgroundColor = .clear
-    preview.frame = anchor.bounds
-    preview.contentMode = .scaleToFill
-    anchor.addSubview(preview)
-    host.addSubview(anchor)
-    let interaction = UIContextMenuInteraction(delegate: self)
-    anchor.addInteraction(interaction)
-    self.interaction = interaction
   }
 
-  /// Opens the menu without a touch on the anchor (UIKit has no public call
-  /// for that; when it is missing the page shows its own menu).
-  func present() -> Bool {
-    guard let interaction = interaction else { return false }
-    let selector = NSSelectorFromString("_presentMenuAtLocation:")
-    guard interaction.responds(to: selector) else { return false }
-    typealias Present = @convention(c) (AnyObject, Selector, CGPoint) -> Void
-    let fn = unsafeBitCast(interaction.method(for: selector), to: Present.self)
-    fn(interaction, selector, CGPoint(x: anchor.bounds.midX, y: anchor.bounds.midY))
-    return true
+  func install() {
+    guard let webview = webview else { return }
+    webview.addInteraction(UIContextMenuInteraction(delegate: self))
+    let drag = UIDragInteraction(delegate: self)
+    drag.isEnabled = true
+    webview.addInteraction(drag)
   }
 
-  func dismiss() {
-    if #available(iOS 14.0, *), let interaction = interaction {
-      interaction.dismissMenu()
-    } else {
-      finish()
+  /// From the page at every touch start: { id, rect, items, movable } or no id.
+  func touch(_ body: [String: Any]) {
+    guard lifted == nil else { return }
+    guard let id = body["id"] as? String, let r = body["rect"] as? [String: Any],
+      let items = body["items"] as? [[String: Any]]
+    else {
+      target = nil
+      return
+    }
+    let rect = CGRect(x: number(r["x"]), y: number(r["y"]), width: number(r["w"]), height: number(r["h"]))
+    let time = Date()
+    target = PressTarget(
+      id: id, rect: rect, items: items, movable: body["movable"] as? Bool ?? false,
+      radius: CGFloat(number(body["radius"], 12)), time: time, image: nil)
+    // The picture is taken now: the menu asks for it a moment later and cannot wait.
+    guard let webview = webview else { return }
+    let config = WKSnapshotConfiguration()
+    config.rect = rect
+    config.afterScreenUpdates = false
+    webview.takeSnapshot(with: config) { [weak self] image, _ in
+      guard let self = self, let t = self.target, t.id == id, t.time == time else { return }
+      self.target?.image = image
     }
   }
 
-  func cleanup() {
-    if let interaction = interaction { anchor.removeInteraction(interaction) }
-    interaction = nil
-    anchor.removeFromSuperview()
+  private func targetAt(_ point: CGPoint) -> PressTarget? {
+    guard let t = target, Date().timeIntervalSince(t.time) < 4, t.rect.insetBy(dx: -6, dy: -6).contains(point) else { return nil }
+    return t
   }
 
-  private func targeted() -> UITargetedPreview? {
-    guard preview.window != nil else { return nil }
+  // MARK: Lift
+
+  /// Puts the picture over the task and tells the page to hide the task.
+  private func lift(_ t: PressTarget) -> UIView? {
+    if let a = anchor, lifted?.id == t.id { return a }
+    guard let webview = webview, let host = webview.superview else { return nil }
+    clearAnchor()
+    let frame = webview.convert(t.rect, to: host)
+    let a = UIView(frame: frame)
+    a.isUserInteractionEnabled = false
+    if let image = t.image {
+      let iv = UIImageView(image: image)
+      iv.frame = a.bounds
+      a.addSubview(iv)
+    } else if let snap = webview.resizableSnapshotView(from: t.rect, afterScreenUpdates: false, withCapInsets: .zero) {
+      snap.frame = a.bounds
+      a.addSubview(snap)
+    }
+    host.addSubview(a)
+    anchor = a
+    lifted = t
+    menuShown = false
+    session += 1
+    emit("lifted", ["id": t.id])
+    // Safety: a lift that led to neither a menu nor a drag ends by itself.
+    let s = session
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+      guard let self = self, self.session == s, !self.menuShown, !self.dragging else { return }
+      self.end()
+    }
+    return a
+  }
+
+  /// The page shows its task again first; the picture goes a moment later, so nothing blinks.
+  private func end() {
+    guard let t = lifted else { return }
+    lifted = nil
+    target = nil
+    menuShown = false
+    emit("restore", ["id": t.id])
+    let s = session
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+      guard let self = self, self.session == s, self.lifted == nil else { return }
+      self.clearAnchor()
+    }
+  }
+
+  private func clearAnchor() {
+    anchor?.removeFromSuperview()
+    anchor = nil
+  }
+
+  private func preview() -> UITargetedPreview? {
+    guard let a = anchor, a.window != nil, let t = lifted else { return nil }
     let parameters = UIPreviewParameters()
-    parameters.visiblePath = UIBezierPath(roundedRect: preview.bounds, cornerRadius: radius)
-    if let background = background { parameters.backgroundColor = background }
-    return UITargetedPreview(view: preview, parameters: parameters)
+    parameters.visiblePath = UIBezierPath(roundedRect: a.bounds, cornerRadius: t.radius)
+    if let bg = background { parameters.backgroundColor = bg }
+    return UITargetedPreview(view: a, parameters: parameters)
   }
 
-  private func finish() {
-    guard !closed else { return }
-    closed = true
-    cleanup()
-    onClose?()
-  }
+  // MARK: Menu
 
   func contextMenuInteraction(
     _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
   ) -> UIContextMenuConfiguration? {
-    let menu = self.menu
-    return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in menu }
+    guard lifted == nil, let t = targetAt(location) else { return nil }
+    let menu = UIMenu(title: "", children: MenuBuilder.elements(t.items) { [weak self] action in
+      self?.emit("menuAction", ["id": t.id, "action": action])
+    })
+    return UIContextMenuConfiguration(identifier: t.id as NSString, previewProvider: nil) { _ in menu }
+  }
+
+  private func liftForMenu() -> UITargetedPreview? {
+    if lifted == nil, let t = target { _ = lift(t) }
+    return preview()
   }
 
   func contextMenuInteraction(
     _ interaction: UIContextMenuInteraction,
     previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
   ) -> UITargetedPreview? {
-    return targeted()
+    return liftForMenu()
   }
 
   func contextMenuInteraction(
     _ interaction: UIContextMenuInteraction,
     previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration
   ) -> UITargetedPreview? {
-    return targeted()
+    return preview()
   }
 
   @available(iOS 16.0, *)
@@ -557,7 +604,7 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate {
     _ interaction: UIContextMenuInteraction, configuration: UIContextMenuConfiguration,
     highlightPreviewForItemWithIdentifier identifier: NSCopying
   ) -> UITargetedPreview? {
-    return targeted()
+    return liftForMenu()
   }
 
   @available(iOS 16.0, *)
@@ -565,18 +612,208 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate {
     _ interaction: UIContextMenuInteraction, configuration: UIContextMenuConfiguration,
     dismissalPreviewForItemWithIdentifier identifier: NSCopying
   ) -> UITargetedPreview? {
-    return targeted()
+    return preview()
+  }
+
+  @available(iOS 14.0, *)
+  func contextMenuInteraction(
+    _ interaction: UIContextMenuInteraction, willDisplayMenuFor configuration: UIContextMenuConfiguration,
+    animator: UIContextMenuInteractionAnimating?
+  ) {
+    menuShown = true
   }
 
   func contextMenuInteraction(
     _ interaction: UIContextMenuInteraction, willEndFor configuration: UIContextMenuConfiguration,
     animator: UIContextMenuInteractionAnimating?
   ) {
+    let finish = { [weak self] in
+      guard let self = self else { return }
+      self.menuShown = false
+      // A drag out of the menu goes on; it ends the lift itself.
+      if !self.dragging { self.end() }
+    }
     if let animator = animator {
-      animator.addCompletion { [weak self] in self?.finish() }
+      animator.addCompletion(finish)
     } else {
       finish()
     }
+  }
+
+  // MARK: Drag
+
+  func dragInteraction(_ interaction: UIDragInteraction, itemsForBeginning session: UIDragSession) -> [UIDragItem] {
+    guard let webview = webview else { return [] }
+    // From an open menu the picture may have moved; it is still the lifted task.
+    guard let t = lifted ?? targetAt(session.location(in: webview)), t.movable else { return [] }
+    if lifted == nil { _ = lift(t) }
+    let item = UIDragItem(itemProvider: NSItemProvider(object: "vitro-task:\(t.id)" as NSString))
+    item.localObject = t.id
+    return [item]
+  }
+
+  func dragInteraction(_ interaction: UIDragInteraction, previewForLifting item: UIDragItem, session: UIDragSession) -> UITargetedDragPreview? {
+    guard let a = anchor, a.window != nil, let host = a.superview, let t = lifted else { return nil }
+    let parameters = UIDragPreviewParameters()
+    parameters.visiblePath = UIBezierPath(roundedRect: a.bounds, cornerRadius: t.radius)
+    if let bg = background { parameters.backgroundColor = bg }
+    // A copy travels with the finger, so the picture itself can leave the
+    // task's old place empty during the drag.
+    let copy: UIView
+    if let image = t.image {
+      copy = UIImageView(image: image)
+    } else if let snap = a.snapshotView(afterScreenUpdates: false) {
+      copy = snap
+    } else {
+      return UITargetedDragPreview(view: a, parameters: parameters)
+    }
+    copy.frame = a.bounds
+    return UITargetedDragPreview(view: copy, parameters: parameters, target: UIDragPreviewTarget(container: host, center: a.center))
+  }
+
+  func dragInteraction(_ interaction: UIDragInteraction, sessionWillBegin session: UIDragSession) {
+    guard let t = lifted else { return }
+    dragging = true
+    addCatcher()
+    UIView.animate(withDuration: 0.12) { self.anchor?.alpha = 0 }
+    emit("dragStart", ["id": t.id])
+  }
+
+  /// A drag that is called off flies back; the picture is there again when it lands.
+  func dragInteraction(_ interaction: UIDragInteraction, item: UIDragItem, willAnimateCancelWith animator: UIDragAnimating) {
+    animator.addAnimations { [weak self] in self?.anchor?.alpha = 1 }
+  }
+
+  func dragInteraction(_ interaction: UIDragInteraction, sessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool {
+    return true
+  }
+
+  func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
+    dragging = false
+    removeCatcher()
+    emit("dragEnd", ["dropped": operation == .move])
+    end()
+  }
+
+  // MARK: Drop
+
+  /// Covers the screen during a drag, so the drop lands here (not in WebKit)
+  /// and the page hears where the finger is.
+  private func addCatcher() {
+    guard catcher == nil, let host = webview?.superview else { return }
+    let view = UIView(frame: host.bounds)
+    view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    view.backgroundColor = .clear
+    view.addInteraction(UIDropInteraction(delegate: self))
+    host.addSubview(view)
+    catcher = view
+  }
+
+  private func removeCatcher() {
+    catcher?.removeFromSuperview()
+    catcher = nil
+  }
+
+  private func spot(_ session: UIDropSession) -> [String: Any] {
+    guard let webview = webview else { return [:] }
+    let p = session.location(in: webview)
+    return ["x": Double(p.x), "y": Double(p.y)]
+  }
+
+  func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
+    return session.localDragSession != nil
+  }
+
+  func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
+    emit("dragMove", spot(session))
+    return UIDropProposal(operation: .move)
+  }
+
+  func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+    emit("dragDrop", spot(session))
+  }
+
+  private func number(_ value: Any?, _ fallback: Double = 0) -> Double {
+    return (value as? NSNumber)?.doubleValue ?? fallback
+  }
+}
+
+/// Builds a UIMenu tree from the page's description:
+/// { id, title, icon, color, subtitle, checked, destructive } or
+/// { title, icon, inline, size, children }.
+enum MenuBuilder {
+  static func elements(_ items: [[String: Any]], _ act: @escaping (String) -> Void) -> [UIMenuElement] {
+    return items.map { element($0, act) }
+  }
+
+  private static func element(_ item: [String: Any], _ act: @escaping (String) -> Void) -> UIMenuElement {
+    let title = item["title"] as? String ?? ""
+    let image = symbol(item["icon"] as? String, item["color"] as? String)
+    if let children = item["children"] as? [[String: Any]] {
+      var options: UIMenu.Options = []
+      if item["inline"] as? Bool == true { options.insert(.displayInline) }
+      let kids = elements(children, act)
+      if #available(iOS 16.0, *), let size = item["size"] as? String {
+        let elementSize: UIMenu.ElementSize = size == "small" ? .small : size == "medium" ? .medium : .large
+        return UIMenu(
+          title: title, subtitle: nil, image: image, identifier: nil, options: options,
+          preferredElementSize: elementSize, children: kids)
+      }
+      return UIMenu(title: title, image: image, identifier: nil, options: options, children: kids)
+    }
+    let id = item["id"] as? String ?? ""
+    var attributes: UIMenuElement.Attributes = []
+    if item["destructive"] as? Bool == true { attributes.insert(.destructive) }
+    if item["disabled"] as? Bool == true { attributes.insert(.disabled) }
+    let state: UIMenuElement.State = item["checked"] as? Bool == true ? .on : .off
+    let action = UIAction(
+      title: title, image: image, identifier: nil, discoverabilityTitle: nil,
+      attributes: attributes, state: state
+    ) { _ in act(id) }
+    if #available(iOS 15.0, *), let subtitle = item["subtitle"] as? String {
+      action.subtitle = subtitle
+    }
+    return action
+  }
+
+  private static func symbol(_ name: String?, _ hex: String?) -> UIImage? {
+    guard let name = name, let image = UIImage(systemName: name) else { return nil }
+    if let color = UIColor(hexString: hex) {
+      return image.withTintColor(color, renderingMode: .alwaysOriginal)
+    }
+    return image
+  }
+}
+
+// MARK: - Scroll lock
+
+enum ScrollLock {
+  private static var installed = false
+
+  /// The page scrolls inside itself. The web view's own scroll view stays at
+  /// the top, so focusing a field no longer pushes the whole page up for a
+  /// moment (WebKit scrolls to keep the field clear of the keyboard).
+  static func install(_ scrollView: UIScrollView) {
+    guard !installed else { return }
+    let cls: AnyClass = type(of: scrollView)
+    // Only WebKit's own subclass, never every scroll view in the app.
+    guard ObjectIdentifier(cls) != ObjectIdentifier(UIScrollView.self), NSStringFromClass(cls).hasPrefix("WK") else { return }
+    installed = true
+    let plain = #selector(setter: UIScrollView.contentOffset)
+    if let method = class_getInstanceMethod(cls, plain) {
+      typealias Set = @convention(c) (AnyObject, Selector, CGPoint) -> Void
+      let original = unsafeBitCast(method_getImplementation(method), to: Set.self)
+      let block: @convention(block) (AnyObject, CGPoint) -> Void = { view, _ in original(view, plain, .zero) }
+      class_replaceMethod(cls, plain, imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self)), method_getTypeEncoding(method))
+    }
+    let animated = #selector(UIScrollView.setContentOffset(_:animated:))
+    if let method = class_getInstanceMethod(cls, animated) {
+      typealias Set = @convention(c) (AnyObject, Selector, CGPoint, Bool) -> Void
+      let original = unsafeBitCast(method_getImplementation(method), to: Set.self)
+      let block: @convention(block) (AnyObject, CGPoint, Bool) -> Void = { view, _, _ in original(view, animated, .zero, false) }
+      class_replaceMethod(cls, animated, imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self)), method_getTypeEncoding(method))
+    }
+    scrollView.contentOffset = .zero
   }
 }
 

@@ -40,13 +40,24 @@ export function dragProps(taskId: string, payload = "") {
 }
 
 /**
- * Where a task dropped at `clientY` lands among a group's items (the dragged
- * one left out), and where the line showing it goes (px from the group's top).
- * `prev` (the index shown so far) adds a little stickiness at boundaries, so a
- * resting finger does not make the line jump back and forth.
+ * Where a task dropped at `clientY` lands among a group's items, and where
+ * the line showing it goes (px from the group's top). The dragged task keeps
+ * its place while it is dragged (faded, or hidden on the phone): landing
+ * there changes nothing, so no line is drawn over it, and lines elsewhere
+ * always sit between two neighbours. `prev` (the index shown so far) adds a
+ * little stickiness at boundaries, so a resting finger does not make the line
+ * jump back and forth.
  */
-export function insertionAt(container: Element, clientY: number, draggedId: string, selector: string, prev?: number): { index: number; before: string | null; y: number } {
-  const items = [...container.querySelectorAll<HTMLElement>(selector)].filter((el) => el.dataset.id !== draggedId);
+export function insertionAt(
+  container: Element,
+  clientY: number,
+  draggedId: string,
+  selector: string,
+  prev?: number,
+): { index: number; before: string | null; y: number | null } {
+  const all = [...container.querySelectorAll<HTMLElement>(selector)];
+  const source = all.findIndex((el) => el.dataset.id === draggedId);
+  const items = source >= 0 ? all.filter((_, i) => i !== source) : all;
   const rects = items.map((el) => el.getBoundingClientRect());
   const mids = rects.map((r) => r.top + r.height / 2);
   let index = mids.findIndex((m) => clientY < m);
@@ -56,6 +67,8 @@ export function insertionAt(container: Element, clientY: number, draggedId: stri
     if (index > prev && clientY < mids[index - 1] + STICK) index--;
     else if (index < prev && clientY > mids[index] - STICK) index++;
   }
+  const before = items[index]?.dataset.id ?? null;
+  if (source >= 0 && index === source) return { index, before, y: null };
   const top = container.getBoundingClientRect().top;
   let y: number;
   if (!rects.length) {
@@ -65,7 +78,7 @@ export function insertionAt(container: Element, clientY: number, draggedId: stri
   } else if (index === 0) y = rects[0].top - top - 1;
   else if (index < rects.length) y = (rects[index - 1].bottom + rects[index].top) / 2 - top;
   else y = rects[rects.length - 1].bottom - top + 1;
-  return { index, before: items[index]?.dataset.id ?? null, y };
+  return { index, before, y };
 }
 
 /** Touch drags (phone) send these to the group under the finger. */
@@ -140,7 +153,7 @@ export function useReorderTarget(groupKey: string, selector: string, onDrop: (ta
       }
     : { ref };
   // One line per group that glides to where the task would land.
-  const line = enabled && hint ? <div className="drop-line" style={{ transform: `translateY(${hint.y}px)` }} /> : null;
+  const line = enabled && hint && hint.y !== null ? <div className="drop-line" style={{ transform: `translateY(${hint.y}px)` }} /> : null;
   return { over: enabled && !!hint, line, props };
 }
 

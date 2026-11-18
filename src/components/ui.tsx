@@ -121,6 +121,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
   edit: <path d="M3 13l.6-2.8 7.2-7.2 2.2 2.2-7.2 7.2zM9.6 4.2l2.2 2.2" />,
   undo: <path d="M4.5 6.5h6a3 3 0 0 1 0 6H7M6.5 4.5l-2 2 2 2" />,
+  expand: <path d="M9.5 3h3.5v3.5M6.5 13H3V9.5M13 3L9 7M3 13l4-4" />,
   arrowup: <path d="M8 13V3.5M4.2 7.3L8 3.5l3.8 3.8" />,
   download: <path d="M8 2.5v7.5M5 7.2l3 3 3-3M3 13.2h10" />,
   upload: <path d="M8 10.5V3M5 5.8l3-3 3 3M3 13.2h10" />,
@@ -508,7 +509,8 @@ function TimeColumns({ time, onPick, side }: { time: string | null; onPick: (t: 
   useLayoutEffect(() => {
     // Start around the chosen hour, or the working morning.
     const el = hours.current;
-    if (el) el.scrollTop = Math.max(0, ((h ?? 9) - 2) * 30);
+    const row = (el?.firstElementChild as HTMLElement | null)?.offsetHeight ?? 28;
+    if (el) el.scrollTop = Math.max(0, ((h ?? 9) - 2) * (row + 2));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
