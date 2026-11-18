@@ -20,6 +20,8 @@ interface Hold {
   shift: number;
   /** The menu is on screen (it waits while making room would take the task from under the finger). */
   shown: boolean;
+  /** Opened without a finger down (back from a picker): the menu comes out at once, making room if needed. */
+  now: boolean;
   closing: boolean;
   seq: number;
 }
@@ -49,10 +51,14 @@ export function hideTask(id: string | null) {
   style.textContent = id ? `[data-id="${CSS.escape(id)}"]:is(.task-row, .card, .cal-chip, .tl-item) { visibility: hidden !important; }` : "";
 }
 
+/** A task's row, card or chip on screen. */
+export function taskElement(id: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`:is(.task-row, .card, .cal-chip, .tl-item)[data-id="${CSS.escape(id)}"]`);
+}
+
 /** Where a task is drawn now (null if it is not on screen any more). */
 export function taskRect(id: string): DOMRect | null {
-  const el = document.querySelector<HTMLElement>(`:is(.task-row, .card, .cal-chip, .tl-item)[data-id="${CSS.escape(id)}"]`);
-  const r = el?.getBoundingClientRect();
+  const r = taskElement(id)?.getBoundingClientRect();
   return r && r.height > 0 && r.bottom > 0 && r.top < innerHeight ? r : null;
 }
 
@@ -102,7 +108,7 @@ export const holdMenu = {
   },
   heldId: () => (hold && !hold.closing ? hold.id : null),
   /** Lifts the task and opens its menu. */
-  open(source: HTMLElement) {
+  open(source: HTMLElement, now = false) {
     const id = source.dataset.id;
     if (!id) return;
     if (hold) finish(hold);
@@ -110,7 +116,7 @@ export const holdMenu = {
     const lift = floatingCopy(source);
     lift.classList.add("hold-lift");
     hideTask(id);
-    hold = { id, rect, lift, shift: 0, shown: false, closing: false, seq: ++seq };
+    hold = { id, rect, lift, shift: 0, shown: false, now, closing: false, seq: ++seq };
     hot = null;
     haptic("medium");
     changed();
@@ -246,7 +252,7 @@ export function HoldMenu() {
     if (!h || !el || h.closing) return;
     const r = h.rect;
     const { top, bottom } = bounds();
-    const width = Math.min(244, innerWidth - 2 * EDGE);
+    const width = Math.min(217, innerWidth - 2 * EDGE);
     el.style.width = `${width}px`;
     el.style.left = `${Math.round((innerWidth - width) / 2)}px`;
     el.style.maxHeight = "";
@@ -267,8 +273,9 @@ export function HoldMenu() {
     el.style.top = `${Math.round(menuTop)}px`;
     el.style.transformOrigin = below ? "50% 0" : "50% 100%";
     // It fits beside the task: out right away. Otherwise it waits (see isWaiting).
-    if (!shift && !h.shown) {
+    if ((!shift || h.now) && !h.shown) {
       h.shown = true;
+      h.lift.style.setProperty("--shift", `${shift}px`);
       changed();
     }
   }, [h?.seq]);

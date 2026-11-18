@@ -1,19 +1,19 @@
 // Phone layout pieces: the bottom bar, the add sheet, and touch gestures
 // (long press for the menu, long press and drag to reorder).
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { haptic, isMobile } from "../lib/platform";
 import { onNative, postNative } from "../lib/native";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
-import { defaultsForView } from "../lib/views";
+import { PRIORITY_LABELS, defaultsForView } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
 import { formatDateTime, todayKey } from "../lib/dates";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
 import { useCreateTask, type TouchDragDetail } from "./tasks";
-import { DayPicker, ListChoice, PriorityChoice, SpanPicker, useSheetGesture, type PropValues } from "./PhonePickers";
+import { DayPicker, ListChoice, SpanPicker, useSheetGesture, type PropValues } from "./PhonePickers";
 import { TaskDetail } from "./TaskDetail";
 import { Flag, Icon, usePresence } from "./ui";
 
@@ -111,12 +111,31 @@ export function openAddSheet(base: Partial<Task> | null = null) {
 
 type Tool = "date" | "deadline" | "priority" | "list";
 
+// The task sheet opens its next task at full screen (the quick add, pulled up, hands over to it).
+let sheetFullNext: string | null = null;
+// A task the quick add made for the editor: dropped again if it is left empty.
+let draftTask: string | null = null;
+
+/** Opens a task in the editor at full screen, its title ready for typing. */
+export function openEditorFull(id: string, draft = false) {
+  sheetFullNext = id;
+  if (draft) draftTask = id;
+  useStore.getState().select(id);
+}
+
+/** Keeps the keyboard up: the press must not take focus from the line being typed in. */
+const keepFocus = {
+  onPointerDown: (e: React.PointerEvent) => e.preventDefault(),
+  onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+};
+
 /**
  * The add sheet: a line to type into, with buttons for date, deadline,
- * priority and list below it (their pickers take the keyboard's place; a tap
- * on the line brings the keyboard back). Typed shortcuts still work. Pull it
- * up for a full-screen editor with notes. It stays mounted (off screen) so the
- * tap on + can focus it right away.
+ * priority and list below it. Priority and list open as a small menu above
+ * the buttons, with the keyboard still up; date and deadline take the
+ * keyboard's place (a tap on the line brings it back). Typed shortcuts still
+ * work. Pulled up (or with the expand button) the task moves on to the full
+ * editor. It stays mounted (off screen) so the tap on + can focus it right away.
  */
 export function MobileAdd({
   open,
@@ -135,10 +154,10 @@ export function MobileAdd({
   const lists = useStore((s) => s.lists);
   const create = useCreateTask();
   const [value, setValue] = useState("");
-  const [notes, setNotes] = useState("");
   const [picked, setPicked] = useState<PropValues>({});
   const [tool, setTool] = useState<Tool | null>(null);
-  const [full, setFull] = useState(false);
+  // The small menu for priority or list, placed above its button.
+  const [float, setFloat] = useState<{ kind: "priority" | "list"; left: number; bottom: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   // A picker button is being pressed: the line losing focus must not close the sheet.
   const keep = useRef(false);
@@ -156,9 +175,8 @@ export function MobileAdd({
   useEffect(() => {
     if (open) return;
     setTool(null);
-    setFull(false);
+    setFloat(null);
     setPicked({});
-    setNotes("");
   }, [open]);
   const base: Partial<Task> = { ...(preset ?? (view.kind === "calendar" ? { start_date: todayKey() } : defaultsForView(view))), ...picked };
   const close = () => {
@@ -167,23 +185,50 @@ export function MobileAdd({
   };
   const submit = () => {
     if (!title) return;
-    void create(value, { ...base, ...(notes.trim() ? { notes: notes.trim() } : {}) });
+    void create(value, base);
     setValue("");
     close();
   };
-  const drag = useSheetGesture(ref, { enabled: open, full, onFull: () => setFull(true), onHalf: () => setFull(false), onClose: close });
+  // On to the full editor with what is typed so far (the keyboard stays: its title takes over the focus).
+  const expand = async () => {
+    keep.current = true;
+    const made = title ? await create(value, base) : await useStore.getState().addTask({ ...base, title: "" } as Partial<Task> & { title: string });
+    if (!made) return;
+    openEditorFull(made.id, true);
+    setValue("");
+    setPicked({});
+    setTool(null);
+    setFloat(null);
+    onClose();
+    setTimeout(() => (keep.current = false), 400);
+  };
+  const drag = useSheetGesture(ref, { enabled: open, full: false, onFull: () => void expand(), onHalf: () => {}, onClose: close });
   const pick = (patch: PropValues) => setPicked((p) => ({ ...p, ...patch }));
   const holdOpen = () => {
     keep.current = true;
     setTimeout(() => (keep.current = false), 350);
   };
-  const toolButton = (t: Tool, icon: ReactNode, label: string, set: boolean) => (
+  const toolButton = (t: Tool, icon: ReactNode, label: string, set: boolean, extra = "") => (
     <button
       type="button"
-      className={`m-tool ${tool === t ? "is-open" : ""} ${set ? "is-set" : ""}`}
+      className={`m-tool ${extra} ${tool === t || float?.kind === t ? "is-open" : ""} ${set ? "is-set" : ""}`}
       aria-label={label}
-      onPointerDown={holdOpen}
-      onClick={() => {
+      onPointerDown={(e) => {
+        holdOpen();
+        // Priority and list keep the keyboard; their menu opens over the sheet.
+        if (t === "priority" || t === "list") e.preventDefault();
+      }}
+      onMouseDown={(e) => (t === "priority" || t === "list") && e.preventDefault()}
+      onClick={(e) => {
+        if (t === "priority" || t === "list") {
+          if (float?.kind === t) return setFloat(null);
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          setTool(null);
+          setFloat({ kind: t, left: r.left, bottom: innerHeight - r.top + 8 });
+          inputRef.current?.focus();
+          return;
+        }
+        setFloat(null);
         if (tool === t) {
           setTool(null);
           inputRef.current?.focus();
@@ -210,26 +255,14 @@ export function MobileAdd({
       <div className={`m-scrim ${open ? "is-open" : ""}`} onClick={close} />
       <div
         ref={ref}
-        className={`m-sheet m-add-sheet ${open ? "is-open" : ""} ${full ? "is-full" : ""} ${drag ? "is-pulling" : ""}`}
+        className={`m-sheet m-add-sheet ${open ? "is-open" : ""} ${drag ? "is-pulling" : ""}`}
         style={drag ? { transform: `translateY(${drag}px)` } : undefined}
         aria-hidden={!open}
       >
         <div className="p-sheet-top">
-          {full ? (
-            <>
-              <button type="button" className="p-top-btn" onClick={close}>
-                Cancel
-              </button>
-              <b className="p-top-title">New Task</b>
-              <button type="button" className="p-top-btn is-strong" disabled={!title} onClick={submit}>
-                Add
-              </button>
-            </>
-          ) : (
-            <div className="m-grabber" onClick={() => setFull(true)}>
-              <i />
-            </div>
-          )}
+          <div className="m-grabber" {...keepFocus} onClick={() => void expand()}>
+            <i />
+          </div>
         </div>
         <div className="p-scroll">
           <div className="m-add-row">
@@ -253,35 +286,41 @@ export function MobileAdd({
                 setTimeout(() => {
                   const input = inputRef.current;
                   if (keep.current || !input || document.activeElement === input) return;
-                  if (!input.value.trim() && !full && !ref.current?.contains(document.activeElement)) onClose();
+                  if (!input.value.trim() && !ref.current?.contains(document.activeElement)) onClose();
                 }, 60);
               }}
             />
-            {!full && (
-              <button type="button" className="m-send" disabled={!title} aria-label="Add" onPointerDown={(e) => e.preventDefault()} onClick={submit}>
-                <Icon name="arrowup" size={18} />
-              </button>
-            )}
+            <button type="button" className="m-send" disabled={!title} aria-label="Add" {...keepFocus} onClick={submit}>
+              <Icon name="arrowup" size={18} />
+            </button>
           </div>
           {suggest.open ? (
             <SuggestList s={suggest} className="m-suggest" />
           ) : (
-            (typed || (!full && !value.trim())) && (
-              <div className="m-add-foot">{typed ? <ParsedChips value={value} typedListOnly /> : <span className="qa-hint">tomorrow 14:00 · ^fri deadline · !high · #list</span>}</div>
+            typed && (
+              <div className="m-add-foot">
+                <ParsedChips value={value} typedListOnly />
+              </div>
             )
           )}
-          {full && <textarea className="m-add-notes" rows={4} placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} onFocus={() => setTool(null)} />}
           <div className="m-tools">
             {toolButton("date", <Icon name="calendar" size={20} />, "Date", !!base.start_date)}
             {toolButton("deadline", <Icon name="deadline" size={20} />, "Deadline", !!base.deadline_date)}
             {toolButton("priority", <Flag priority={base.priority ?? 0} size={20} />, "Priority", !!base.priority)}
-            {toolButton("list", list ? <i className="dot m-tool-dot" style={{ background: list.color }} /> : <Icon name="inbox" size={20} />, "List", !!picked.list_id)}
-            <span className="m-tools-value">{tool === "list" ? list?.name ?? "Inbox" : when}</span>
-            {!full && (
-              <button type="button" className="m-tool" aria-label="Full screen" onPointerDown={holdOpen} onClick={() => setFull(true)}>
-                <Icon name="expand" size={18} />
-              </button>
+            {toolButton(
+              "list",
+              <>
+                {list ? <i className="dot m-tool-dot" style={{ background: list.color }} /> : <Icon name="inbox" size={18} />}
+                <span className="m-tool-name">{list?.name ?? "Inbox"}</span>
+              </>,
+              "List",
+              !!picked.list_id,
+              "is-wide",
             )}
+            <span className="m-tools-value">{when}</span>
+            <button type="button" className="m-tool" aria-label="Full screen" {...keepFocus} onClick={() => void expand()}>
+              <Icon name="expand" size={18} />
+            </button>
           </div>
           {tool && (
             <div className="m-add-picker">
@@ -294,28 +333,48 @@ export function MobileAdd({
                   onChange={(d, t) => pick({ deadline_date: d, deadline_time: d ? t : null })}
                 />
               )}
-              {tool === "priority" && (
-                <PriorityChoice
-                  value={base.priority ?? 0}
-                  onPick={(p) => {
-                    pick({ priority: p });
-                    backToTyping();
-                  }}
-                />
-              )}
-              {tool === "list" && (
-                <ListChoice
-                  value={base.list_id ?? null}
-                  onPick={(id) => {
-                    pick({ list_id: id, section_id: null });
-                    backToTyping();
-                  }}
-                />
-              )}
             </div>
           )}
         </div>
       </div>
+      {float && open && (
+        <>
+          <div className="m-float-catch" {...keepFocus} onClick={() => setFloat(null)} />
+          <div
+            className="m-float"
+            style={{ left: Math.max(12, Math.min(float.left - 8, innerWidth - 12 - 248)), bottom: float.bottom, maxHeight: Math.max(160, innerHeight - float.bottom - 56) }}
+            {...keepFocus}
+          >
+            {float.kind === "priority" ? (
+              [3, 2, 1, 0].map((p) => (
+                <button
+                  type="button"
+                  key={p}
+                  className={`m-float-row ${(base.priority ?? 0) === p ? "is-on" : ""}`}
+                  onClick={() => {
+                    pick({ priority: p });
+                    setFloat(null);
+                    backToTyping();
+                  }}
+                >
+                  <Flag priority={p} size={18} />
+                  <span>{p ? `${PRIORITY_LABELS[p]} Priority` : "No Priority"}</span>
+                  {(base.priority ?? 0) === p && <Icon name="check" size={16} />}
+                </button>
+              ))
+            ) : (
+              <ListChoice
+                value={base.list_id ?? null}
+                onPick={(id) => {
+                  pick({ list_id: id, section_id: null });
+                  setFloat(null);
+                  backToTyping();
+                }}
+              />
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -763,8 +822,31 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
     scroller?: HTMLElement | null;
   } | null>(null);
   const id = task?.id ?? null;
-  useEffect(() => {
-    if (id) setFull(false);
+  // A new task opens half (or full, when the quick add handed it over: its title then takes the keyboard).
+  const prevId = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const prev = prevId.current;
+    prevId.current = id;
+    if (id) {
+      const wantFull = sheetFullNext === id;
+      sheetFullNext = null;
+      setFull(wantFull);
+      if (wantFull)
+        requestAnimationFrame(() => {
+          const t = ref.current?.querySelector<HTMLTextAreaElement>("textarea.detail-title");
+          t?.focus();
+          t?.setSelectionRange(t.value.length, t.value.length);
+        });
+    }
+    // Left the task the quick add made for the editor: drop it if nothing was written (after its text is saved).
+    if (prev && prev !== id && prev === draftTask) {
+      draftTask = null;
+      setTimeout(() => {
+        const st = useStore.getState();
+        const t = st.tasks.find((x) => x.id === prev);
+        if (t && !t.title.trim() && !t.notes?.trim() && !st.tasks.some((c) => c.parent_id === prev)) void st.deleteTask(prev);
+      }, 800);
+    }
   }, [id]);
   // While the sheet follows the finger, nothing under it scrolls (React's touch handlers cannot prevent that).
   const mounted = !!shown;

@@ -5,6 +5,7 @@ import { openLayerWindow, windowAction } from "../lib/platform";
 import { PRIORITY_LABELS, listVisibility, orderedLists } from "../lib/views";
 import { LIST_COLORS, useStore, type MenuTarget } from "../store";
 import { DatePickerPanel, Flag, FloatingPanel, Icon, MenuItem, ToggleItem, usePresence } from "./ui";
+import { holdMenu, taskElement } from "./HoldMenu";
 
 function IconRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -43,7 +44,13 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
     void fn();
     close();
   };
-  const back = () => setPage("main");
+  // Opened from the phone's hold menu (a page given): back goes to that menu, not to this one's first page.
+  const back = () => {
+    if (!initial) return setPage("main");
+    close();
+    const el = taskElement(id);
+    if (el) setTimeout(() => holdMenu.open(el, true), 60);
+  };
 
   if (page === "move") {
     return (

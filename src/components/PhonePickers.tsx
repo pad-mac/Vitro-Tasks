@@ -29,7 +29,9 @@ export function useSheetGesture(
       const t = e.target as HTMLElement;
       g = null;
       if (e.touches.length !== 1) return;
-      if (t.closest("input, textarea, [contenteditable='true'], .p-lists, .floating, .pop-panel")) return;
+      // The quick add's line can be pulled too (a tap still puts the caret there).
+      if (t.closest("textarea, [contenteditable='true'], .p-lists, .floating, .pop-panel")) return;
+      if (t.closest("input") && !t.closest(".m-add-row")) return;
       const top = !!t.closest(".p-sheet-top");
       const scroller = t.closest<HTMLElement>(".p-scroll");
       // Full screen: only the top, or a pull down from the top of the content.
