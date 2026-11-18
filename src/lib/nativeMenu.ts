@@ -1,7 +1,6 @@
 // The task menu as a native iOS context menu (the task is lifted out of the
 // list and the menu sits below or above it). Pickers that need more room
 // (date, deadline) open as the app's own menu once the native one is gone.
-import { endNativeDrag, startNativeDrag } from "../components/tasks";
 import { useStore } from "../store";
 import { deadlineCountdown, formatDateTime, todayKey } from "./dates";
 import { hasNative, onNative, postNative } from "./native";
@@ -25,7 +24,6 @@ interface Open {
   taskId: string;
   rect: DOMRect;
   after: (() => void) | null;
-  onShown: () => void;
   onClosed: () => void;
   onFailed: () => void;
 }
@@ -88,7 +86,7 @@ function itemsFor(taskId: string): Item[] | null {
       {
         id: "deadline",
         title: task.deadline_date ? "Deadline" : "Add Deadline",
-        icon: "target",
+        icon: "hourglass",
         subtitle: task.deadline_date
           ? `${formatDateTime(task.deadline_date, task.deadline_time, today)}${task.status === 0 ? ` · ${deadlineCountdown(task.deadline_date, today)}` : ""}`
           : undefined,
@@ -129,16 +127,6 @@ function run(open: Open, action: string) {
 onNative("menuAction", (p) => {
   if (current && p.token === current.token) run(current, String(p.id ?? ""));
 });
-onNative("menuShown", (p) => {
-  if (current && p.token === current.token) current.onShown();
-});
-// Dragging the lifted task out of the open menu: the drag goes on in the page.
-const tokenTask = new Map<number, string>();
-onNative("menuDrag", (p) => {
-  const id = tokenTask.get(Number(p.token));
-  if (id) startNativeDrag(id);
-});
-onNative("menuDragEnd", () => endNativeDrag());
 onNative("menuClosed", (p) => {
   if (!current || p.token !== current.token) return;
   const open = current;
@@ -153,30 +141,14 @@ onNative("menuFailed", (p) => {
   open.onFailed();
 });
 
-/**
- * Opens the native menu for a task; false when there is no native side.
- * `movable`: the task can be dragged out of the menu to a new place.
- */
-export function showNativeTaskMenu(
-  taskId: string,
-  rect: DOMRect,
-  movable: boolean,
-  on: { shown: () => void; closed: () => void; failed: () => void },
-): boolean {
+/** Opens the native menu for a task; false when there is no native side. */
+export function showNativeTaskMenu(taskId: string, rect: DOMRect, onClosed: () => void, onFailed: () => void): boolean {
   if (!hasNative()) return false;
   const items = itemsFor(taskId);
   if (!items) return false;
   token += 1;
-  tokenTask.set(token, taskId);
-  current = { token, taskId, rect, after: null, onShown: on.shown, onClosed: on.closed, onFailed: on.failed };
-  postNative({
-    type: "menu",
-    token,
-    rect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
-    radius: 12,
-    payload: movable ? `vitro-task:${taskId}` : "",
-    items,
-  });
+  current = { token, taskId, rect, after: null, onClosed, onFailed };
+  postNative({ type: "menu", token, rect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height }, radius: 12, items });
   return true;
 }
 

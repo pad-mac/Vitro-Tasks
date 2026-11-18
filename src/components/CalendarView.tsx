@@ -723,10 +723,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
   // list takes the rest of the view, down to the bar.
   const splitRowH = Math.max(64, Math.floor((height || 600) / 5));
   const splitCapacity = Math.max(1, Math.floor((splitRowH - 30) / CHIP_H));
-  // A strip of the calendar stays in view below the list: swipe or tap there to close it.
-  const panelH = Math.max(160, (height || 600) - barPad - splitRowH - 16 - 76);
-  // Right after closing, the view settles; no weeks are added or dropped meanwhile.
-  const quietUntil = useRef(0);
+  const panelH = Math.max(160, (height || 600) - barPad - splitRowH - 16);
   const weeks = useMemo(() => Array.from({ length: SPAN_WEEKS * 2 + 1 }, (_, i) => addDays(anchor, (i - SPAN_WEEKS) * 7)), [anchor]);
   const focusWeek = focus ? startOfWeek(focus) : null;
 
@@ -780,7 +777,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     el.classList.add("no-snap");
     const t0 = performance.now();
     const step = (t: number) => {
-      const p = Math.min(1, (t - t0) / 170);
+      const p = Math.min(1, (t - t0) / 240);
       el.scrollTop = from + d * (1 - (1 - p) ** 3);
       if (p < 1) glide.current = requestAnimationFrame(step);
       else el.classList.remove("no-snap");
@@ -790,11 +787,10 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
 
   const closeDay = () => {
     if (!splitRef.current) return;
-    quietUntil.current = Date.now() + 700;
     setSplit(false);
     window.setTimeout(() => {
       if (!splitRef.current) setFocus(null);
-    }, 190);
+    }, 240);
   };
   const openDay = (day: string) => {
     if (split && focus === day) return closeDay();
@@ -807,7 +803,6 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
       onMonth(m);
     }
     if (wasSplit && focusWeek === startOfWeek(day)) return;
-    clearTimeout(settle.current);
     // Mount the panel closed, then let it grow while the week moves to the top.
     requestAnimationFrame(() => {
       setSplit(true);
@@ -845,7 +840,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     // Near either end, more weeks come in once the scrolling has settled.
     clearTimeout(settle.current);
     settle.current = window.setTimeout(() => {
-      if (splitRef.current || Date.now() < quietUntil.current) return;
+      if (splitRef.current) return;
       const near = 6 * rowH;
       const top = el.scrollTop;
       const atEdge = top < near ? -1 : el.scrollHeight - top - el.clientHeight < near ? 1 : 0;
@@ -859,23 +854,10 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
   const onClick = (e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
     if (t.closest(".cal-chip, .m-day-panel")) return;
-    // Split: days of the open week switch the day; a tap below the list closes it.
-    if (split && !t.closest(".m-week.is-focus")) return closeDay();
     const day = t.closest<HTMLElement>("[data-day]")?.dataset.day;
     if (day) openDay(day);
   };
-  // While split the calendar does not scroll (the touch is held back rather
-  // than switching the scroller off, which WebKit does not always redraw
-  // well); a swipe above or below the list closes it.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const hold = (e: TouchEvent) => {
-      if (splitRef.current && !(e.target as HTMLElement).closest(".m-day-panel")) e.preventDefault();
-    };
-    el.addEventListener("touchmove", hold, { passive: false });
-    return () => el.removeEventListener("touchmove", hold);
-  }, []);
+  // While split the calendar does not scroll; a swipe down above the list closes it.
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
     swipe.current = split && !(e.target as HTMLElement).closest(".m-day-panel") ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
@@ -886,7 +868,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     if (!s0) return;
     const t = e.changedTouches[0];
     const dy = t.clientY - s0.y;
-    if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(t.clientX - s0.x)) closeDay();
+    if (dy > 36 && dy > Math.abs(t.clientX - s0.x)) closeDay();
   };
 
   const dayEntries = focus ? entriesForDay(tasks, focus) : [];

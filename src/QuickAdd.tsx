@@ -14,19 +14,16 @@ const FOOT_H = 34;
 const ROW_H = 34;
 
 /** What typed quick-add text turns into: list, date, deadline and priority. */
-/** `typedListOnly`: show the list only when the text names one (the phone's add sheet shows the list on its button). */
-export function ParsedChips({ value, typedListOnly }: { value: string; typedListOnly?: boolean }) {
+export function ParsedChips({ value }: { value: string }) {
   const lists = useStore((s) => s.lists);
   const parsed = useMemo(() => parseQuick(value), [value]);
   const list = matchList(parsed.listQuery, lists);
   return (
     <span className="qa-chips">
-      {(!typedListOnly || parsed.listQuery) && (
-        <span className="qa-chip">
-          {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={12} />}
-          {list ? list.name : parsed.listQuery ? `no list “${parsed.listQuery}” → Inbox` : "Inbox"}
-        </span>
-      )}
+      <span className="qa-chip">
+        {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={12} />}
+        {list ? list.name : parsed.listQuery ? `no list “${parsed.listQuery}” → Inbox` : "Inbox"}
+      </span>
       {parsed.start_date && (
         <span className="qa-chip">
           <Icon name="calendar" size={12} /> {formatDateTime(parsed.start_date, parsed.start_time)}

@@ -34,52 +34,7 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     self.webview = webview
     webview.configuration.userContentController.add(self, name: "vitroNative")
     KeyboardTweaks.install()
-    ScrollLock.install(webview.scrollView)
-    watchKeyboard()
     attach(0)
-  }
-
-  // MARK: Keyboard height
-
-  private var keyboardHeight: CGFloat = -1
-
-  /// The web view always fills the screen; the page learns how much of it the
-  /// keyboard covers and moves its sheets itself, in step with the keyboard.
-  private func watchKeyboard() {
-    let center = NotificationCenter.default
-    center.addObserver(self, selector: #selector(keyboardChanges(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-    center.addObserver(self, selector: #selector(keyboardHides(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
-    center.addObserver(self, selector: #selector(becameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
-  }
-
-  @objc private func keyboardChanges(_ note: Notification) {
-    guard let host = webview?.superview,
-      let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
-    else { return }
-    let local = host.convert(end, from: nil)
-    let covered = max(0, min(host.bounds.height, host.bounds.maxY - local.minY))
-    sendKeyboard(covered, note)
-  }
-
-  @objc private func keyboardHides(_ note: Notification) {
-    sendKeyboard(0, note)
-  }
-
-  @objc private func becameActive() {
-    fitWebview()
-  }
-
-  private func sendKeyboard(_ height: CGFloat, _ note: Notification) {
-    fitWebview()
-    if abs(height - keyboardHeight) < 0.5 { return }
-    keyboardHeight = height
-    let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
-    emit("keyboard", ["height": Double(height), "duration": duration])
-  }
-
-  private func fitWebview() {
-    guard let webview = webview, let host = webview.superview else { return }
-    if webview.frame != host.bounds { webview.frame = host.bounds }
   }
 
   /// The bar sits on the view that holds the web view (not on the web view,
@@ -178,24 +133,19 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     let radius = CGFloat(number(body["radius"], 12))
     let config = WKSnapshotConfiguration()
     config.rect = rect
-    // After the page has drawn the task as a plain card for the picture.
-    config.afterScreenUpdates = true
+    config.afterScreenUpdates = false
     webview.takeSnapshot(with: config) { [weak self] image, _ in
       guard let self = self, self.menuToken == token else { return }
       let frame = webview.convert(rect, to: host)
       let presenter = MenuPresenter(
         host: host, frame: frame, image: image,
         menu: UIMenu(title: "", children: self.elements(items, token)),
-        radius: radius, background: self.raised ?? self.background,
-        payload: body["payload"] as? String ?? "")
-      presenter.onShown = { [weak self] in self?.emit("menuShown", ["token": token]) }
+        radius: radius, background: self.raised ?? self.background)
       presenter.onClose = { [weak self, weak presenter] in
         guard let self = self else { return }
         if let p = presenter, self.menu === p { self.menu = nil }
         self.emit("menuClosed", ["token": token])
       }
-      presenter.onDragBegin = { [weak self] in self?.emit("menuDrag", ["token": token]) }
-      presenter.onDragEnd = { [weak self] in self?.emit("menuDragEnd", ["token": token]) }
       self.menu = presenter
       if !presenter.present() {
         presenter.cleanup()
@@ -511,50 +461,33 @@ final class TabItem: UIControl {
 
 /// Shows a system context menu for a task in the page: a picture of the task
 /// is lifted out of the page and the menu sits below (or above) it, the way
-/// iOS does it for its own lists. The page hides the task itself while the
-/// picture stands in for it. The picture can be dragged out of the open menu;
-/// the drag then goes on in the page (WebKit turns it into drag events there).
-final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate, UIDragInteractionDelegate {
-  var onShown: (() -> Void)?
+/// iOS does it for its own lists.
+final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate {
   var onClose: (() -> Void)?
-  var onDragBegin: (() -> Void)?
-  var onDragEnd: (() -> Void)?
 
   private let anchor: UIView
   private let preview: UIImageView
   private let menu: UIMenu
   private let radius: CGFloat
   private let background: UIColor?
-  private let payload: String
   private var interaction: UIContextMenuInteraction?
-  private var drag: UIDragInteraction?
   private var closed = false
-  private var dragging = false
-  // Kept alive while a drag from the menu is under way.
-  private var keepAlive: MenuPresenter?
 
-  init(host: UIView, frame: CGRect, image: UIImage?, menu: UIMenu, radius: CGFloat, background: UIColor?, payload: String) {
+  init(host: UIView, frame: CGRect, image: UIImage?, menu: UIMenu, radius: CGFloat, background: UIColor?) {
     anchor = UIView(frame: frame)
     preview = UIImageView(image: image)
     self.menu = menu
     self.radius = radius
     self.background = background
-    self.payload = payload
     super.init()
     anchor.backgroundColor = .clear
     preview.frame = anchor.bounds
     preview.contentMode = .scaleToFill
-    preview.isUserInteractionEnabled = true
     anchor.addSubview(preview)
     host.addSubview(anchor)
     let interaction = UIContextMenuInteraction(delegate: self)
     anchor.addInteraction(interaction)
     self.interaction = interaction
-    let drag = UIDragInteraction(delegate: self)
-    // Only tasks that can be moved in their list or board.
-    drag.isEnabled = !payload.isEmpty
-    anchor.addInteraction(drag)
-    self.drag = drag
   }
 
   /// Opens the menu without a touch on the anchor (UIKit has no public call
@@ -566,7 +499,6 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate, UIDragInt
     typealias Present = @convention(c) (AnyObject, Selector, CGPoint) -> Void
     let fn = unsafeBitCast(interaction.method(for: selector), to: Present.self)
     fn(interaction, selector, CGPoint(x: anchor.bounds.midX, y: anchor.bounds.midY))
-    onShown?()
     return true
   }
 
@@ -580,9 +512,7 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate, UIDragInt
 
   func cleanup() {
     if let interaction = interaction { anchor.removeInteraction(interaction) }
-    if let drag = drag { anchor.removeInteraction(drag) }
     interaction = nil
-    drag = nil
     anchor.removeFromSuperview()
   }
 
@@ -594,14 +524,11 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate, UIDragInt
     return UITargetedPreview(view: preview, parameters: parameters)
   }
 
-  /// The page shows its task again first; the picture goes a moment later,
-  /// so nothing blinks in between.
   private func finish() {
     guard !closed else { return }
     closed = true
+    cleanup()
     onClose?()
-    if dragging { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.cleanup() }
   }
 
   func contextMenuInteraction(
@@ -650,63 +577,6 @@ final class MenuPresenter: NSObject, UIContextMenuInteractionDelegate, UIDragInt
     } else {
       finish()
     }
-  }
-
-  // MARK: Drag out of the menu
-
-  func dragInteraction(_ interaction: UIDragInteraction, itemsForBeginning session: UIDragSession) -> [UIDragItem] {
-    dragging = true
-    keepAlive = self
-    onDragBegin?()
-    let item = UIDragItem(itemProvider: NSItemProvider(object: payload as NSString))
-    item.localObject = payload
-    return [item]
-  }
-
-  func dragInteraction(_ interaction: UIDragInteraction, previewForLifting item: UIDragItem, session: UIDragSession) -> UITargetedDragPreview? {
-    guard preview.window != nil else { return nil }
-    let parameters = UIDragPreviewParameters()
-    parameters.visiblePath = UIBezierPath(roundedRect: preview.bounds, cornerRadius: radius)
-    return UITargetedDragPreview(view: preview, parameters: parameters)
-  }
-
-  func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
-    dragging = false
-    onDragEnd?()
-    if closed { cleanup() }
-    keepAlive = nil
-  }
-}
-
-// MARK: - Scroll lock
-
-enum ScrollLock {
-  private static var installed = false
-
-  /// The page scrolls inside itself. The web view's own scroll view stays at
-  /// the top, so focusing a field no longer pushes the whole page up (WebKit
-  /// would scroll it to keep the field clear of the keyboard).
-  static func install(_ scrollView: UIScrollView) {
-    guard !installed else { return }
-    let cls: AnyClass = type(of: scrollView)
-    // Only WebKit's own subclass, never every scroll view in the app.
-    guard ObjectIdentifier(cls) != ObjectIdentifier(UIScrollView.self), NSStringFromClass(cls).hasPrefix("WK") else { return }
-    installed = true
-    let plain = #selector(setter: UIScrollView.contentOffset)
-    if let method = class_getInstanceMethod(cls, plain) {
-      typealias Set = @convention(c) (AnyObject, Selector, CGPoint) -> Void
-      let original = unsafeBitCast(method_getImplementation(method), to: Set.self)
-      let block: @convention(block) (AnyObject, CGPoint) -> Void = { view, _ in original(view, plain, .zero) }
-      class_replaceMethod(cls, plain, imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self)), method_getTypeEncoding(method))
-    }
-    let animated = #selector(UIScrollView.setContentOffset(_:animated:))
-    if let method = class_getInstanceMethod(cls, animated) {
-      typealias Set = @convention(c) (AnyObject, Selector, CGPoint, Bool) -> Void
-      let original = unsafeBitCast(method_getImplementation(method), to: Set.self)
-      let block: @convention(block) (AnyObject, CGPoint, Bool) -> Void = { view, _, _ in original(view, animated, .zero, false) }
-      class_replaceMethod(cls, animated, imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self)), method_getTypeEncoding(method))
-    }
-    scrollView.contentOffset = .zero
   }
 }
 

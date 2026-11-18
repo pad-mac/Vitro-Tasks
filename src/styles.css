@@ -765,7 +765,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .task-title { font-size: 15.5px; }
 .is-mobile .group-head { height: 40px; }
 .is-mobile .list-view { padding: 0 8px calc(var(--bar-h) + 28px); }
-.is-mobile .kanban { padding-bottom: 0; }
+.is-mobile .kanban { padding-bottom: calc(var(--bar-h) + 4px); }
 .is-mobile .timeline { padding-bottom: var(--bar-h); }
 .is-mobile .column-body { padding-bottom: var(--bar-h); }
 .is-mobile .detail-pane { padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -780,11 +780,6 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* Long press lifts the item; a drag carries a copy of it. */
 .is-mobile .is-lifted { transform: scale(0.985); background: var(--active); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), background 180ms; }
-/* The task under its native menu: drawn plain for the picture, then hidden while the picture stands in for it. */
-.is-mobile .is-menu-shot { background: var(--raised); border-radius: 12px; transform: none; transition: none; }
-.is-mobile .is-menu-source { visibility: hidden; }
-/* A touch drag takes the task out of its list; the line shows where it goes back in. */
-.is-mobile.is-touch-dragging .is-dragging { display: none; }
 .drag-ghost { position: fixed; z-index: 200; margin: 0; pointer-events: none; background: var(--raised); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); opacity: 0.97; will-change: transform; }
 
 /* Bottom bar: a frosted pill with the three places, and the add button beside it. */
@@ -806,120 +801,18 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* Touch drags: the board must not snap back while it scrolls along. */
 .is-touch-dragging .kanban { scroll-snap-type: none; }
 
-/* Sheets reach down behind the keyboard (filling its rounded corners) and keep
-   their content above it; they move in step with the keyboard. */
+/* The add sheet sits on top of the keyboard. */
 .m-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.2); opacity: 0; pointer-events: none; transition: opacity 200ms; }
 .m-scrim.is-open { opacity: 1; pointer-events: auto; }
-.m-sheet { --kb-ease: cubic-bezier(0.2, 0.8, 0.2, 1); position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; display: flex; flex-direction: column; max-height: 100%; background: var(--float); border-radius: 22px 22px 0 0; box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.14); padding: 0 0 max(var(--kb, 0px), env(safe-area-inset-bottom, 0px)); transform: translateY(115%); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), padding-bottom var(--kb-ms, 250ms) var(--kb-ease), top 260ms cubic-bezier(0.2, 0, 0, 1), border-radius 260ms; pointer-events: none; }
+.m-sheet { position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 61; background: var(--float); border-radius: 20px 20px 0 0; box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.14); padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateY(115%); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1); pointer-events: none; }
 .m-sheet.is-open { transform: none; pointer-events: auto; }
-.m-sheet.is-dragging { transition: padding-bottom var(--kb-ms, 250ms) var(--kb-ease); }
-.m-add-sheet.is-full { top: 0; border-radius: 0; padding-top: var(--top-gap); }
-.m-add-sheet .p-scroll { padding: 0 16px 10px; }
 .m-add-row { display: flex; align-items: center; gap: 10px; }
-.m-add-row input { flex: 1; min-width: 0; height: 48px; font-size: 17px; }
-.m-add-sheet.is-full .m-add-row input { height: 56px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.m-add-row input { flex: 1; min-width: 0; height: 46px; font-size: 17px; }
 .m-add-row input::placeholder { color: var(--faint); }
-.m-send { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); transition: opacity var(--fast); }
+.m-send { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); transition: opacity var(--fast); }
 .m-send:disabled { opacity: 0.25; }
-.m-add-chips { min-height: 26px; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; }
-.m-add-chips:empty { display: none; }
+.m-add-foot { min-height: 30px; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; }
 .m-suggest { padding: 2px 0 4px; }
-.m-add-notes { margin: 0 0 6px; padding-left: 0; }
-/* Buttons for the pickers: big enough to hit with a thumb. */
-.m-tools { display: flex; align-items: center; gap: 4px; margin: 4px -6px 0; }
-.m-tool { width: 46px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; color: var(--muted); transition: background var(--fast), color var(--fast); }
-.m-tool.is-set { color: var(--text); }
-.m-tool.is-open { background: var(--hover); color: var(--text); }
-.m-tools-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; text-align: right; padding-right: 4px; }
-.rot-up { display: grid; transform: rotate(-90deg); }
-.m-add-picker { margin: 6px 0 4px; animation: fade 140ms; }
-
-/* ---------- Phone sheets: shared parts ---------- */
-
-.p-sheet-top { flex: none; position: relative; display: flex; align-items: center; justify-content: center; min-height: 22px; padding: 0 8px; }
-.is-full > .p-sheet-top { min-height: 48px; justify-content: space-between; }
-.p-top-btn { height: 44px; padding: 0 12px; font-size: 16px; color: var(--muted); }
-.p-top-btn.is-right { margin-left: auto; }
-.p-top-btn.is-strong { color: var(--text); font-weight: 600; }
-.p-top-btn:disabled { opacity: 0.35; }
-.p-top-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 600; }
-.p-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.m-grabber { flex: none; width: 100%; height: 22px; display: grid; place-items: center; }
-.m-grabber i { width: 38px; height: 5px; border-radius: 3px; background: color-mix(in oklab, var(--text) 22%, transparent); }
-.is-full .m-grabber { position: absolute; inset: 0 auto auto 50%; width: 80px; height: 14px; transform: translateX(-50%); }
-.is-full .m-grabber i { opacity: 0; }
-
-/* Property list: grouped rows like the system's settings. */
-.p-group { margin: 14px 0 0; background: var(--raised); border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 0.5px var(--line-soft); }
-.p-item + .p-item { box-shadow: inset 0 0.5px 0 var(--line-soft); }
-.p-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 14px; text-align: left; font-size: 16px; }
-.p-ico { width: 22px; flex: none; display: grid; place-items: center; color: var(--muted); }
-.p-dot { width: 11px; height: 11px; }
-.p-label { flex: none; }
-.p-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: var(--text); font-size: 15px; }
-.p-value.is-empty { color: var(--faint); }
-.p-value.is-over { color: var(--red); }
-.p-value.is-signal { color: var(--signal); }
-.p-value.is-p1 { color: var(--p1); }
-.p-value.is-p2 { color: var(--p2); }
-.p-value.is-p3 { color: var(--p3); }
-.p-chev { flex: none; display: grid; color: var(--faint); transition: transform 160ms cubic-bezier(0.2, 0, 0, 1); }
-.p-item.is-open .p-chev { transform: rotate(90deg); }
-.p-picker { padding: 2px 12px 14px; animation: fade 140ms; }
-.m-add-picker.p-picker { padding: 0; }
-.p-quick { display: flex; gap: 8px; margin-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
-.p-quick .p-chip { flex: none; }
-.p-chip { height: 36px; padding: 0 14px; border-radius: 18px; background: var(--hover); font-size: 15px; transition: background var(--fast); }
-.p-chip.is-on { background: var(--ink); color: var(--on-ink); }
-.p-chip.is-quiet { background: none; color: var(--muted); }
-.p-chip:disabled { opacity: 0.35; }
-.p-seg { display: flex; gap: 2px; padding: 3px; margin-bottom: 10px; border-radius: 11px; background: var(--hover); }
-.p-seg button { flex: 1; height: 34px; border-radius: 9px; font-size: 15px; font-weight: 500; color: var(--muted); transition: background var(--fast), color var(--fast); }
-.p-seg button.is-on { background: var(--raised); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 0 0.5px var(--line); }
-/* The month grid with fingertip-sized days. */
-.p-picker .mini-cal { padding: 0; }
-.p-picker .mini-cal-head { height: 40px; }
-.p-picker .mini-cal-title { font-size: 16px; font-weight: 600; }
-.p-picker .mini-cal-head .icon-btn { width: 40px; height: 40px; }
-.p-picker .mini-cal-grid { gap: 2px 0; }
-.p-picker .mini-cal-dow { font-size: 12px; height: 24px; }
-.p-picker .mini-cal-day { width: 40px; height: 40px; margin: 0 auto; font-size: 16px; }
-.p-time { display: flex; align-items: center; gap: 10px; height: 50px; margin-top: 6px; padding: 0 2px; color: var(--muted); font-size: 16px; border-top: 0.5px solid var(--line-soft); }
-.p-time span { flex: 1; color: var(--text); }
-.p-time input { min-width: 92px; height: 36px; padding: 0 10px; border-radius: 9px; background: var(--hover); color: var(--text); font: inherit; font-size: 16px; text-align: center; }
-.p-clear { width: 100%; height: 46px; margin-top: 4px; border-radius: 12px; color: var(--red); font-size: 16px; background: var(--hover); }
-.p-time-clear { width: 34px; height: 34px; display: grid; place-items: center; color: var(--muted); }
-.p-prio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.p-prio-btn { height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 12px; background: var(--hover); font-size: 13px; color: var(--muted); transition: background var(--fast), color var(--fast); }
-.p-prio-btn.is-on { background: var(--active); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--line); }
-.p-lists { max-height: 264px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -12px -14px; }
-.m-add-picker .p-lists { margin: 0 -16px; }
-.p-list-row { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px; font-size: 16px; text-align: left; }
-.p-list-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.p-list-row .dot { width: 10px; height: 10px; }
-.p-list-row.is-on { font-weight: 600; }
-
-/* Task editor */
-.p-editor { padding: 2px 16px 24px; }
-.p-crumb { display: inline-flex; align-items: center; gap: 4px; height: 32px; color: var(--muted); font-size: 14px; max-width: 100%; }
-.p-crumb span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.p-title-row { display: flex; align-items: flex-start; gap: 12px; padding-top: 6px; }
-.p-title-row .check { width: 24px; height: 24px; margin-top: 4px; border-radius: 7px; border-width: 2px; }
-.p-title { flex: 1; min-width: 0; min-height: 32px; font-size: 21px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; resize: none; overflow: hidden; }
-.p-notes { display: block; width: 100%; min-height: 28px; margin: 8px 0 0; padding-left: 36px; font-size: 16px; line-height: 1.45; color: var(--text); resize: none; overflow: hidden; }
-.p-notes::placeholder, .p-title::placeholder { color: var(--faint); }
-.p-group-head { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 14px; color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.p-group-head em { font-style: normal; font-weight: 500; }
-.p-sub { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 6px 0 14px; box-shadow: inset 0 0.5px 0 var(--line-soft); }
-.p-sub .check { width: 20px; height: 20px; border-radius: 6px; }
-.p-sub-title { flex: 1; min-width: 0; padding: 12px 0; text-align: left; font-size: 16px; }
-.p-sub.is-done .p-sub-title { color: var(--faint); text-decoration: line-through; }
-.p-sub-del { width: 40px; height: 40px; flex: none; display: grid; place-items: center; color: var(--faint); }
-.p-sub-add { color: var(--faint); }
-.p-sub-add input { flex: 1; height: 48px; font-size: 16px; }
-.p-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
-.p-actions button { height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; background: var(--raised); box-shadow: inset 0 0 0 0.5px var(--line-soft); color: var(--text); font-size: 12.5px; }
-.p-actions button.is-danger { color: var(--red); }
 
 /* Settings fill the screen. */
 .is-mobile .overlay { place-items: stretch; }
@@ -937,14 +830,19 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .floating.composer { left: 8px !important; right: 8px; top: auto !important; bottom: calc(var(--kb, 0px) + 8px + env(safe-area-inset-bottom, 0px)); width: auto; }
 .is-mobile .floating.composer .detail-popup { width: auto; }
 
-/* A task opens in a sheet; pulled up it fills the screen (typing does that too). */
+/* A task opens in a sheet; pulled up it fills the screen. */
 .m-task-scrim { z-index: 88; }
-.m-task-sheet { --kb-ease: cubic-bezier(0.2, 0.8, 0.2, 1); position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 64%; display: flex; flex-direction: column; background: var(--float); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); transition: height 300ms cubic-bezier(0.2, 0, 0, 1), border-radius 300ms, transform 300ms cubic-bezier(0.2, 0, 0, 1); animation: sheet-in 300ms cubic-bezier(0.2, 0, 0, 1); will-change: transform; }
+.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 62%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: env(safe-area-inset-bottom, 0px); transition: height 300ms cubic-bezier(0.2, 0, 0, 1), border-radius 300ms, transform 300ms cubic-bezier(0.2, 0, 0, 1); animation: sheet-in 300ms cubic-bezier(0.2, 0, 0, 1); will-change: transform; }
 .m-task-sheet.is-full { height: 100%; border-radius: 0; padding-top: var(--top-gap); }
 .m-task-sheet.is-dragging { transition: none; }
 .m-task-sheet.is-closing { transform: translateY(105%); transition: transform 240ms cubic-bezier(0.4, 0, 1, 1); }
-/* The content stays above the keyboard; the sheet itself goes on behind it. */
-.m-task-sheet .p-scroll { padding-bottom: max(var(--kb, 0px), env(safe-area-inset-bottom, 0px)); transition: padding-bottom var(--kb-ms, 250ms) var(--kb-ease); }
+.m-task-sheet .detail { flex: 1; min-height: 0; width: auto; border: 0; position: static; animation: none; background: transparent; }
+.m-task-sheet .detail-head { height: 52px; }
+.m-task-sheet:not(.is-full) .pane-back { display: none; }
+.m-grabber { flex: none; height: 18px; display: grid; place-items: center; }
+.m-grabber i { width: 38px; height: 5px; border-radius: 3px; background: color-mix(in oklab, var(--text) 22%, transparent); }
+.m-task-sheet.is-full .m-grabber { height: 10px; }
+.m-task-sheet.is-full .m-grabber i { opacity: 0; }
 @keyframes sheet-in { from { transform: translateY(100%); } }
 
 /* ---------- Phone calendar ---------- */
@@ -960,9 +858,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-month .month-dow span { font-size: 11.5px; font-weight: 500; padding: 2px 0 6px; }
 .m-month-scroll { position: relative; overflow-anchor: none; flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: var(--bar-h); scroll-padding-top: 0; }
 .m-week { scroll-snap-align: start; scroll-snap-stop: normal; display: flex; }
-.m-week.is-focus { transition: height 160ms cubic-bezier(0.2, 0, 0, 1); }
-/* Split open: the calendar stays put (touches are held back); only the day's list scrolls. */
+.m-week.is-focus { transition: height 220ms cubic-bezier(0.2, 0, 0, 1); }
 .m-month-scroll.no-snap, .m-month-scroll.is-split { scroll-snap-type: none; }
+/* Split open: the calendar stays put; only the day's list scrolls. */
+.m-month-scroll.is-split { overflow: hidden; }
 .m-week .cal-week { flex: 1; height: 100%; border-top: 1px solid var(--line-soft); }
 .m-week:first-child .cal-week { border-top: 0; }
 /* No vertical lines; numbers centred; today and the open day as circles. */
@@ -977,7 +876,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .cal-more { font-size: 10.5px; padding: 0 5px; }
 .is-mobile .edge-handle { display: none; }
 /* The day's list opens under its week and fills the view down to the bar. */
-.m-day-panel { scroll-snap-align: none; display: flex; flex-direction: column; margin: 0 8px; background: var(--raised); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08); overflow: hidden; opacity: 0; transition: height 170ms cubic-bezier(0.2, 0, 0, 1), margin 170ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms; }
+.m-day-panel { scroll-snap-align: none; display: flex; flex-direction: column; margin: 0 8px; background: var(--raised); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.08); overflow: hidden; opacity: 0; transition: height 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms cubic-bezier(0.2, 0, 0, 1), opacity 160ms; }
 .m-day-panel.is-open { opacity: 1; margin: 4px 8px 12px; }
 .m-day-panel > header { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 6px 12px; font-size: 14px; }
 .m-day-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 4px 8px; }
