@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRanks, moveInOrder, parseRanks, positionsFor, ranksFor } from "../src/lib/order";
+import { applyRanks, moveInOrder, parseRanks, positionsFor, ranksFor, subtaskPositions } from "../src/lib/order";
 import { groupTasks, type Data } from "../src/lib/views";
 import type { Task } from "../src/shared/schema";
 
@@ -69,5 +69,31 @@ describe("custom order", () => {
     expect(ids(sorted[0].tasks)).toEqual(["l", "h"]);
     const manual = groupTasks(ts, { group_by: "none", sort_by: "manual" }, { kind: "smart", id: "all" }, data, "2026-11-17", ranks);
     expect(ids(manual[0].tasks)).toEqual(["h", "l"]);
+  });
+});
+
+describe("subtask order", () => {
+  const s = (id: string, position: number, status = 0) => task({ id, position, status, parent_id: "p" });
+  const apply = (subs: Task[], moves: { id: string; position: number }[]) =>
+    subs
+      .map((t) => ({ ...t, position: moves.find((m) => m.id === t.id)?.position ?? t.position }))
+      .sort((x, y) => x.position - y.position)
+      .map((t) => t.id);
+
+  it("places a moved subtask between its new neighbours, done ones included", () => {
+    const subs = [s("a", 1), s("b", 2, 1), s("c", 3), s("d", 4)];
+    expect(apply(subs, subtaskPositions(subs, "d", 1))).toEqual(["a", "d", "b", "c"]);
+    expect(apply(subs, subtaskPositions(subs, "a", 3))).toEqual(["b", "c", "d", "a"]);
+    expect(apply(subs, subtaskPositions(subs, "c", 0))).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("renumbers when neighbours share a position", () => {
+    const subs = [s("a", 0), s("b", 0), s("c", 0)];
+    const moves = subtaskPositions(subs, "c", 1);
+    expect(apply(subs, moves)).toEqual(["a", "c", "b"]);
+  });
+
+  it("does nothing for a single subtask", () => {
+    expect(subtaskPositions([s("a", 1)], "a", 0)).toEqual([]);
   });
 });

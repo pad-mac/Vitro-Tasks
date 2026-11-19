@@ -77,7 +77,11 @@ void useStore
   .init()
   .then(async () => {
     // Browser preview only: `?demo` fills an empty database with sample data.
-    if (!isTauri() && new URLSearchParams(location.search).has("demo")) await seedDemo();
+    if (!isTauri() && new URLSearchParams(location.search).has("demo")) {
+      await seedDemo();
+      // For the scripted checks of the preview.
+      (window as unknown as { __store: typeof useStore }).__store = useStore;
+    }
     // Coming back to the app (phone unlocked, window shown again) pulls changes.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && windowLabel() === "main") void useStore.getState().syncNow();

@@ -3,6 +3,7 @@ import { defaultsForView, type Group, type ViewRef } from "../lib/views";
 import type { SortBy } from "../shared/schema";
 import { useStore } from "../store";
 import { AddBar, TaskRow, useReorderTarget } from "./tasks";
+import { GroupSelect } from "./Select";
 import { Icon, InlineInput, MenuItem, Popover } from "./ui";
 
 function GroupBlock({ group, view, sectioned, sort, reorder }: { group: Group; view: ViewRef; sectioned: boolean; sort: SortBy; reorder: boolean }) {
@@ -18,6 +19,7 @@ function GroupBlock({ group, view, sectioned, sort, reorder }: { group: Group; v
     <section className={`group ${drop.over ? "is-drop" : ""}`} {...drop.props}>
       {group.label && (
         <header className={`group-head ${group.tone === "overdue" ? "tone-overdue" : ""}`}>
+          <GroupSelect tasks={group.tasks} />
           <button type="button" className={`twist ${collapsed ? "" : "is-open"}`} onClick={() => setCollapsed(!collapsed)} aria-label="Collapse group">
             <Icon name="chevron" size={12} />
           </button>
@@ -61,10 +63,11 @@ export function ListView({ view, groups, sectioned, sort }: { view: ViewRef; gro
   const total = groups.reduce((n, g) => n + g.tasks.length, 0);
   
   const completedView = view.kind === "smart" && view.id === "completed";
+  const selecting = useStore((s) => !!s.selecting);
   return (
     <div className="list-view">
       <div className="list-inner">
-        {!completedView && <AddBar base={defaultsForView(view)} />}
+        {!completedView && !selecting && <AddBar base={defaultsForView(view)} />}
         {groups.map((g) => (
           <GroupBlock key={g.key} group={g} view={view} sectioned={sectioned} sort={sort} reorder={!completedView} />
         ))}
@@ -73,7 +76,7 @@ export function ListView({ view, groups, sectioned, sort }: { view: ViewRef; gro
                         <p>{completedView ? "Nothing completed yet." : "Nothing here. Type above to add a task."}</p>
           </div>
         )}
-        {sectioned &&
+        {sectioned && !selecting &&
           (adding ? (
             <div className="add-section">
               <InlineInput

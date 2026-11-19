@@ -7,6 +7,7 @@ import type { Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
 import { Check, Icon, Rich } from "./ui";
+import { SelectCircle, selectTap } from "./Select";
 
 export const DRAG_TYPE = "application/x-vitro-task";
 
@@ -261,9 +262,15 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
       {list?.name ?? "Inbox"}
     </span>
   );
+  const showDetails = useStore((s) => s.showDetails);
   return (
     <span className="task-meta">
       {!dotList && listEl}
+      {!showDetails && task.notes?.trim() && (
+        <span className="meta-notes" title="Has a description">
+          <Icon name="lines" size={12} />
+        </span>
+      )}
       {subs.length > 0 && (
         <span className="meta-subs">
           <Icon name="subtask" size={12} />
@@ -290,27 +297,45 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
   );
 }
 
-export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: boolean; depth?: number }) {
+/**
+ * A task just completed goes (struck through, fading) unless the view keeps
+ * done tasks: completed shown, or a subtask under a parent that is done and stays.
+ */
+export function useLeaving(task: Task, parent?: Task): boolean {
+  return useStore((s) => !s.showCompleted && !!s.lingering[task.id] && (!parent || parent.status === 0 || !!s.lingering[parent.id]));
+}
+
+export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; showList?: boolean; depth?: number; parent?: Task }) {
   const tasks = useStore((s) => s.tasks);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const showCompleted = useStore((s) => s.showCompleted);
   const showDetails = useStore((s) => s.showDetails);
+  const lingering = useStore((s) => s.lingering);
+  const folded = useStore((s) => !!s.folded[task.id]);
+  const toggleFold = useStore((s) => s.toggleFold);
+  const selecting = useStore((s) => s.selecting);
   const onMenu = useTaskMenu(task.id);
-  const children = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || task.status !== 0);
+  const children = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || task.status !== 0 || lingering[c.id]);
+  const picked = !!selecting?.includes(task.id);
+  const leaving = useLeaving(task, parent);
   return (
     <>
       <div
-        className={`task-row p${task.priority} ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
+        className={`task-row p${task.priority} ${selectedId === task.id && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
         style={{ paddingLeft: 10 + depth * 26 }}
         data-id={task.id}
         data-depth={depth}
-        onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
-        onContextMenu={onMenu}
-        {...dragProps(task.id)}
+        onClick={(e) => selectTap(task.id) || select(task.id, anchorOf(e.currentTarget))}
+        onContextMenu={selecting ? (e) => e.preventDefault() : onMenu}
+        {...(selecting ? {} : dragProps(task.id))}
       >
-        <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        {selecting ? (
+          <SelectCircle on={picked} />
+        ) : (
+          <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        )}
         <span className="task-main">
           <span className="task-line">
             <span className="task-title">
@@ -321,10 +346,24 @@ export function TaskRow({ task, showList, depth = 0 }: { task: Task; showList?: 
           </span>
           {showDetails && task.notes && <span className="task-notes"><Rich text={task.notes.split("\n")[0]} /></span>}
         </span>
+        {children.length > 0 && (
+          <button
+            type="button"
+            className={`fold ${folded ? "" : "is-open"}`}
+            aria-label={folded ? "Show subtasks" : "Hide subtasks"}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFold(task.id);
+            }}
+          >
+            <Icon name="chevron" size={13} />
+          </button>
+        )}
       </div>
-      {children.map((c) => (
-        <TaskRow key={c.id} task={c} depth={depth + 1} />
-      ))}
+      {!folded &&
+        children.map((c) => (
+          <TaskRow key={c.id} task={c} depth={depth + 1} parent={task} />
+        ))}
     </>
   );
 }

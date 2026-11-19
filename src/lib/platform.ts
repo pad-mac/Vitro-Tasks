@@ -86,13 +86,13 @@ export async function openExternal(url: string): Promise<void> {
 }
 
 /** A short tap of the phone's haptic engine (no-op elsewhere). */
-export function haptic(kind: "light" | "medium" | "selection" = "medium"): void {
+export function haptic(kind: "light" | "medium" | "selection" | "success" = "medium"): void {
   if (!isMobile) return;
   // The iOS app keeps its generators ready (no delay on the first tick).
   if (hasNative()) return postNative({ type: "haptic", kind });
   if (!isTauri()) return;
   void import("@tauri-apps/plugin-haptics")
-    .then((h) => (kind === "selection" ? h.selectionFeedback() : h.impactFeedback(kind)))
+    .then((h) => (kind === "selection" ? h.selectionFeedback() : kind === "success" ? h.notificationFeedback("success") : h.impactFeedback(kind)))
     .catch(() => {});
 }
 

@@ -6,6 +6,7 @@ import { haptic, isMobile } from "../lib/platform";
 import { onNative, postNative } from "../lib/native";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
+import { isTyping } from "../lib/shortcuts";
 import { PRIORITY_LABELS, defaultsForView } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
 import { formatDateTime, todayKey } from "../lib/dates";
@@ -200,7 +201,11 @@ export function MobileAdd({
     setTool(null);
     setFloat(null);
     onClose();
-    setTimeout(() => (keep.current = false), 400);
+    // The editor's title takes the focus (and the keyboard) if iOS lets it; otherwise this line must not keep it while hidden.
+    setTimeout(() => {
+      keep.current = false;
+      if (document.activeElement === inputRef.current) inputRef.current?.blur();
+    }, 250);
   };
   const drag = useSheetGesture(ref, { enabled: open, full: false, onFull: () => void expand(), onHalf: () => {}, onClose: close });
   const pick = (patch: PropValues) => setPicked((p) => ({ ...p, ...patch }));
@@ -385,10 +390,12 @@ const REVEAL_MS = 220;
 // How far off the menu the finger may stray (while sliding over it) before the task is dragged instead.
 const OFF_MENU = 4;
 const SLOP = 8;
-const LONG_PRESS = ".task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell";
-const DRAGGABLE = '.task-row[data-depth="0"], .card';
+// Subtasks are held (menu, reorder) in the full-screen editor.
+const SHEET_SUB = ".m-task-sheet.is-full .subtask[data-id]";
+const LONG_PRESS = `.task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell, ${SHEET_SUB}`;
+const DRAGGABLE = `.task-row[data-depth="0"], .card, ${SHEET_SUB}`;
 // Items that get the task menu.
-const TASK_ITEM = ".task-row[data-id], .card[data-id], .cal-chip[data-id], .tl-item[data-id]";
+const TASK_ITEM = `.task-row[data-id], .card[data-id], .cal-chip[data-id], .tl-item[data-id], ${SHEET_SUB}`;
 
 /** The app's own menu for a held list (or other item): below it. */
 function openWebMenu(el: HTMLElement) {
@@ -465,8 +472,11 @@ export function useTouchGestures() {
         }
         return;
       }
-      const item = target.closest("input, textarea, [contenteditable='true'], .check") ? null : target.closest<HTMLElement>(LONG_PRESS);
+      const item = target.closest("input, textarea, [contenteditable='true'], .check, .fold, .sel-group") ? null : target.closest<HTMLElement>(LONG_PRESS);
       if (!item) return;
+      // Select mode: a hold is a tap. A subtask is not held while the keyboard is up (the editor would shift under the menu).
+      if (useStore.getState().selecting && item.matches(TASK_ITEM)) return;
+      if (item.matches(SHEET_SUB) && isTyping(document.activeElement)) return;
       el = item;
       start = p;
       liftTimer = window.setTimeout(() => {
@@ -641,7 +651,7 @@ interface DragDriver {
  * along. On the drop the copy glides into the task's new place.
  */
 function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number }, shift: number, x: number, y: number): DragDriver {
-  const sources = [...document.querySelectorAll<HTMLElement>(`:is(.task-row, .card)[data-id="${CSS.escape(id)}"]`)];
+  const sources = [...document.querySelectorAll<HTMLElement>(`:is(.task-row, .card, .subtask)[data-id="${CSS.escape(id)}"]`)];
   sources.forEach((s) => s.classList.add("is-dragging"));
   document.documentElement.classList.add("is-touch-dragging");
   copy.classList.add("drag-ghost", "is-catching");
@@ -661,12 +671,12 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
     if (under) group = under;
     if (group) send("vitro:touchover", group);
   };
-  const barTop = document.querySelector(".m-tabs")?.getBoundingClientRect().top ?? innerHeight;
+  const barTop = document.querySelector(".m-bar:not(.is-hidden) .m-tabs")?.getBoundingClientRect().top ?? innerHeight;
   const speed = (depth: number) => Math.round(Math.min(14, Math.max(2, (depth / 52) * 14)));
   const tick = () => {
     if (last) {
       const at = document.elementFromPoint(last.x, last.y);
-      const scroller = at?.closest<HTMLElement>(".list-view, .column-body, .m-day-list");
+      const scroller = at?.closest<HTMLElement>(".list-view, .column-body, .m-day-list, .detail-sec");
       const sc = scroller?.getBoundingClientRect();
       if (scroller && sc) {
         const bottom = Math.min(sc.bottom, barTop - 8);
@@ -689,7 +699,7 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
   const clear = () => {
     sources.forEach((s) => s.classList.remove("is-dragging"));
     // Rows React redrew meanwhile.
-    document.querySelectorAll(":is(.task-row, .card).is-dragging").forEach((s) => s.classList.remove("is-dragging"));
+    document.querySelectorAll(":is(.task-row, .card, .subtask).is-dragging").forEach((s) => s.classList.remove("is-dragging"));
     document.documentElement.classList.remove("is-touch-dragging");
     useStore.getState().setDropHint(null);
   };
@@ -884,7 +894,8 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   };
   const onTouchStart = (e: React.TouchEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest(".floating, .pop-panel")) return;
+    gesture.current = null;
+    if (target.closest(".floating, .pop-panel") || holdMenu.isOpen()) return;
     // A field being written in keeps its touches (caret, selection); a field not in use can be pulled like the rest.
     const field = target.closest<HTMLElement>("input, textarea, [contenteditable='true'], .rich-view");
     const active = document.activeElement;
@@ -897,14 +908,21 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
       return;
     }
     // A part that scrolls (a long description, many subtasks) keeps its moves, except a pull down from its top.
+    // (Half open, a part only scrolls while being written in; otherwise it is a cut preview the sheet is pulled by.)
     const sec = target.closest<HTMLElement>(".detail-sec");
-    const scroller = full && sec && sec.scrollHeight > sec.clientHeight + 1 ? sec : null;
+    const scroller = sec && sec.scrollHeight > sec.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sec).overflowY) ? sec : null;
     gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false, scroller };
   };
   const onTouchMove = (e: React.TouchEvent) => {
     const g = gesture.current;
     const el = ref.current;
     if (!g || !el) return;
+    // A held or dragged subtask has the finger now.
+    if (holdMenu.isOpen() || document.documentElement.classList.contains("is-touch-dragging")) {
+      if (g.active) glide(full);
+      gesture.current = null;
+      return;
+    }
     const t = e.touches[0];
     const dy = t.clientY - g.y;
     if (g.keyboard) {

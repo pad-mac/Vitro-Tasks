@@ -6,6 +6,7 @@ import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
 import { postNative } from "./lib/native";
 import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
+import { SelectBar, SelectHead, UndoButton } from "./components/Select";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
@@ -66,29 +67,43 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
   const tasks = useStore((s) => s.tasks);
   const settings = useStore((s) => s.settings);
   const showCompleted = useStore((s) => s.showCompleted);
+  const lingering = useStore((s) => s.lingering);
   const setShowCompleted = useStore((s) => s.setShowCompleted);
   const showDetails = useStore((s) => s.showDetails);
   const setShowDetails = useStore((s) => s.setShowDetails);
   const setPrefs = useStore((s) => s.setPrefs);
   const addSection = useStore((s) => s.addSection);
   const detached = useStore((s) => s.detached);
+  const selecting = useStore((s) => s.selecting);
+  const setSelecting = useStore((s) => s.setSelecting);
   const toggleSidebar = useToggleSidebar();
 
   const prefs = useMemo(() => computePrefs(view, lists, settings), [view, lists, settings]);
   const completedView = view.kind === "smart" && view.id === "completed";
   const mode: ViewMode = completedView ? "list" : prefs.view_mode;
   const groups = useMemo(() => {
-    const data = { lists, sections, tasks, hidden: hiddenLists(settings) };
+    const data = { lists, sections, tasks, hidden: hiddenLists(settings), lingering };
     const visible = tasksForView(view, data, showCompleted);
     if (completedView) return groupTasks(visible, { group_by: "none", sort_by: "created" }, view, data);
     return groupTasks(visible, prefs, view, data, undefined, parseRanks(settings[orderKey(viewKey(view), prefs.sort_by)]));
-  }, [view, lists, sections, tasks, settings, showCompleted, prefs, completedView]);
+  }, [view, lists, sections, tasks, settings, showCompleted, prefs, completedView, lingering]);
   const customOrder = !completedView && prefs.sort_by !== "manual" && !!settings[orderKey(viewKey(view), prefs.sort_by)];
   const clearCustomOrder = useStore((s) => s.clearCustomOrder);
 
   const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : SMART_VIEWS.find((v) => v.id === view.id)!.name;
   const sectioned = view.kind === "list" && prefs.group_by === "section";
   const effectiveGroup: GroupBy = prefs.group_by === "section" && view.kind !== "list" ? "none" : prefs.group_by;
+
+  const canSelect = !completedView && (mode === "list" || mode === "kanban");
+  if (selecting && canSelect)
+    return (
+      <>
+        <SelectHead title={title} groups={groups} />
+        {mode === "list" && <ListView view={view} groups={groups} sectioned={sectioned} sort={prefs.sort_by} />}
+        {mode === "kanban" && <KanbanView view={view} groups={groups} sectioned={sectioned} sort={prefs.sort_by} />}
+        <SelectBar view={view} />
+      </>
+    );
 
   return (
     <>
@@ -160,6 +175,11 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
                   <MenuItem onClick={() => { void setShowDetails(!showDetails); close(); }}>
                     <Icon name="notes" size={15} /> {showDetails ? "Hide Details" : "Show Details"}
                   </MenuItem>
+                  {canSelect && (
+                    <MenuItem onClick={() => { setSelecting([]); close(); }}>
+                      <Icon name="select" size={15} /> Select
+                    </MenuItem>
+                  )}
                   {view.kind === "list" && (
                     <MenuItem
                       onClick={() => {
@@ -301,16 +321,28 @@ function runAction(id: ActionId, narrow: boolean): boolean {
 const KEEPS_SELECTION =
   ".task-row, .card, .cal-chip, .week-event, .tl-item, .tl-chip, .tl-title, .layer, .floating, button, input, textarea, a, .add-bar, .rich-view";
 
-/** Whether a text field has the focus (on the phone: the keyboard is up). */
+/**
+ * Whether a text field has the focus (on the phone: the keyboard is up).
+ * Only a field that is still on the page and shown counts: iOS sends no blur
+ * when a focused field is removed, and a hidden one (the closed quick add)
+ * can keep the focus when a script may not move it. While typing, the check
+ * repeats itself, so a missed event cannot leave the bar hidden.
+ */
 function useTyping() {
   const [typing, setTyping] = useState(false);
   useEffect(() => {
     if (!isMobile) return;
-    const check = () => setTyping(isTyping(document.activeElement));
+    const check = () => {
+      const el = document.activeElement as HTMLElement | null;
+      const shown = !!el && el.isConnected && el.getClientRects().length > 0 && !el.closest("[aria-hidden='true']");
+      setTyping(isTyping(el) && shown);
+    };
     const onOut = () => setTimeout(check, 0);
     document.addEventListener("focusin", check);
     document.addEventListener("focusout", onOut);
+    const timer = setInterval(check, 700);
     return () => {
+      clearInterval(timer);
       document.removeEventListener("focusin", check);
       document.removeEventListener("focusout", onOut);
     };
@@ -346,6 +378,7 @@ export function App() {
   useEdgeSwipe();
   // The phone's bar steps aside for sheets, menus and the keyboard.
   const menu = useStore((s) => s.menu);
+  const selecting = useStore((s) => s.selecting);
   const composer = useStore((s) => s.composer);
   const typing = useTyping();
   // iOS: while a sheet is open, the colour behind the web view is the sheet's,
@@ -382,6 +415,7 @@ export function App() {
       if (e.key === "Escape" && !typing) {
         const st = useStore.getState();
         if (settingsOpen) setSettingsOpen(false);
+        else if (st.selecting && !document.querySelector(".pop-panel:not(.is-closing)")) st.setSelecting(null);
         else if (st.drawerOpen) st.setDrawerOpen(false);
         else if (!st.anchor || st.editMode(st.view) === "pane") select(null);
         return;
@@ -447,7 +481,10 @@ export function App() {
       )}
       <div className="workspace" onMouseDown={onWorkspaceDown}>
         {taskLayer && !narrow && sidebarOpen && <Sidebar />}
-        <main className="main">{view.kind === "calendar" ? <CalendarView /> : <TaskViews view={view} />}</main>
+        <main className="main">
+          {view.kind === "calendar" ? <CalendarView /> : <TaskViews view={view} />}
+          <UndoButton />
+        </main>
         {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
         {taskLayer && narrow && drawerOpen && (
           <>
@@ -464,7 +501,7 @@ export function App() {
         <>
           <MobileBar
             settingsOpen={settingsOpen}
-            hidden={drawerOpen || addOpen || !!selected || !!menu || !!composer || typing}
+            hidden={drawerOpen || addOpen || !!selected || !!menu || !!composer || typing || !!selecting}
             onSettings={() => setSettingsOpen(!settingsOpen)}
             onCloseSettings={() => setSettingsOpen(false)}
             onAdd={() => openAdd(null)}

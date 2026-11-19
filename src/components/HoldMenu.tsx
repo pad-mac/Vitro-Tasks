@@ -48,12 +48,16 @@ export function hideTask(id: string | null) {
     style.id = "vitro-held";
     document.head.appendChild(style);
   }
-  style.textContent = id ? `[data-id="${CSS.escape(id)}"]:is(.task-row, .card, .cal-chip, .tl-item) { visibility: hidden !important; }` : "";
+  style.textContent = id ? `[data-id="${CSS.escape(id)}"]:is(.task-row, .card, .cal-chip, .tl-item, .subtask) { visibility: hidden !important; }` : "";
 }
 
-/** A task's row, card or chip on screen. */
+/** A task's row, card or chip on screen (a subtask in the open editor first: it lies above the list). */
 export function taskElement(id: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`:is(.task-row, .card, .cal-chip, .tl-item)[data-id="${CSS.escape(id)}"]`);
+  const at = `[data-id="${CSS.escape(id)}"]`;
+  return (
+    document.querySelector<HTMLElement>(`.m-task-sheet .subtask${at}`) ??
+    document.querySelector<HTMLElement>(`:is(.task-row, .card, .cal-chip, .tl-item)${at}`)
+  );
 }
 
 /** Where a task is drawn now (null if it is not on screen any more). */

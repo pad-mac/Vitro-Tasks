@@ -9,6 +9,7 @@ import {
   detachedLayer,
   takeHandoff,
   findUpdate,
+  haptic,
   onRemoteChange,
   setQuickAddShortcut,
   type FoundUpdate,
@@ -27,6 +28,18 @@ import {
   type VisibilityKey,
 } from "./lib/views";
 import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./shared/schema";
+
+/** How long a just-completed task stays (struck through) before it goes. */
+const LINGER_MS = 900;
+const FOLDED_KEY = "vitro.folded";
+function readFolded(): Record<string, true> {
+  try {
+    const ids = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]") as string[];
+    return Object.fromEntries(ids.map((id) => [id, true as const]));
+  } catch {
+    return {};
+  }
+}
 
 export interface DropHint {
   group: string;
@@ -115,6 +128,14 @@ interface State {
   focusSubtask: boolean;
   showCompleted: boolean;
   showDetails: boolean;
+  /** Tasks just completed: still shown (struck through) for a moment, then gone. */
+  lingering: Record<string, true>;
+  /** The last completion, to take back from the undo button (until the view changes). */
+  undo: { ids: string[] } | null;
+  /** Tasks whose subtasks are folded away in lists and on the board (kept on this device). */
+  folded: Record<string, true>;
+  /** Select mode: the selected task ids (null: not selecting). */
+  selecting: string[] | null;
   sidebarOpen: boolean;
   sidebarWidth: number;
   /** Narrow windows: the list sidebar slides over the content. */
@@ -158,6 +179,10 @@ interface State {
   setRenamingList(id: string | null): void;
   addSubtaskTo(id: string, anchor?: Anchor | null): void;
   setShowCompleted(v: boolean): void;
+  undoLast(): Promise<void>;
+  toggleFold(id: string): void;
+  setSelecting(ids: string[] | null): void;
+  toggleSelected(id: string): void;
   setShowDetails(v: boolean): Promise<void>;
   setSidebarOpen(v: boolean): void;
   setSidebarWidth(px: number, save?: boolean): void;
@@ -181,7 +206,10 @@ interface State {
   updateTask(id: string, patch: Partial<Task>): Promise<void>;
   /** Shows a change while it is being dragged, without saving it. */
   previewTask(id: string, patch: Partial<Task>): void;
-  toggleTask(id: string): Promise<void>;
+  /** Completes (or reopens) a task. `quiet`: no lingering and no undo (the parent's editor shows it anyway). */
+  toggleTask(id: string, opts?: { quiet?: boolean }): Promise<void>;
+  /** Completes open tasks (and their open subtasks) as one step the undo button takes back. */
+  completeTasks(ids: string[], opts?: { quiet?: boolean }): Promise<void>;
   deleteTask(id: string): Promise<void>;
 
   addList(name: string, parentId?: string | null): Promise<List>;
@@ -293,6 +321,10 @@ export const useStore = create<State>((set, get) => {
     focusSubtask: false,
     showCompleted: false,
     showDetails: true,
+    lingering: {},
+    undo: null,
+    folded: readFolded(),
+    selecting: null,
     sidebarOpen: true,
     sidebarWidth: SIDEBAR_DEFAULT,
     drawerOpen: false,
@@ -380,7 +412,44 @@ export const useStore = create<State>((set, get) => {
     },
 
     setView(view) {
-      set({ view, selectedId: null, anchor: null, composer: null, drawerOpen: false, ...(view.kind !== "calendar" ? { lastTaskView: view } : {}) });
+      set({
+        view,
+        selectedId: null,
+        anchor: null,
+        composer: null,
+        drawerOpen: false,
+        undo: null,
+        selecting: null,
+        ...(view.kind !== "calendar" ? { lastTaskView: view } : {}),
+      });
+    },
+    async undoLast() {
+      const u = get().undo;
+      if (!u) return;
+      set({ undo: null });
+      for (const id of u.ids) {
+        const t = get().tasks.find((x) => x.id === id);
+        if (t && t.status !== 0) await get().updateTask(id, { status: 0, completed_at: null });
+      }
+    },
+    toggleFold(id) {
+      const folded = { ...get().folded };
+      if (folded[id]) delete folded[id];
+      else folded[id] = true;
+      set({ folded });
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify(Object.keys(folded)));
+      } catch {
+        /* storage may be unavailable */
+      }
+    },
+    setSelecting(ids) {
+      set({ selecting: ids, ...(ids ? { selectedId: null, anchor: null } : {}) });
+    },
+    toggleSelected(id) {
+      const cur = get().selecting;
+      if (!cur) return;
+      set({ selecting: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
     },
     select(id, anchor = null) {
       set({ selectedId: id, anchor: id ? anchor : null, composer: null, focusSubtask: false });
@@ -563,16 +632,37 @@ export const useStore = create<State>((set, get) => {
       set({ tasks: get().tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
     },
 
-    async toggleTask(id) {
+    async toggleTask(id, opts = {}) {
       const cur = get().tasks.find((t) => t.id === id);
       if (!cur) return;
-      const done = cur.status === 0; // a done or won't-do task reopens
-      await get().updateTask(id, { status: done ? 1 : 0, completed_at: done ? Date.now() : null });
-      if (done) {
-        for (const child of get().tasks.filter((t) => t.parent_id === id && t.status === 0)) {
-          await get().updateTask(child.id, { status: 1, completed_at: Date.now() });
-        }
+      if (cur.status !== 0) {
+        // A done or won't-do task reopens; an undo for it is no longer needed.
+        const u = get().undo;
+        if (u?.ids.includes(id)) set({ undo: null });
+        await get().updateTask(id, { status: 0, completed_at: null });
+        return;
       }
+      await get().completeTasks([id], opts);
+    },
+
+    async completeTasks(ids, opts = {}) {
+      const tasks = get().tasks;
+      const open = ids.filter((id) => tasks.some((t) => t.id === id && t.status === 0));
+      if (!open.length) return;
+      // Open subtasks are done with their parent.
+      const all = [...new Set(open.flatMap((id) => [id, ...tasks.filter((t) => t.parent_id === id && t.status === 0).map((t) => t.id)]))];
+      haptic("success");
+      if (!opts.quiet) {
+        // Struck through where they are for a moment, then gone; the undo button stays until the view changes.
+        set({ lingering: { ...get().lingering, ...Object.fromEntries(all.map((x) => [x, true as const])) }, undo: { ids: all } });
+        setTimeout(() => {
+          const l = { ...get().lingering };
+          for (const x of all) delete l[x];
+          set({ lingering: l });
+        }, LINGER_MS);
+      }
+      const at = Date.now();
+      for (const x of all) await get().updateTask(x, { status: 1, completed_at: at });
     },
 
     async deleteTask(id) {
