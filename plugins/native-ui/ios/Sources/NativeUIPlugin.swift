@@ -433,15 +433,21 @@ final class Haptics {
   private let selection = UISelectionFeedbackGenerator()
   private let light = UIImpactFeedbackGenerator(style: .light)
   private let medium = UIImpactFeedbackGenerator(style: .medium)
+  private let notice = UINotificationFeedbackGenerator()
 
   init() {
     selection.prepare()
     light.prepare()
     medium.prepare()
+    notice.prepare()
   }
 
   func play(_ kind: String) {
     switch kind {
+    case "success":
+      // A task done: the system's own "done" feel.
+      notice.notificationOccurred(.success)
+      notice.prepare()
     case "selection":
       selection.selectionChanged()
       selection.prepare()

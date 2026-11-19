@@ -1,32 +1,98 @@
 import { useMemo, useState } from "react";
-import { defaultsForView, subgroupTasks, type Group, type Subgroup, type ViewRef } from "../lib/views";
+import { defaultsForView, subgroupTasks, subtasksOf, type Group, type Subgroup, type ViewRef } from "../lib/views";
 import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
-import { TaskMeta, dragProps, useCreateTask, useReorderTarget, useTaskMenu } from "./tasks";
+import { TaskMeta, dragProps, useCreateTask, useLeaving, useReorderTarget, useTaskMenu } from "./tasks";
 import { Check, Icon, InlineInput, MenuItem, Popover, Rich } from "./ui";
+import { GroupSelect, SelectCircle, selectTap } from "./Select";
+
+/** A subtask inside a card: check and title; a tap opens it. */
+function CardSub({ task, parent }: { task: Task; parent: Task }) {
+  const select = useStore((s) => s.select);
+  const toggle = useStore((s) => s.toggleTask);
+  const selecting = useStore((s) => s.selecting);
+  const picked = !!selecting?.includes(task.id);
+  const leaving = useLeaving(task, parent);
+  const showDetails = useStore((s) => s.showDetails);
+  return (
+    <div
+      className={`card-sub ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
+      data-sub={task.id}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!selectTap(task.id)) select(task.id, anchorOf(e.currentTarget));
+      }}
+    >
+      {selecting ? (
+        <SelectCircle on={picked} />
+      ) : (
+        <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+      )}
+      <span className="task-title">{task.title ? <Rich text={task.title} /> : <span className="faint">Untitled</span>}</span>
+      {!showDetails && task.notes?.trim() && (
+        <span className="meta-notes card-sub-notes" title="Has a description">
+          <Icon name="lines" size={12} />
+        </span>
+      )}
+    </div>
+  );
+}
 
 function Card({ task, showList }: { task: Task; showList: boolean }) {
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const showDetails = useStore((s) => s.showDetails);
+  const showCompleted = useStore((s) => s.showCompleted);
+  const tasks = useStore((s) => s.tasks);
+  const lingering = useStore((s) => s.lingering);
+  const folded = useStore((s) => !!s.folded[task.id]);
+  const toggleFold = useStore((s) => s.toggleFold);
+  const selecting = useStore((s) => s.selecting);
   const onMenu = useTaskMenu(task.id);
+  const subs = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || (task.status !== 0 && !lingering[task.id]) || lingering[c.id]);
+  const picked = !!selecting?.includes(task.id);
+  const leaving = useLeaving(task);
   return (
     <article
       data-id={task.id}
-      className={`card ${selectedId === task.id ? "is-selected" : ""} ${task.status ? "is-done" : ""}`}
-      onClick={(e) => select(task.id, anchorOf(e.currentTarget))}
-      onContextMenu={onMenu}
-      {...dragProps(task.id)}
+      className={`card ${selectedId === task.id && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
+      onClick={(e) => selectTap(task.id) || select(task.id, anchorOf(e.currentTarget))}
+      onContextMenu={selecting ? (e) => e.preventDefault() : onMenu}
+      {...(selecting ? {} : dragProps(task.id))}
     >
       <div className="card-top">
-        <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        {selecting ? (
+          <SelectCircle on={picked} />
+        ) : (
+          <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
+        )}
         <span className="task-title">{task.title ? <Rich text={task.title} /> : <span className="faint">Untitled</span>}</span>
+        {subs.length > 0 && (
+          <button
+            type="button"
+            className={`fold ${folded ? "" : "is-open"}`}
+            aria-label={folded ? "Show subtasks" : "Hide subtasks"}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFold(task.id);
+            }}
+          >
+            <Icon name="chevron" size={13} />
+          </button>
+        )}
       </div>
       {showDetails && task.notes && <p className="card-notes"><Rich text={task.notes.split("\n")[0]} /></p>}
       <div className="card-foot">
         <TaskMeta task={task} showList={showList} dotList />
       </div>
+      {!folded && subs.length > 0 && (
+        <div className="card-subs">
+          {subs.map((c) => (
+            <CardSub key={c.id} task={c} parent={task} />
+          ))}
+        </div>
+      )}
     </article>
   );
 }
@@ -61,6 +127,7 @@ function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef;
   return (
     <section className={`column ${drop.over ? "is-drop" : ""}`} {...drop.props}>
       <header className={`column-head ${group.tone === "overdue" ? "tone-overdue" : ""}`}>
+        <GroupSelect tasks={group.tasks} />
         {renaming ? (
           <InlineInput
             initial={group.label}

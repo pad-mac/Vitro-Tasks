@@ -1002,12 +1002,13 @@ export function CalendarView() {
   const tasks = useStore((s) => s.tasks);
   const settings = useStore((s) => s.settings);
   const showCompleted = useStore((s) => s.showCompleted);
+  const lingering = useStore((s) => s.lingering);
   const setShowCompleted = useStore((s) => s.setShowCompleted);
   const openComposer = useStore((s) => s.openComposer);
 
   const visible = useMemo(
-    () => tasksForView({ kind: "calendar" }, { lists, sections, tasks, hidden: hiddenLists(settings) }, showCompleted),
-    [lists, sections, tasks, settings, showCompleted],
+    () => tasksForView({ kind: "calendar" }, { lists, sections, tasks, hidden: hiddenLists(settings), lingering }, showCompleted),
+    [lists, sections, tasks, settings, showCompleted, lingering],
   );
 
   // The month the grid mostly shows: the one its middle day falls in.

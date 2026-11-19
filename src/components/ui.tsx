@@ -127,6 +127,13 @@ const PATHS: Record<string, ReactNode> = {
   upload: <path d="M8 10.5V3M5 5.8l3-3 3 3M3 13.2h10" />,
   winmin: <path d="M4 8h8" />,
   winmax: <rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1" />,
+  lines: <path d="M3 4.5h10M3 8h10M3 11.5h6.5" />,
+  select: (
+    <>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M5.6 8.1l1.7 1.7 3.1-3.4" />
+    </>
+  ),
   notes: (
     <>
       <rect x="3" y="2.5" width="10" height="11" rx="1.8" />

@@ -42,6 +42,8 @@ export interface Data {
   tasks: Task[];
   /** Lists hidden from All, from Today / Next 7 Days, and from the calendar. */
   hidden?: Hidden;
+  /** Just completed: still shown (struck through) for a moment. */
+  lingering?: Record<string, true>;
 }
 
 export type VisibilityKey = "all" | "today" | "calendar";
@@ -92,9 +94,10 @@ function firstDate(t: Task): string | null {
 export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, today = todayKey()): Task[] {
   const roots = data.tasks.filter((t) => !t.parent_id);
   const shownIn = (key: VisibilityKey) => (t: Task) => !t.list_id || !data.hidden?.[key].has(t.list_id);
-  if (view.kind === "calendar") return roots.filter((t) => (showCompleted || t.status === 0) && shownIn("calendar")(t));
+  const shown = (t: Task) => showCompleted || t.status === 0 || !!data.lingering?.[t.id];
+  if (view.kind === "calendar") return roots.filter((t) => shown(t) && shownIn("calendar")(t));
   if (view.kind === "smart" && view.id === "completed") return roots.filter((t) => t.status !== 0);
-  const open = roots.filter((t) => showCompleted || t.status === 0);
+  const open = roots.filter(shown);
   if (view.kind === "list") {
     const ids = new Set(listWithDescendants(data.lists, view.id));
     return open.filter((t) => t.list_id !== null && ids.has(t.list_id));

@@ -608,13 +608,19 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .subtasks { display: flex; flex-direction: column; gap: 1px; margin: 0 -8px; }
 .subtask { display: flex; align-items: center; gap: 11px; min-height: 34px; padding: 0 8px; border-radius: 7px; transition: background var(--fast); }
 .subtask:hover { background: var(--hover); }
-.subtask-title { flex: 1; min-width: 0; padding: 0; color: var(--text); text-overflow: ellipsis; }
+/* A subtask: check, its title (text until tapped, then a field), a first line of its description, the arrow that opens it. */
+.subtask-main { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; justify-content: center; cursor: text; }
+.subtask-title { display: block; width: 100%; height: 22px; line-height: 22px; padding: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .subtask.is-done .subtask-title { color: var(--faint); text-decoration: line-through; }
-/* Small round buttons at the end of a subtask: delete, open. */
-.sub-btn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--hover); color: var(--muted); transition: background var(--fast), color var(--fast); }
-.sub-btn:hover { background: color-mix(in oklab, var(--text) 12%, transparent); color: var(--text); }
-.sub-btn .icon { display: block; }
-.subtask .sub-btn + .sub-btn { margin-left: -4px; }
+.subtask-notes { display: block; margin: -1px 0 0; padding-bottom: 6px; color: var(--faint); font-size: 12.5px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.subtask-has-notes { flex: none; display: grid; place-items: center; color: var(--faint); }
+.subtask-has-notes .icon { display: block; }
+/* The arrow: subdued, no circle; the row's height is its touch area. */
+.sub-open { position: relative; flex: none; width: 22px; height: 22px; display: grid; place-items: center; margin-right: -4px; color: var(--faint); transition: color var(--fast); }
+.sub-open::before { content: ""; position: absolute; inset: -6px -6px; }
+.sub-open:hover { color: var(--text); }
+.sub-open .icon { display: block; }
+.subtask-items { position: relative; display: flex; flex-direction: column; gap: inherit; }
 .subtask-add { color: var(--faint); }
 /* The plus takes the place of a subtask's check, so the suggestion starts where subtask titles do. */
 .subtask-plus { flex: none; width: 16px; height: 16px; display: grid; place-items: center; }
@@ -679,7 +685,7 @@ label.btn { cursor: pointer; }
 .is-touch-dragging .drop-line { z-index: 330; }
 .is-dragging { opacity: 0.4; }
 /* Phone: the dragged task leaves its place empty (the copy under the finger is the task). */
-.is-mobile :is(.task-row, .card).is-dragging { opacity: 1; visibility: hidden; }
+.is-mobile :is(.task-row, .card, .subtask).is-dragging { opacity: 1; visibility: hidden; }
 
 /* ---------- List suggestions (typing #) ---------- */
 
@@ -1043,16 +1049,17 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .subtasks { margin: 0 calc(-1 * var(--m-g)); gap: 0; }
 .m-task-sheet .detail-sep { height: 1px; background: var(--line); }
 .m-task-sheet .subtask { min-height: 48px; padding: 0 10px 0 var(--m-g); gap: 14px; border-radius: 0; }
-.m-task-sheet .subtask-title { height: 48px; font-size: 16px; }
-/* 30px buttons, the row's height as their touch area. */
-.m-task-sheet .sub-btn { position: relative; width: 30px; height: 30px; }
-.m-task-sheet .sub-btn::before { content: ""; position: absolute; inset: -9px -4px; }
-.m-task-sheet .sub-btn .icon { width: 13px; height: 13px; }
 .m-task-sheet .subtask { padding-right: var(--m-g); gap: 14px; }
-.m-task-sheet .subtask .sub-btn + .sub-btn { margin-left: -4px; }
 .m-task-sheet .subtask-plus { width: 20px; height: 20px; }
 .m-task-sheet .subtask-plus .icon { width: 16px; height: 16px; }
 .m-task-sheet .subtask-add input { height: 48px; font-size: 16px; }
+.m-task-sheet .subtask-main { min-height: 48px; }
+.m-task-sheet .subtask-title { height: 26px; line-height: 26px; font-size: 16px; }
+.m-task-sheet .subtask-notes { font-size: 14px; line-height: 18px; padding-bottom: 9px; margin-top: -2px; }
+.m-task-sheet .sub-open { width: 30px; height: 30px; margin-right: -8px; }
+.m-task-sheet .sub-open::before { inset: -9px -6px; }
+.m-task-sheet .sub-open .icon { width: 14px; height: 14px; }
+.m-task-sheet .subtask-has-notes .icon { width: 15px; height: 15px; }
 /* An up-down chevron says the list can be changed. */
 .m-task-sheet .foot-trigger::after { content: ""; width: 12px; height: 12px; margin-left: -4px; background: currentColor; opacity: 0.45; -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; }
 
@@ -1117,3 +1124,85 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-day-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 4px 8px; }
 .m-day-panel .task-row { padding-right: 8px; }
 .m-day-empty { margin: 6px 12px 10px; color: var(--faint); font-size: 13.5px; }
+
+/* ---------- Folding subtasks ---------- */
+/* The arrow sits at the end of the row (as in TickTick): right when folded, down when open. */
+.fold { position: relative; flex: none; width: 22px; height: 22px; display: grid; place-items: center; color: var(--faint); border-radius: 6px; transition: transform var(--fast), color var(--fast); }
+.fold .icon { display: block; }
+.fold:hover { color: var(--text); }
+.fold.is-open { transform: rotate(90deg); }
+.task-row > .fold { position: absolute; right: 6px; top: 8px; }
+.task-row:has(> .fold) .task-main { padding-right: 24px; }
+.card-top > .fold { margin: -1px -5px 0 auto; }
+.is-mobile .fold { width: 26px; height: 26px; }
+.is-mobile .fold::before { content: ""; position: absolute; inset: -8px; }
+.is-mobile .task-row > .fold { top: 10px; right: 4px; }
+.is-mobile .card-top > .fold { margin-top: -3px; }
+.is-mobile .task-row:has(> .fold) .task-main { padding-right: 28px; }
+/* Subtasks inside a card. */
+.card-subs { display: flex; flex-direction: column; gap: 1px; margin: 7px -6px -3px 21px; }
+.card-sub { display: flex; align-items: flex-start; gap: 9px; padding: 4px 6px; border-radius: 7px; font-size: 13.5px; transition: background var(--fast); }
+.card-sub:hover { background: var(--hover); }
+.card-sub .check { width: 14px; height: 14px; margin-top: 2px; border-radius: 4px; }
+.card-sub .sel-circle { width: 16px; height: 16px; margin-top: 1px; }
+.card-sub .task-title { white-space: normal; }
+.card-sub.is-done .task-title { color: var(--faint); }
+.card-sub-notes { flex: none; margin-top: 3px; color: var(--faint); }
+
+/* ---------- A description, shown as a mark while details are hidden ---------- */
+.meta-notes { display: inline-flex; align-items: center; }
+.meta-notes .icon { display: block; }
+
+/* ---------- Completing: struck through for a moment, then gone ---------- */
+@keyframes leave { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
+.is-leaving { animation: leave 900ms ease-in forwards; pointer-events: none; }
+.is-leaving > .task-main .task-title, .is-leaving > .card-top .task-title, .card-sub.is-leaving .task-title { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
+.undo-btn { position: absolute; left: 20px; bottom: 18px; z-index: 30; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px 0 12px; border-radius: 18px; font-size: 14px; font-weight: 500; color: var(--text); background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid var(--glass-line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); animation: pop var(--fast); }
+.undo-btn .icon { display: block; }
+.main { position: relative; }
+.is-mobile .undo-btn { position: fixed; left: 16px; bottom: calc(var(--bar-h) + 10px); z-index: 30; height: 42px; padding: 0 17px 0 14px; border-radius: 21px; font-size: 15px; }
+
+/* ---------- Select mode ---------- */
+.sel-circle { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border: 1.5px solid var(--faint); border-radius: 50%; color: var(--bg); transition: background var(--fast), border-color var(--fast); }
+.sel-circle .icon { display: block; width: 11px; height: 11px; }
+.sel-circle.is-on { background: var(--hl-ink); border-color: var(--hl-ink); }
+.sel-circle.is-partly { border-color: var(--hl-ink); }
+.sel-circle.is-partly::after { content: ""; width: 8px; height: 2px; border-radius: 1px; background: var(--hl-ink); }
+.task-row > .sel-circle { margin-top: 1px; }
+.card-top > .sel-circle { margin-top: 1px; }
+.task-row.is-picked, .card.is-picked { background: var(--active); }
+.task-row.is-picked .task-main { border-bottom-color: transparent; }
+.sel-group { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-right: -2px; }
+.sel-head { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; }
+.sel-pill { justify-self: start; height: 34px; padding: 0 15px; border-radius: 17px; font-size: 14px; font-weight: 500; color: var(--text); background: var(--hover); transition: background var(--fast); }
+.sel-pill:hover { background: var(--active); }
+.sel-title { display: flex; flex-direction: column; align-items: center; line-height: 1.25; min-width: 0; }
+.sel-title strong { font-size: 16px; font-weight: 600; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sel-title span { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sel-done { justify-self: end; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--text); background: var(--hover); transition: background var(--fast); }
+.sel-done:hover { background: var(--active); }
+.sel-done .icon { display: block; }
+/* The actions: a bar below the view (on the phone, floating where the tab bar was). */
+.sel-bar { flex: none; align-self: center; display: flex; align-items: center; gap: 2px; margin: 6px 0 16px; padding: 5px; border-radius: 26px; background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid var(--glass-line); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.14); animation: pop var(--fast); }
+.sel-bar > .pop { display: flex; }
+.sel-btn { height: 42px; min-width: 46px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 21px; color: var(--text); font-size: 14px; font-weight: 500; transition: background var(--fast), color var(--fast), opacity var(--fast); }
+.sel-btn .icon { display: block; flex: none; }
+.sel-btn:hover, .pop-trigger:hover .sel-btn { background: var(--hover); }
+.sel-bar.is-empty .sel-btn { opacity: 0.4; pointer-events: none; }
+.sel-btn.is-confirm { color: #fff; background: var(--red); }
+.is-mobile .sel-bar { position: fixed; left: 50%; bottom: var(--bar-gap); z-index: 85; margin: 0; transform: translateX(-50%); padding: 6px; border-radius: 29px; }
+.is-mobile .sel-btn { height: 46px; min-width: 52px; border-radius: 23px; }
+.is-mobile .sel-head { height: 58px; padding: 0 12px; }
+.is-mobile .sel-circle { width: 20px; height: 20px; }
+.is-mobile .task-row > .sel-circle { margin-top: 0; }
+
+/* A held subtask's copy floats outside the editor: it keeps the editor's row. */
+.is-mobile .floating-copy.subtask { min-height: 48px; padding: 0 var(--m-g); gap: 14px; }
+.is-mobile .floating-copy.subtask .check { width: 20px; height: 20px; border-width: 1.75px; border-radius: 6px; }
+.is-mobile .floating-copy.subtask .check .icon { width: 13px; height: 13px; }
+.is-mobile .floating-copy.subtask .subtask-main { min-height: 48px; }
+.is-mobile .floating-copy.subtask .subtask-title { height: 26px; line-height: 26px; font-size: 16px; }
+.is-mobile .floating-copy.subtask .subtask-notes { font-size: 14px; line-height: 18px; padding-bottom: 9px; margin-top: -2px; }
+.is-mobile .floating-copy.subtask .sub-open { width: 30px; height: 30px; margin-right: -8px; }
+.is-mobile .floating-copy.subtask .sub-open .icon { width: 14px; height: 14px; }
+.m-task-sheet .detail-bar > .pop:has(.foot-trigger.is-quiet) { flex-shrink: 4; }

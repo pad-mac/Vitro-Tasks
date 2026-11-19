@@ -83,3 +83,24 @@ export function positionsFor(order: Task[], movedId: string): { id: string; posi
     .filter((p) => p.position !== p.was)
     .map(({ id, position }) => ({ id, position }));
 }
+
+/**
+ * New positions after moving subtask `id` to `index` (counted without it):
+ * between its new neighbours, or all renumbered when they share a position.
+ */
+export function subtaskPositions(subs: Task[], id: string, index: number): { id: string; position: number }[] {
+  const byId = new Map(subs.map((s) => [s.id, s]));
+  const order = moveInOrder(
+    subs.map((s) => s.id),
+    id,
+    index,
+  ).map((x) => byId.get(x)!);
+  const i = order.findIndex((t) => t.id === id);
+  if (i < 0 || order.length < 2) return [];
+  const prev = order[i - 1];
+  const next = order[i + 1];
+  if (!prev) return [{ id, position: next.position - 1 }];
+  if (!next) return [{ id, position: prev.position + 1 }];
+  if (prev.position < next.position) return [{ id, position: (prev.position + next.position) / 2 }];
+  return order.map((t, k) => ({ id: t.id, position: k })).filter((p) => byId.get(p.id)!.position !== p.position);
+}

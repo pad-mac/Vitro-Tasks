@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
+import { SubtaskList, useEditorLayout } from "./EditorParts";
 import { formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
@@ -48,70 +49,6 @@ function autoGrow(el: HTMLTextAreaElement | null) {
 
 type Draft = ReturnType<typeof useDraft>;
 
-/**
- * The description and the subtasks share the room below the title: each may
- * take up to half of it, and whatever one does not need, the other may use.
- * Each scrolls on its own once it is cut (`is-cut`).
- */
-function useSplit(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement | null>, b: RefObject<HTMLElement | null>) {
-  const ro = useRef<ResizeObserver | null>(null);
-  const watched = useRef(new Set<Element>());
-  const fit = useRef(() => {});
-  fit.current = () => {
-    const B = body.current;
-    const A = a.current;
-    if (!B || !A) return;
-    const S = b.current;
-    const parts = S ? [A, S] : [A];
-    // Watch what can grow: the body and the contents of both parts. Only new
-    // elements are added (observing again would report again, every frame).
-    const now = new Set<Element>([B, ...parts.flatMap((el) => [...el.children])]);
-    for (const el of watched.current) if (!now.has(el)) ro.current?.unobserve(el);
-    for (const el of now) if (!watched.current.has(el)) ro.current?.observe(el);
-    watched.current = now;
-    // Measured as they are: scrollHeight is a part's full content even while
-    // it is cut, so nothing is reset (which would throw away its scroll).
-    const cs = getComputedStyle(B);
-    const gap = parseFloat(cs.rowGap) || 0;
-    const kids = [...B.children].filter((el) => (el as HTMLElement).offsetParent !== null || el === A);
-    let fixed = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + gap * Math.max(0, kids.length - 1);
-    for (const el of kids) if (el !== A && el !== S) fixed += (el as HTMLElement).offsetHeight;
-    const avail = B.clientHeight - fixed;
-    const ha = A.scrollHeight;
-    const hb = S?.scrollHeight ?? 0;
-    let ma = Infinity;
-    let mb = Infinity;
-    if (ha + hb > avail + 1) {
-      const half = avail / 2;
-      if (!S) ma = avail;
-      else if (ha <= half) mb = avail - ha;
-      else if (hb <= half) ma = avail - hb;
-      else ma = mb = half;
-    }
-    const set = (el: HTMLElement, h: number, max: number) => {
-      const cut = h > max + 1;
-      const value = cut ? `${Math.max(0, Math.floor(max))}px` : "";
-      if (el.style.maxHeight !== value) el.style.maxHeight = value;
-      el.classList.toggle("is-cut", cut);
-    };
-    set(A, ha, ma);
-    if (S) set(S, hb, mb);
-  };
-  useEffect(() => {
-    let frame = 0;
-    ro.current = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => fit.current());
-    });
-    fit.current();
-    return () => {
-      cancelAnimationFrame(frame);
-      ro.current?.disconnect();
-      watched.current.clear();
-    };
-  }, []);
-  useLayoutEffect(() => fit.current());
-}
 
 /**
  * A text field that shows its links as clickable links while not being edited.
@@ -226,46 +163,6 @@ function PriorityPicker({ priority, onPick }: { priority: number; onPick: (p: nu
 }
 
 /**
- * A subtask in the editor: its title is edited in place (Enter moves on to
- * "Add Subtask" for the next one); the arrow opens it on its own.
- */
-function SubtaskRow({ task, onOpen, onNext }: { task: Task; onOpen: () => void; onNext: () => void }) {
-  const update = useStore((s) => s.updateTask);
-  const toggle = useStore((s) => s.toggleTask);
-  const del = useStore((s) => s.deleteTask);
-  const title = useDraft(task.title, task.id, (v) => {
-    if (v.trim()) void update(task.id, { title: v.trim() });
-  });
-  return (
-    <div className={`subtask ${task.status ? "is-done" : ""}`}>
-      <Check done={task.status !== 0} wontDo={task.status === 2} priority={task.priority} onToggle={() => void toggle(task.id)} />
-      <input
-        className="subtask-title"
-        {...title}
-        onBlur={() => {
-          // Emptied: keep the old title (delete it with the x).
-          if (!title.value.trim()) title.onChange({ target: { value: task.title } });
-          title.onBlur();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            title.onBlur();
-            onNext();
-          }
-        }}
-      />
-      <button type="button" className="sub-btn" title="Delete subtask" onClick={() => void del(task.id)}>
-        <Icon name="x" size={11} />
-      </button>
-      <button type="button" className="sub-btn" title="Open subtask" onClick={onOpen}>
-        <Icon name="chevron" size={12} />
-      </button>
-    </div>
-  );
-}
-
-/**
  * The task editor. `sheet`: the phone's sheet (`full`: pulled up to full
  * screen), with the list, deadline, priority and more in a row of their own
  * under the date, so long dates get the whole first row.
@@ -276,25 +173,20 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
   const tasks = useStore((s) => s.tasks);
   const update = useStore((s) => s.updateTask);
   const toggle = useStore((s) => s.toggleTask);
-  const addTask = useStore((s) => s.addTask);
   const del = useStore((s) => s.deleteTask);
   const duplicate = useStore((s) => s.duplicateTask);
   const wontDo = useStore((s) => s.setWontDo);
   const select = useStore((s) => s.select);
-  const focusSubtask = useStore((s) => s.focusSubtask);
-  const [sub, setSub] = useState("");
+  const showDetails = useStore((s) => s.showDetails);
+  const setShowDetails = useStore((s) => s.setShowDetails);
   const today = todayKey();
 
   const title = useDraft(task.title, task.id, (v) => void update(task.id, { title: v }));
   const notes = useDraft(task.notes, task.id, (v) => void update(task.id, { notes: v }));
-  const subRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<HTMLDivElement>(null);
   const subsRef = useRef<HTMLElement>(null);
-  useSplit(bodyRef, notesRef, subsRef);
-  useEffect(() => {
-    if (focusSubtask) subRef.current?.focus();
-  }, [focusSubtask, task.id]);
+  useEditorLayout(bodyRef, notesRef, subsRef);
 
   const listSections = sections.filter((s) => s.list_id === task.list_id).sort((a, b) => a.position - b.position);
   const section = listSections.find((s) => s.id === task.section_id);
@@ -380,6 +272,9 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
           <MenuItem onClick={() => { void duplicate(task.id); close(); }}>
             <Icon name="copy" size={15} /> Duplicate
           </MenuItem>
+          <MenuItem onClick={() => { void setShowDetails(!showDetails); close(); }}>
+            <Icon name="notes" size={15} /> {showDetails ? "Hide Details" : "Show Details"}
+          </MenuItem>
           {open && (
             <MenuItem onClick={() => { void wontDo(task.id); close(); }}>
               <Icon name="ban" size={15} /> Won't Do
@@ -427,26 +322,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
         {!task.parent_id && (
           <>
             <i className="detail-sep" />
-            <section className="subtasks detail-sec" ref={subsRef}>
-              {subs.map((s) => (
-                <SubtaskRow key={s.id} task={s} onOpen={() => select(s.id, anchor)} onNext={() => subRef.current?.focus()} />
-              ))}
-              <div className="subtask subtask-add">
-                <span className="subtask-plus"><Icon name="plus" size={14} /></span>
-                <input
-                  ref={subRef}
-                  value={sub}
-                  placeholder="Add Subtask"
-                  onChange={(e) => setSub(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && sub.trim()) {
-                      void addTask({ title: sub.trim(), parent_id: task.id, list_id: task.list_id });
-                      setSub("");
-                    }
-                  }}
-                />
-              </div>
-            </section>
+            <SubtaskList parent={task} subs={subs} sectionRef={subsRef} onOpen={(id) => select(id, anchor)} />
           </>
         )}
       </div>
