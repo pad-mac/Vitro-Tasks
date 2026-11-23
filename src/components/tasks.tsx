@@ -79,8 +79,14 @@ export function insertionAt(
     const r = empty?.getBoundingClientRect();
     y = r ? (empty!.matches(".group-head, .column-head") ? r.bottom + 4 : r.top) - top : 6;
   } else if (index === 0) y = rects[0].top - top - 1;
-  else if (index < rects.length) y = (blockBottom(items[index - 1], selector) + rects[index].top) / 2 - top;
-  else y = blockBottom(items[items.length - 1], selector) - top + 1;
+  else if (index < rects.length) {
+    // Between two lanes of a board column: never across the next lane's header — under the
+    // last card above it while the pointer is above that header, else over the first card below it.
+    const lane = items[index].closest(".lane");
+    const head = lane && lane !== items[index - 1].closest(".lane") ? lane.querySelector(".lane-head") : null;
+    if (head) y = (clientY < head.getBoundingClientRect().bottom ? blockBottom(items[index - 1], selector) + 4 : rects[index].top - 4) - top;
+    else y = (blockBottom(items[index - 1], selector) + rects[index].top) / 2 - top;
+  } else y = blockBottom(items[items.length - 1], selector) - top + 1;
   return { index, before, y };
 }
 

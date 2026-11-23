@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefO
 import { flushSync } from "react-dom";
 import { haptic, isMobile } from "../lib/platform";
 import { hasNative, onNative, postNative } from "../lib/native";
+import { setBackdropRising } from "../lib/backdrop";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
 import { isTyping } from "../lib/shortcuts";
@@ -179,6 +180,7 @@ export function MobileAdd({
     if (!open) {
       setRisen(false);
       setRising(false);
+      setBackdropRising(false);
       return;
     }
     if (!hasNative() || document.documentElement.classList.contains("kb-up")) {
@@ -187,16 +189,17 @@ export function MobileAdd({
     }
     const h0 = innerHeight;
     let done = 0;
+    setBackdropRising(true);
     const go = (keyboard: boolean) => {
       stop();
       flushSync(() => {
         setRisen(true);
         setRising(keyboard);
       });
-      if (!keyboard) return void window.dispatchEvent(new Event("vitro:backdrop"));
+      if (!keyboard) return setBackdropRising(false);
       done = window.setTimeout(() => {
         setRising(false);
-        window.dispatchEvent(new Event("vitro:backdrop"));
+        setBackdropRising(false);
       }, 320);
     };
     const onResize = () => innerHeight < h0 - 120 && go(true);

@@ -113,11 +113,20 @@ function colDdl(c: Col, types: Record<ColType, string>): string {
   return `${c.name} ${types[c.type]}${c.def !== undefined ? ` NOT NULL DEFAULT ${c.def}` : ""}`;
 }
 
+/**
+ * Columns only the local database has: `dirty` (changed since the last upload)
+ * and `origin` (which sync server the row lives on). Servers never see them.
+ */
+export const LOCAL_COLS: Col[] = [
+  { name: "dirty", type: "int", def: "0" },
+  { name: "origin", type: "text", def: "''" },
+];
+
 /** Statements that create or upgrade the local SQLite schema. */
 export function sqliteDdl(): string[] {
   const out: string[] = [];
   for (const e of ENTITIES) {
-    const cols = [...e.cols, ...SYNC_COLS, { name: "dirty", type: "int", def: "0" } as Col];
+    const cols = [...e.cols, ...SYNC_COLS, ...LOCAL_COLS];
     out.push(
       `CREATE TABLE IF NOT EXISTS ${e.name} (id TEXT PRIMARY KEY, ${cols
         .map((c) => colDdl(c, SQLITE_TYPES))
@@ -152,6 +161,11 @@ export interface SyncMeta {
   id: string;
   updated_at: number;
   deleted: number;
+  /**
+   * Local only (never sent): the sync server the row lives on, by its id in
+   * the app's server list; '' while no server is set up.
+   */
+  origin?: string;
 }
 
 export type ViewMode = "list" | "kanban" | "timeline";

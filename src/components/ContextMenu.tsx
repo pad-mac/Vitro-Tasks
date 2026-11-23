@@ -4,13 +4,13 @@ import { addDays, deadlineCountdown, formatDateTime, todayKey } from "../lib/dat
 import { openLayerWindow, windowAction } from "../lib/platform";
 import { PRIORITY_LABELS, listVisibility, orderedLists } from "../lib/views";
 import { LIST_COLORS, useStore, type MenuTarget } from "../store";
-import { DatePickerPanel, Flag, FloatingPanel, Icon, MenuItem, ToggleItem, usePresence } from "./ui";
+import { DatePickerPanel, Flag, FloatingPanel, Icon, MenuItem, ServerMark, ToggleItem, usePresence } from "./ui";
 import { holdMenu, taskElement } from "./HoldMenu";
 
+/** A row of icon buttons (dates, priorities): no heading, the icons say it. */
 function IconRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="cm-group">
-      <span className="cm-label">{label}</span>
+    <div className="cm-group" role="group" aria-label={label}>
       <div className="cm-icons">{children}</div>
     </div>
   );
@@ -152,7 +152,7 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
     ["nextweek", "Next week (in 7 days)", addDays(today, 7)],
   ];
   return (
-    <div className="menu cm">
+    <div className="menu cm cm-task">
       <IconRow label="Date">
         {dates.map(([icon, title, d]) => (
           <button
@@ -241,6 +241,8 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
   const addList = useStore((s) => s.addList);
   const setRenaming = useStore((s) => s.setRenamingList);
   const setVisibility = useStore((s) => s.setListVisibility);
+  const servers = useStore((s) => s.servers);
+  const moveToServer = useStore((s) => s.moveListToServer);
   const [confirm, setConfirm] = useState(false);
   if (!list) return null;
   const vis = listVisibility(settings, id);
@@ -262,6 +264,17 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
         <MenuItem onClick={() => { void updateList(id, { parent_id: null }); close(); }}>
           <Icon name="move" size={15} /> Move to top level
         </MenuItem>
+      )}
+      {servers.length > 1 && !list.parent_id && (
+        <>
+          <div className="cm-sep" />
+          {servers.map((x) => (
+            <MenuItem key={x.id} active={x.id === list.origin} onClick={() => { if (x.id !== list.origin) void moveToServer(id, x.id); close(); }}>
+              <ServerMark id={x.id} /> {x.id === list.origin ? `On ${x.name}` : `Move to ${x.name}`}
+            </MenuItem>
+          ))}
+          <div className="cm-sep" />
+        </>
       )}
       <div className="swatches">
         {LIST_COLORS.map((c) => (

@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, type PointerEvent } from "react";
-import { SMART_VIEWS, childLists, countOpen, hiddenLists, type SmartId, type ViewRef } from "../lib/views";
+import { SMART_VIEWS, childLists, countOpen, hiddenLists, listWithDescendants, type SmartId, type ViewRef } from "../lib/views";
 import type { List } from "../shared/schema";
 import { useStore } from "../store";
 import { useDropTarget } from "./tasks";
-import { Icon, InlineInput } from "./ui";
+import { Icon, InlineInput, ServerMark } from "./ui";
 
 const SMART_ICONS: Record<SmartId, string> = {
   all: "layers",
@@ -40,7 +40,81 @@ function SmartRow({ id, name, count }: { id: SmartId; name: string; count: numbe
   );
 }
 
-function ListRow({ list, depth, counts }: { list: List; depth: number; counts: Map<string, number> }) {
+/**
+ * Lists in the sidebar take any order: drag one (mouse) up or down; the line
+ * shows where it goes. On the upper or lower quarter of a list it goes before
+ * or after it; on the middle it goes into it, as its last sublist.
+ */
+type ListDrop = { id: string; parent: string | null; before: string | null; into?: string; y: number };
+function useListReorder(box: React.RefObject<HTMLDivElement | null>) {
+  const [drop, setDrop] = useState<ListDrop | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const swallow = useRef(0);
+  const start = (id: string) => (e: PointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || e.pointerType === "touch" || (e.target as HTMLElement).closest("button, input")) return;
+    const y0 = e.clientY;
+    let moving = false;
+    let last: ListDrop | null = null;
+    const where = (y: number): ListDrop | null => {
+      const st = useStore.getState();
+      const own = new Set(listWithDescendants(st.lists, id));
+      const rows = [...(box.current?.querySelectorAll<HTMLElement>(".nav-row[data-list]") ?? [])].filter((r) => !own.has(r.dataset.list!));
+      const top = box.current!.getBoundingClientRect().top;
+      for (const r of rows) {
+        const b = r.getBoundingClientRect();
+        if (y > b.bottom) continue;
+        const list = st.lists.find((l) => l.id === r.dataset.list)!;
+        const q = (y - b.top) / b.height;
+        if (q > 0.25 && q < 0.75) return { id, parent: list.id, before: null, into: list.id, y: b.top - top };
+        if (q <= 0.25) return { id, parent: list.parent_id, before: list.id, y: b.top - top };
+        // Lower quarter: after it — first among its sublists when they are shown under it.
+        const kids = childLists(st.lists, list.id).filter((k) => !own.has(k.id));
+        if (kids.length && !list.collapsed) return { id, parent: list.id, before: kids[0].id, y: b.bottom - top };
+        const sibs = childLists(st.lists, list.parent_id).filter((k) => !own.has(k.id));
+        const next = sibs[sibs.findIndex((k) => k.id === list.id) + 1];
+        return { id, parent: list.parent_id, before: next?.id ?? null, y: b.bottom - top };
+      }
+      const lastRow = rows.at(-1);
+      return lastRow ? { id, parent: null, before: null, y: lastRow.getBoundingClientRect().bottom - top } : null;
+    };
+    const move = (ev: globalThis.PointerEvent) => {
+      if (!moving && Math.abs(ev.clientY - y0) < 5) return;
+      if (!moving) {
+        moving = true;
+        setDragging(id);
+        document.documentElement.classList.add("is-sorting-lists");
+      }
+      last = where(ev.clientY);
+      setDrop(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.documentElement.classList.remove("is-sorting-lists");
+      setDragging(null);
+      setDrop(null);
+      if (!moving || !last) return;
+      swallow.current = Date.now() + 300;
+      const st = useStore.getState();
+      const sibs = childLists(st.lists, last.parent).filter((k) => k.id !== id);
+      const at = last.before ? sibs.findIndex((k) => k.id === last!.before) : sibs.length;
+      const prev = sibs[at - 1]?.position;
+      const next = sibs[at]?.position;
+      const position = prev === undefined ? (next === undefined ? 1 : next - 1) : next === undefined ? prev + 1 : (prev + next) / 2;
+      const cur = st.lists.find((l) => l.id === id);
+      if (!cur) return;
+      void st.updateList(id, { position, ...(last.parent !== cur.parent_id ? { parent_id: last.parent } : {}) });
+      if (last.into) void st.updateList(last.into, { collapsed: 0 });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  // The click that ends a drag does not open the list.
+  const swallowed = () => Date.now() < swallow.current;
+  return { drop, dragging, start, swallowed };
+}
+
+function ListRow({ list, depth, counts, reorder }: { list: List; depth: number; counts: Map<string, number>; reorder: ReturnType<typeof useListReorder> }) {
   const lists = useStore((s) => s.lists);
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
@@ -56,9 +130,11 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
   return (
     <>
       <div
-        className={`nav-row ${sameView(view, me) ? "is-active" : ""} ${drop.over ? "is-drop" : ""}`}
+        data-list={list.id}
+        className={`nav-row ${sameView(view, me) ? "is-active" : ""} ${drop.over || reorder.drop?.into === list.id ? "is-drop" : ""} ${reorder.dragging === list.id ? "is-sorting" : ""}`}
         style={{ paddingLeft: 10 + depth * 18 }}
-        onClick={() => setView(me)}
+        onPointerDown={reorder.start(list.id)}
+        onClick={() => !reorder.swallowed() && setView(me)}
         onContextMenu={(e) => {
           e.preventDefault();
           openMenu({ kind: "list", id: list.id, x: e.clientX, y: e.clientY });
@@ -94,6 +170,7 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
             {list.name}
           </span>
         )}
+        {depth === 0 && <ServerMark id={list.origin} />}
         <i className="dot" style={{ background: list.color }} />
         {/* The options button takes the count's place on hover, so the name keeps its room. */}
         <span className="nav-end">
@@ -112,7 +189,7 @@ function ListRow({ list, depth, counts }: { list: List; depth: number; counts: M
           </button>
         </span>
       </div>
-      {!list.collapsed && kids.map((k) => <ListRow key={k.id} list={k} depth={depth + 1} counts={counts} />)}
+      {!list.collapsed && kids.map((k) => <ListRow key={k.id} list={k} depth={depth + 1} counts={counts} reorder={reorder} />)}
     </>
   );
 }
@@ -156,6 +233,8 @@ export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSe
   const addList = useStore((s) => s.addList);
   const setView = useStore((s) => s.setView);
   const [adding, setAdding] = useState(false);
+  const listsBox = useRef<HTMLDivElement>(null);
+  const reorder = useListReorder(listsBox);
   const data = useMemo(() => ({ lists, sections, tasks, hidden: hiddenLists(settings) }), [lists, sections, tasks, settings]);
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -176,10 +255,11 @@ export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSe
           <Icon name="plus" size={14} />
         </button>
       </div>
-      <div className="nav-group nav-lists">
+      <div className="nav-group nav-lists" ref={listsBox}>
         {childLists(lists, null).map((l) => (
-          <ListRow key={l.id} list={l} depth={0} counts={counts} />
+          <ListRow key={l.id} list={l} depth={0} counts={counts} reorder={reorder} />
         ))}
+        {reorder.drop && !reorder.drop.into && <div className="drop-line nav-drop-line" style={{ transform: `translateY(${reorder.drop.y - 1}px)` }} />}
         {adding && (
           <div className="nav-row nav-new">
             <span className="twist-spacer" />

@@ -30,15 +30,17 @@ export async function migrate(db: Db): Promise<void> {
   for (const stmt of ddl.filter((s) => !s.startsWith("CREATE TABLE"))) await db.exec(stmt);
 }
 
+/** Every live row, with the server it lives on (`origin`). */
 export async function loadAll<T>(db: Db, name: EntityName): Promise<T[]> {
-  return db.all<T>(`SELECT ${colNames(name).join(", ")} FROM ${name} WHERE deleted = 0`);
+  return db.all<T>(`SELECT ${colNames(name).join(", ")}, origin FROM ${name} WHERE deleted = 0`);
 }
 
-function upsertSql(name: EntityName, extra: string[]): { sql: string; cols: string[] } {
+/** `keep`: columns written for a new row but left as they are on an existing one. */
+function upsertSql(name: EntityName, extra: string[], keep: string[] = []): { sql: string; cols: string[] } {
   const cols = [...colNames(name), ...extra];
   const ph = cols.map((_, i) => `$${i + 1}`).join(", ");
   const set = cols
-    .filter((c) => c !== "id")
+    .filter((c) => c !== "id" && !keep.includes(c))
     .map((c) => `${c} = excluded.${c}`)
     .join(", ");
   return {
@@ -55,7 +57,10 @@ export async function put(db: Db, name: EntityName, row: Row, now = Date.now()):
   ]);
   const ts = prev.length ? Math.max(now, prev[0].updated_at + 1) : now;
   const stamped: Row = { ...withDefaults(name, row), updated_at: ts };
-  const { sql, cols } = upsertSql(name, ["dirty"]);
+  // The server a row lives on is set when it is created and never changed by a write
+  // (a row that moves to another server is copied there: see the store).
+  const withOrigin = typeof row.origin === "string";
+  const { sql, cols } = upsertSql(name, withOrigin ? ["dirty", "origin"] : ["dirty"], ["origin"]);
   await db.exec(
     sql,
     cols.map((c) => (c === "dirty" ? 1 : ((stamped[c] ?? null) as Param))),
@@ -82,13 +87,29 @@ export async function setMeta(db: Db, key: string, value: string): Promise<void>
 
 // ---------- Sync helpers ----------
 
-export async function collectDirty(db: Db): Promise<ChangeSet> {
+/** Unsent rows of one server (only what that server keeps; `origin` itself is not sent). */
+export async function collectDirty(db: Db, origin = ""): Promise<ChangeSet> {
   const out: ChangeSet = {};
   for (const name of ENTITY_NAMES) {
-    const rows = await db.all<Row>(`SELECT ${colNames(name).join(", ")} FROM ${name} WHERE dirty = 1`);
+    const rows = await db.all<Row>(`SELECT ${colNames(name).join(", ")} FROM ${name} WHERE dirty = 1 AND origin = $1`, [origin]);
     if (rows.length) out[name] = rows;
   }
   return out;
+}
+
+/** Moves every row of one server to another (the first server set up takes what was local). */
+export async function assignOrigin(db: Db, from: string, to: string): Promise<void> {
+  for (const name of ENTITY_NAMES) await db.exec(`UPDATE ${name} SET origin = $1 WHERE origin = $2`, [to, from]);
+}
+
+/** Forgets a server's rows on this device (they stay on the server). */
+export async function purgeOrigin(db: Db, origin: string): Promise<void> {
+  for (const name of ENTITY_NAMES) await db.exec(`DELETE FROM ${name} WHERE origin = $1`, [origin]);
+}
+
+/** Marks a server's rows for upload again (a server that has not seen them yet). */
+export async function markOriginDirty(db: Db, origin: string): Promise<void> {
+  for (const name of ENTITY_NAMES) await db.exec(`UPDATE ${name} SET dirty = 1 WHERE origin = $1`, [origin]);
 }
 
 /** Clears the dirty flag for rows that were uploaded and not edited since. */
@@ -108,10 +129,11 @@ export async function markClean(db: Db, pushed: ChangeSet): Promise<void> {
  * local one unless the local copy is newer or has unsent edits of the same age.
  * Returns how many rows changed locally.
  */
-export async function applyRemote(db: Db, changes: ChangeSet): Promise<number> {
+export async function applyRemote(db: Db, changes: ChangeSet, origin = ""): Promise<number> {
   let applied = 0;
   for (const name of ENTITY_NAMES) {
-    const { sql, cols } = upsertSql(name, ["dirty"]);
+    // A row new to this device lives on the server it came from; a known row keeps its server.
+    const { sql, cols } = upsertSql(name, ["dirty", "origin"], ["origin"]);
     for (const row of changes[name] ?? []) {
       const local = await db.all<{ updated_at: number; dirty: number }>(
         `SELECT updated_at, dirty FROM ${name} WHERE id = $1`,
@@ -126,7 +148,7 @@ export async function applyRemote(db: Db, changes: ChangeSet): Promise<number> {
       const full = withDefaults(name, row);
       await db.exec(
         sql,
-        cols.map((c) => (c === "dirty" ? 0 : ((full[c] ?? null) as Param))),
+        cols.map((c) => (c === "dirty" ? 0 : c === "origin" ? origin : ((full[c] ?? null) as Param))),
       );
       applied++;
     }

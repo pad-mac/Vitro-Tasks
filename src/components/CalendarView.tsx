@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
 import {
   MONTHS_LONG,
@@ -91,22 +92,70 @@ function useElementHeight<T extends HTMLElement>() {
   return [ref, h] as const;
 }
 
-/** Wheel and trackpad scrolling that moves a view in whole steps. */
-function useStepWheel(step: (dir: number) => void, threshold: number) {
-  const acc = useRef(0);
-  const last = useRef(0);
-  return (delta: number) => {
-    const now = performance.now();
-    if (now - last.current > 400) acc.current = 0;
-    last.current = now;
-    acc.current += delta;
-    while (Math.abs(acc.current) >= threshold) {
-      const dir = Math.sign(acc.current);
-      acc.current -= dir * threshold;
-      step(dir);
+/** A wheel event's distance in pixels (some mice report lines or pages). */
+function wheelPx(e: WheelEvent, delta: number, page: number): number {
+  return e.deltaMode === 1 ? delta * 16 : e.deltaMode === 2 ? delta * page : delta;
+}
+
+/**
+ * Wheel and trackpad move a view smoothly and it settles on whole steps (a
+ * week row, a day column). The track holds one extra step on each side; once
+ * it has moved a whole step, the view steps and the track jumps back by one in
+ * the same frame, so nothing visibly jumps. When the wheel rests, it glides on
+ * to the next step (a quarter of one is enough) or back.
+ */
+function useGlide(size: number, onStep: (dir: number) => void, apply: (px: number) => void) {
+  const st = useRef({ target: 0, shown: 0, raf: 0, idle: 0 });
+  const cfg = useRef({ size, onStep, apply });
+  cfg.current = { size, onStep, apply };
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(st.current.raf);
+      clearTimeout(st.current.idle);
+    },
+    [],
+  );
+  const frame = () => {
+    const s = st.current;
+    const { size: z, onStep: step, apply: put } = cfg.current;
+    s.raf = 0;
+    if (!z) return;
+    const d = s.target - s.shown;
+    s.shown = Math.abs(d) < 0.5 ? s.target : s.shown + d * 0.35;
+    while (s.shown >= z) {
+      s.shown -= z;
+      s.target -= z;
+      flushSync(() => step(1));
     }
+    while (s.shown <= -z) {
+      s.shown += z;
+      s.target += z;
+      flushSync(() => step(-1));
+    }
+    put(s.shown);
+    if (s.shown !== s.target) s.raf = requestAnimationFrame(frame);
+  };
+  const kick = () => {
+    if (!st.current.raf) st.current.raf = requestAnimationFrame(frame);
+  };
+  return (delta: number) => {
+    const s = st.current;
+    const z = cfg.current.size;
+    if (!z) return;
+    // A fast flick still moves step by step, never far ahead of what is shown.
+    s.target = Math.max(s.shown - 3 * z, Math.min(s.shown + 3 * z, s.target + delta));
+    clearTimeout(s.idle);
+    s.idle = window.setTimeout(() => {
+      // Moved at least a quarter of a step: on to the next one (a wheel notch is often less than a wide day); less: back.
+      const n = s.target / z;
+      const whole = Math.trunc(n);
+      s.target = (Math.abs(n - whole) >= 0.25 ? whole + Math.sign(n - whole) : whole) * z;
+      kick();
+    }, 110);
+    kick();
   };
 }
+
 
 // ---------- Entries ----------
 
@@ -169,7 +218,7 @@ function EdgeHandles({ task, start = true, end = true }: { task: Task; start?: b
   );
 }
 
-function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
+function Chip({ entry, timed, children }: { entry: DayEntry; timed?: boolean; children?: React.ReactNode }) {
   const lists = useStore((s) => s.lists);
   const isSelected = useStore((s) => s.selectedId === entry.task.id);
   const select = useStore((s) => s.select);
@@ -190,8 +239,18 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
       onContextMenu={onMenu}
       {...dragProps(task.id, kind)}
     >
-      {kind === "deadline" && <Icon name="deadline" size={11} />}
-      <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+      {timed ? (
+        <span className="cal-chip-line">
+          {kind === "deadline" && <Icon name="deadline" size={11} />}
+          <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+        </span>
+      ) : (
+        <>
+          {kind === "deadline" && <Icon name="deadline" size={11} />}
+          <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+        </>
+      )}
+      {children}
       {time && !timed && <span className="cal-chip-time">{time}</span>}
       {kind === "planned" && !time && !timed && <EdgeHandles task={task} />}
     </div>
@@ -270,7 +329,8 @@ function DayCell({
     >
       {month && (
         <span className={`cal-daynum ${day === today ? "is-today" : ""}`}>
-          {+day.slice(8) === 1 && !isMobile ? `${MONTHS_LONG[+day.slice(5, 7) - 1].slice(0, 3)} 1` : +day.slice(8)}
+          {+day.slice(8) === 1 && !isMobile && <em>{MONTHS_LONG[+day.slice(5, 7) - 1].slice(0, 3)}</em>}
+          <b>{+day.slice(8)}</b>
         </span>
       )}
       {shown.map((e) => (
@@ -477,21 +537,25 @@ export function placeTimed(entries: DayEntry[]): Placed[] {
 function TimedEvent({ p, resizeEnd, onResizeStart }: { p: Placed; resizeEnd: number | null; onResizeStart: (e: RPointerEvent, p: Placed) => void }) {
   const end = resizeEnd ?? p.end;
   const planned = p.entry.kind === "planned";
+  const height = Math.max(18, ((end - p.start) / 60) * HOUR_H - 2);
   return (
     <div
       className={`week-event ${resizeEnd !== null ? "is-resizing" : ""}`}
       style={{
+        // Wrapped titles stop at the last line that fits (with the time under them), not mid-line.
+        ["--lines" as string]: Math.max(1, Math.floor((height - 4 - 14) / 15)),
         top: (p.start / 60) * HOUR_H,
-        height: Math.max(18, ((end - p.start) / 60) * HOUR_H - 2),
+        height,
         left: `calc(${(p.col / p.cols) * 100}% + 2px)`,
         width: `calc(${100 / p.cols}% - 5px)`,
       }}
     >
-      <Chip entry={p.entry} timed />
-      <span className="week-event-time">
-        {toTime(p.start)}
-        {planned && (p.entry.task.end_time || resizeEnd !== null) ? ` – ${toTime(Math.min(end, 24 * 60 - 1))}` : ""}
-      </span>
+      <Chip entry={p.entry} timed>
+        <span className="week-event-time">
+          {toTime(p.start)}
+          {planned && (p.entry.task.end_time || resizeEnd !== null) ? ` – ${toTime(Math.min(end, 24 * 60 - 1))}` : ""}
+        </span>
+      </Chip>
       {planned && <span className="week-resize" title="Drag to change the duration" onPointerDown={(e) => onResizeStart(e, p)} />}
     </div>
   );
@@ -621,42 +685,76 @@ function NowLine() {
   return <i className="week-now" style={{ top: ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_H }} />;
 }
 
+/** A day's header in the week view; a task dropped on it goes to that day's all-day row. */
+function WeekDayHead({ day, today, deadline }: { day: string; today: string; deadline: boolean }) {
+  const moveEntry = useMoveEntry();
+  const drop = useDropTarget((id, kind) => moveEntry(id, kind, day, null));
+  return (
+    <span
+      data-day={day}
+      className={`week-day ${day === today ? "is-today" : ""} ${isWeekend(day) ? "is-weekend" : ""} ${deadline ? "has-deadline" : ""} ${drop.over ? "is-drop" : ""}`}
+      title={deadline ? "A deadline is due this day" : undefined}
+      {...drop.props}
+    >
+      <i>{WEEKDAYS[(fromKey(day).getDay() + 6) % 7]}</i>
+      <b>{+day.slice(8)}</b>
+    </span>
+  );
+}
+
 function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: number; tasks: Task[]; onShift: (days: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
   const today = todayKey();
-  const days = Array.from({ length: n }, (_, i) => addDays(start, i));
-  const cols = { gridTemplateColumns: `58px repeat(${n}, minmax(0, 1fr))` };
+  // One hidden day on each side: sideways scrolling glides into them (see useGlide).
+  const days = Array.from({ length: n + 2 }, (_, i) => addDays(start, i - 1));
   const scroller = useRef<HTMLDivElement>(null);
+  const [paneRef, paneW] = useElementWidth<HTMLDivElement>();
+  const colW = (paneW || 700) / n;
+  const tracks = useRef<(HTMLDivElement | null)[]>([]);
+  const wrap = useStore((s) => s.calWrap);
   // Days with an open deadline get a frame in the header, whatever the deadline's time.
   const deadlineDays = useMemo(() => new Set(tasks.filter((t) => t.status === 0 && t.deadline_date).map((t) => t.deadline_date!)), [tasks]);
   const { range, handlers } = useDayRange();
-  const wheel = useStepWheel(onShift, 70);
+  const glide = useGlide(colW, onShift, (px) => {
+    for (const t of tracks.current) if (t) t.style.transform = `translateX(${-colW - px}px)`;
+  });
   useEffect(() => {
     scroller.current?.scrollTo({ top: 7 * HOUR_H });
   }, []);
-  // Sideways scrolling (trackpad, or Shift + wheel) moves the week day by day.
+  // Sideways scrolling (trackpad, or Shift + wheel) moves the week smoothly, settling on a day.
   const onWheel = (e: WheelEvent) => {
-    if (e.shiftKey && e.deltaY) wheel(e.deltaY);
-    else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) wheel(e.deltaX);
+    if (e.shiftKey && e.deltaY) glide(wheelPx(e, e.deltaY, colW));
+    else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) glide(wheelPx(e, e.deltaX, colW));
   };
+  const track = (i: number, extra: React.CSSProperties = {}) => ({
+    ref: (el: HTMLDivElement | null) => {
+      tracks.current[i] = el;
+    },
+    className: "week-track",
+    style: { width: colW * (n + 2), gridTemplateColumns: `repeat(${n + 2}, ${colW}px)`, transform: `translateX(${-colW}px)`, ...extra },
+  });
   return (
-    <div className="week" onWheel={onWheel}>
-      <div className="week-head" style={cols}>
+    <div className={`week ${wrap ? "is-wrap" : ""}`} onWheel={onWheel}>
+      <div className="week-head">
         <span className="week-gutter" />
-        {days.map((d) => (
-          <span key={d} className={`week-day ${d === today ? "is-today" : ""} ${isWeekend(d) ? "is-weekend" : ""} ${deadlineDays.has(d) ? "has-deadline" : ""}`} title={deadlineDays.has(d) ? "A deadline is due this day" : undefined}>
-            <i>{WEEKDAYS[(fromKey(d).getDay() + 6) % 7]}</i>
-            <b>{+d.slice(8)}</b>
-          </span>
-        ))}
+        {/* As wide as the hour grid's days (with or without a scrollbar beside them), so the days line up. */}
+        <div className="week-pane" style={{ width: paneW || undefined }}>
+          <div {...track(0)}>
+            {days.map((d) => (
+              <WeekDayHead key={d} day={d} today={today} deadline={deadlineDays.has(d)} />
+            ))}
+          </div>
+        </div>
       </div>
       <div className="week-allday">
         <span className="week-gutter">all day</span>
-        <div className="week-allday-row" {...handlers}>
-          <WeekRow start={start} tasks={tasks} month={false} capacity={99} range={range} onExpand={onExpand} n={n} />
+        <div className="week-allday-row week-pane" style={{ width: paneW || undefined }} {...handlers}>
+          <div {...track(1, { display: "block" })}>
+            <WeekRow start={days[0]} tasks={tasks} month={false} capacity={99} range={range} onExpand={onExpand} n={n + 2} />
+          </div>
         </div>
       </div>
       <div className="week-scroll" ref={scroller}>
-        <div className="week-grid" style={{ height: 24 * HOUR_H, ...cols }}>
+        <div className="week-grid" style={{ height: 24 * HOUR_H }}>
           <div className="week-gutter">
             {Array.from({ length: 24 }, (_, h) => (
               <span key={h} className="week-hour" style={{ top: h * HOUR_H }}>
@@ -664,9 +762,13 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
               </span>
             ))}
           </div>
-          {days.map((d) => (
-            <HourColumn key={d} day={d} entries={entriesForDay(tasks, d).filter((e) => timeOf(e) && !(e.kind === "planned" && isSpan(e.task)))} />
-          ))}
+          <div className="week-pane" ref={paneRef}>
+            <div {...track(2, { height: "100%" })}>
+              {days.map((d) => (
+                <HourColumn key={d} day={d} entries={entriesForDay(tasks, d).filter((e) => timeOf(e) && !(e.kind === "planned" && isSpan(e.task)))} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -678,8 +780,13 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
 function MonthView({ top, rows = 6, tasks, titleMonth, onShift, onExpand }: { top: string; rows?: number; tasks: Task[]; titleMonth: string; onShift: (weeks: number) => void; onExpand: (day: string, anchor: Anchor) => void }) {
   const [gridRef, height] = useElementHeight<HTMLDivElement>();
   const { range, handlers } = useDayRange();
-  const wheel = useStepWheel(onShift, 90);
-  const capacity = Math.max(1, Math.floor((height / rows - 32) / CHIP_H));
+  const rowH = (height || 600) / rows;
+  const track = useRef<HTMLDivElement>(null);
+  // The wheel moves the weeks smoothly; they settle on a row (one hidden week above and below).
+  const glide = useGlide(rowH, onShift, (px) => {
+    if (track.current) track.current.style.transform = `translateY(${-rowH - px}px)`;
+  });
+  const capacity = Math.max(1, Math.floor((rowH - 32) / CHIP_H));
   return (
     <div className="month">
       <div className="month-dow">
@@ -687,10 +794,12 @@ function MonthView({ top, rows = 6, tasks, titleMonth, onShift, onExpand }: { to
           <span key={w}>{w}</span>
         ))}
       </div>
-      <div className="month-grid" ref={gridRef} style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }} onWheel={(e) => e.deltaY && !e.ctrlKey && !e.shiftKey && wheel(e.deltaY)} {...handlers}>
-        {Array.from({ length: rows }, (_, i) => addDays(top, i * 7)).map((ws) => (
-          <WeekRow key={ws} start={ws} tasks={tasks} month titleMonth={titleMonth} capacity={capacity} range={range} onExpand={onExpand} />
-        ))}
+      <div className="month-grid" ref={gridRef} onWheel={(e) => e.deltaY && !e.ctrlKey && !e.shiftKey && glide(wheelPx(e, e.deltaY, rowH))} {...handlers}>
+        <div ref={track} className="month-track" style={{ gridTemplateRows: `repeat(${rows + 2}, ${rowH}px)`, height: rowH * (rows + 2), transform: `translateY(${-rowH}px)` }}>
+          {Array.from({ length: rows + 2 }, (_, i) => addDays(top, (i - 1) * 7)).map((ws) => (
+            <WeekRow key={ws} start={ws} tasks={tasks} month titleMonth={titleMonth} capacity={capacity} range={range} onExpand={onExpand} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1015,6 +1124,8 @@ function CalendarViewImpl() {
   const showCompleted = useStore((s) => s.showCompleted);
   const lingering = useStore((s) => s.lingering);
   const setShowCompleted = useStore((s) => s.setShowCompleted);
+  const calWrap = useStore((s) => s.calWrap);
+  const setCalWrap = useStore((s) => s.setCalWrap);
   const openComposer = useStore((s) => s.openComposer);
 
   const visible = useMemo(
@@ -1119,6 +1230,9 @@ function CalendarViewImpl() {
               <div className="menu">
                 <MenuItem active={showCompleted} onClick={() => { setShowCompleted(!showCompleted); close(); }}>
                   <Icon name="done" size={15} /> Show Completed
+                </MenuItem>
+                <MenuItem active={calWrap} onClick={() => { setCalWrap(!calWrap); close(); }}>
+                  <Icon name="lines" size={15} /> Wrap Titles in Week View
                 </MenuItem>
               </div>
             )}

@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Anchor } from "../store";
+import { useStore, type Anchor } from "../store";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -128,6 +128,9 @@ const PATHS: Record<string, ReactNode> = {
   winmin: <path d="M4 8h8" />,
   winmax: <rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1" />,
   lines: <path d="M3 4.5h10M3 8h10M3 11.5h6.5" />,
+  // Chevrons together (fold all) and apart (unfold all).
+  foldall: <path d="M5 2.5l3 3 3-3M5 13.5l3-3 3 3" />,
+  unfoldall: <path d="M5 5.5l3-3 3 3M5 10.5l3 3 3-3" />,
   select: (
     <>
       <circle cx="8" cy="8" r="5.75" />
@@ -875,5 +878,33 @@ export function FloatingPanel({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * Short marks for the sync servers: the first letter of each name, two letters
+ * where first letters clash ("Home", "HU" → "Ho", "HU").
+ */
+export function serverMarks(servers: { id: string; name: string }[]): Map<string, string> {
+  const first = (n: string) => (n.trim()[0] ?? "?").toUpperCase();
+  const two = (n: string) => {
+    const words = n.trim().split(/\s+/);
+    return words.length > 1 ? (words[0][0] + words[1][0]).toUpperCase() : n.trim().slice(0, 2).replace(/^./, (c) => c.toUpperCase());
+  };
+  const out = new Map<string, string>();
+  for (const x of servers) out.set(x.id, servers.filter((y) => first(y.name) === first(x.name)).length > 1 ? two(x.name) : first(x.name));
+  return out;
+}
+
+/** Which server a list lives on, as a small mark (shown when there is more than one server). */
+export function ServerMark({ id }: { id: string | undefined }) {
+  const servers = useStore((s) => s.servers);
+  const marks = useMemo(() => serverMarks(servers), [servers]);
+  const server = servers.find((x) => x.id === id);
+  if (servers.length < 2 || !server) return null;
+  return (
+    <i className="server-mark" title={`On ${server.name}`}>
+      {marks.get(server.id)}
+    </i>
   );
 }

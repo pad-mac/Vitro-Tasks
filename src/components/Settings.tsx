@@ -4,6 +4,7 @@ import { isMobile, isTauri, saveTextFile } from "../lib/platform";
 import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
 import { DEFAULT_HIGHLIGHT, useStore, type ImportResult, type Theme } from "../store";
+import type { SyncServer } from "../db/sync";
 import { Icon } from "./ui";
 
 const HIGHLIGHTS: [string, string][] = [
@@ -15,6 +16,151 @@ const HIGHLIGHTS: [string, string][] = [
   ["Sage", "#98ad95"],
   ["Lavender", "#aaa0c8"],
 ];
+
+/** One sync server: its name, address and token; on or off; where new lists go; remove. */
+function ServerRow({ server, several }: { server: SyncServer; several: boolean }) {
+  const st = useStore((s) => s.serverSync[server.id]);
+  const updateServer = useStore((s) => s.updateServer);
+  const removeServer = useStore((s) => s.removeServer);
+  const setDefault = useStore((s) => s.setDefaultServer);
+  const isDefault = useStore((s) => s.defaultServer === server.id);
+  const syncNow = useStore((s) => s.syncNow);
+  const [name, setName] = useState(server.name);
+  const [url, setUrl] = useState(server.url);
+  const [token, setToken] = useState(server.token);
+  const [confirm, setConfirm] = useState(false);
+  const changed = name.trim() !== server.name || url.trim().replace(/\/+$/, "") !== server.url || token.trim() !== server.token;
+  const status = !server.enabled
+    ? "Off: its lists are hidden and it is not synced."
+    : st?.status === "syncing"
+      ? "Syncing…"
+      : st?.status === "error"
+        ? (st.message ?? "Sync failed")
+        : st?.last
+          ? `Synced at ${new Date(st.last).toLocaleTimeString()}`
+          : "Connected";
+  return (
+    <div className={`server-card ${server.enabled ? "" : "is-off"}`}>
+      <div className="server-top">
+        <input className="server-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Server name" />
+        {several && (
+          <button type="button" className={`server-default ${isDefault ? "is-active" : ""}`} title="New lists and Inbox tasks go to this server" onClick={() => void setDefault(server.id)}>
+            {isDefault ? "Default" : "Make default"}
+          </button>
+        )}
+        <button type="button" className="server-toggle" title={server.enabled ? "On: click to hide its lists and stop syncing" : "Off: click to show its lists and sync"} onClick={() => void updateServer(server.id, { enabled: !server.enabled })}>
+          <i className={`switch ${server.enabled ? "is-on" : ""}`} />
+        </button>
+      </div>
+      <div className="form-row">
+        <label>Server URL</label>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tasks.example.org" />
+      </div>
+      <div className="form-row">
+        <label>Token</label>
+        <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
+      </div>
+      <div className="form-actions">
+        <span className={`sync-state sync-${server.enabled ? (st?.status ?? "idle") : "off"}`}>
+          <i className="sync-dot" />
+          {status}
+        </span>
+        {confirm ? (
+          <>
+            <button type="button" className="btn" onClick={() => setConfirm(false)}>
+              Keep
+            </button>
+            <button type="button" className="btn is-danger" onClick={() => void removeServer(server.id)}>
+              {several ? "Remove its lists from this device" : "Disconnect"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn" onClick={() => setConfirm(true)} title={several ? "Its lists leave this device; they stay on the server" : "Tasks stay on this device"}>
+              {several ? "Remove" : "Disconnect"}
+            </button>
+            {changed ? (
+              <button type="button" className="btn is-primary" disabled={!url.trim()} onClick={() => void updateServer(server.id, { name: name.trim() || server.name, url, token })}>
+                Save and sync
+              </button>
+            ) : (
+              server.enabled && (
+                <button type="button" className="btn" onClick={() => void syncNow()}>
+                  Sync now
+                </button>
+              )
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Several servers: each keeps its own lists; the views show those of all servers that are on. */
+function ServersSection() {
+  const servers = useStore((s) => s.servers);
+  const addServer = useStore((s) => s.addServer);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const open = adding || servers.length === 0;
+  const add = async () => {
+    await addServer({ name, url, token });
+    setName("");
+    setUrl("");
+    setToken("");
+    setAdding(false);
+  };
+  return (
+    <section>
+      <span className="micro">Sync servers</span>
+      {servers.map((x) => (
+        <ServerRow key={x.id} server={x} several={servers.length > 1} />
+      ))}
+      {open ? (
+        <div className="server-card is-new">
+          <div className="form-row">
+            <label>Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={servers.length ? "Work" : "Home"} />
+          </div>
+          <div className="form-row">
+            <label>Server URL</label>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tasks.example.org" />
+          </div>
+          <div className="form-row">
+            <label>Token</label>
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
+          </div>
+          <div className="form-actions">
+            <span className="sync-state sync-off">
+              <i className="sync-dot" />
+              {servers.length ? "Its lists join the others." : "Not connected. Tasks stay on this device."}
+            </span>
+            {servers.length > 0 && (
+              <button type="button" className="btn" onClick={() => setAdding(false)}>
+                Cancel
+              </button>
+            )}
+            <button type="button" className="btn is-primary" disabled={!url.trim()} onClick={() => void add()}>
+              Add and sync
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="btn server-add" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={13} /> Add server
+        </button>
+      )}
+      <p className="form-hint">
+        {servers.length
+          ? `Each server keeps its own lists; the views show the lists of every server that is on, together. Switch one off${isMobile ? "" : " (here or in the title bar)"} to hide its lists. New lists and Inbox tasks go to the default server; a list or task moved onto another server's list goes over to that server.`
+          : "The first server takes the lists on this device. Add more to keep, say, work and private lists on separate servers."}
+      </p>
+    </section>
+  );
+}
 
 function DataSection() {
   const exportCsv = useStore((s) => s.exportCsv);
@@ -162,16 +308,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const shortcut = useStore((s) => s.shortcut);
   const shortcutError = useStore((s) => s.shortcutError);
   const setShortcut = useStore((s) => s.setShortcut);
-  const syncConfig = useStore((s) => s.syncConfig);
-  const sync = useStore((s) => s.sync);
-  const saveSyncConfig = useStore((s) => s.saveSyncConfig);
-  const syncNow = useStore((s) => s.syncNow);
   const version = useStore((s) => s.version);
   const update = useStore((s) => s.update);
   const checkUpdate = useStore((s) => s.checkUpdate);
   const installUpdate = useStore((s) => s.installUpdate);
-  const [url, setUrl] = useState(syncConfig?.url ?? "");
-  const [token, setToken] = useState(syncConfig?.token ?? "");
   const [keys, setKeys] = useState(shortcut);
   const highlight = useStore((s) => s.highlight);
   const setHighlight = useStore((s) => s.setHighlight);
@@ -290,34 +430,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </section>
         )}
 
-        <section>
-          <span className="micro">Sync server</span>
-          <div className="form-row">
-            <label htmlFor="sync-url">Server URL</label>
-            <input id="sync-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tasks.example.org" />
-          </div>
-          <div className="form-row">
-            <label htmlFor="sync-token">Token</label>
-            <input id="sync-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
-          </div>
-          <div className="form-actions">
-            <span className={`sync-state sync-${sync.status}`}>
-              <i className="sync-dot" />
-              {sync.status === "off" && "Not connected. Tasks stay on this device."}
-              {sync.status === "syncing" && "Syncing…"}
-              {sync.status === "idle" && (sync.last ? `Synced at ${new Date(sync.last).toLocaleTimeString()}` : "Connected")}
-              {sync.status === "error" && (sync.message ?? "Sync failed")}
-            </span>
-            {syncConfig && (
-              <button type="button" className="btn" onClick={() => void syncNow()}>
-                Sync now
-              </button>
-            )}
-            <button type="button" className="btn is-primary" onClick={() => void saveSyncConfig(url.trim() ? { url, token } : null)}>
-              {url.trim() ? "Save and sync" : "Disconnect"}
-            </button>
-          </div>
-        </section>
+        <ServersSection />
       </div>
     </div>
   );

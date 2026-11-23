@@ -156,7 +156,7 @@ function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef;
           </Popover>
         )}
       </header>
-      <div className="column-body">
+      <div className="column-body" onScroll={(e) => e.currentTarget.classList.toggle("is-scrolled", e.currentTarget.scrollTop > 0)}>
         {adding && (
           <div className="card card-new">
             <InlineInput

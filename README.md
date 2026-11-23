@@ -11,14 +11,14 @@ Every task has two independent dates:
 
 | Area | Details |
 | --- | --- |
-| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar (right-click the list). The sidebar is resizable by dragging its edge. |
+| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar (right-click the list). Drag lists in the sidebar into any order (on the middle of another list, a list becomes its sublist). The sidebar is resizable by dragging its edge. |
 | Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. |
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
 | Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
 | Order | Drag tasks into any order, in lists and on boards, whatever the sort. With the sort "Custom" this sets the tasks' own order; with any other sort the view remembers your order on top of it, and the sort menu offers "Restore default order". Dropping into another group changes what the group stands for (section, date, priority, list). |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
-| Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration, and the left or right edge of an all-day entry (one day or several) to change its first or last day. Scroll to move through weeks (month view) or days (week view, horizontal scroll). Deadlines appear as outlined entries. One-day entries with a time show only a bar and text in the list colour. In the week view, days with a deadline get a frame around their date. |
-| Tasks | Priority (flag), hard deadline (target symbol, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. A completed task is struck through for a moment, then goes; an Undo button stays at the bottom left until you change the view. With details hidden, a small mark shows which tasks have a description. Tasks with subtasks have an arrow at the end of their row (list and board) that folds them away; the fold is remembered on each device. In Completed, tasks start folded. |
+| Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration, and the left or right edge of an all-day entry (one day or several) to change its first or last day. Scrolling glides through weeks (month view) or days (week view, horizontal scroll) and settles on a whole week or day. Deadlines appear as outlined entries. In the week view, long titles fade out at the end, or wrap (Options → Wrap Titles in Week View); drop an entry on a day's date to make it an all-day entry of that day. One-day entries with a time show only a bar and text in the list colour. In the week view, days with a deadline get a frame around their date. |
+| Tasks | Priority (flag), hard deadline (target symbol, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. A completed task is struck through for a moment, then goes; an Undo button stays at the bottom left until you change the view. With details hidden, a small mark shows which tasks have a description. Tasks with subtasks have an arrow at the end of their row (list and board) that folds them away, and a button at the top of the list and board folds or unfolds all of them; the fold is remembered on each device. In Completed, tasks start folded. |
 | Subtasks | In the editor, tap a subtask to edit its title in place; Enter opens a new line right under it (on the last line, or on an empty one, it goes to the add line), and Backspace on an empty title removes it. The arrow at the end opens it on its own. With details shown, a subtask's description is previewed under its title. |
 | Select | View menu → Select (lists and boards): tap tasks, or a group's circle, to select them; Select All in the header. The bar at the bottom sets a date, moves to a list or a section, deletes (tap twice), and under ··· sets priority, completes, won't do, pins, sets the deadline to today, duplicates. Escape or the ✓ leaves. |
 | Right-click | Own menus for tasks (date with a full picker and a Start / End switch for spans, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
@@ -26,7 +26,7 @@ Every task has two independent dates:
 | Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
 | Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). `Enter` adds the task; `Ctrl+Enter` adds it and opens it in the app, inside the list (or Inbox) it went to. |
 | Import / export | Settings → Data. Export writes every list, section, task and view setting to one CSV file that can be imported again. Import also reads a TickTick backup CSV (see below). |
-| Sync | Optional. Local first, last write wins per task. |
+| Sync | Optional, with one or several servers (each with its own name, say Work and Private). Each server keeps its own lists; the views show the lists of every server that is on, together, and a small mark in the sidebar says which server a list is on. Switch a server off or on in the title bar (or in Settings) to hide or show its lists. New lists and Inbox tasks go to the default server; a task or list moved onto another server's list goes over to that server (right-click a list to move it). Local first, last write wins per task. |
 
 Drag a task onto a list in the sidebar to move it there.
 
@@ -96,11 +96,11 @@ cd server
 VITRO_TOKEN=<long random secret> POSTGRES_PASSWORD=<another secret> docker compose up -d
 ```
 
-It listens on `127.0.0.1:8787`. Put a reverse proxy with TLS in front of it, then enter the URL and the token under Settings → Sync server in the app. `GET /v1/health` answers without a token.
+It listens on `127.0.0.1:8787`. Put a reverse proxy with TLS in front of it, then add it under Settings → Sync servers in the app (a name, the URL and the token). `GET /v1/health` answers without a token. For separate sets of lists (work and private, say), run one server per set and add each to the app; the servers need no change for that (which server a row lives on is only recorded on the device). The first server added takes the lists already on the device; removing one of several takes its lists off the device (they stay on the server), removing the only one keeps them on the device.
 
 How it works: every row carries `updated_at` and a `deleted` flag. The app sends its changed rows and its cursor to `POST /v1/sync`; the server keeps the newer version of each row, numbers every accepted change, and returns everything after the cursor. The schema for both sides is generated from `src/shared/schema.ts`, which is also the reference for a future mobile client.
 
-The token is a single shared secret, so one server serves one person.
+The token is a single shared secret, so one server serves one person (or one shared set of lists).
 
 ## Releasing
 

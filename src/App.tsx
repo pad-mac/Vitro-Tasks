@@ -6,7 +6,7 @@ import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
 import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
 import { SelectBar, SelectHead, UndoButton } from "./components/Select";
-import { watchBackdrop } from "./lib/backdrop";
+import { setBackdrop } from "./lib/backdrop";
 import { watchPress } from "./lib/press";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
@@ -16,7 +16,7 @@ import { Icon, MenuItem, Popover } from "./components/ui";
 import { isMobile, isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
 import { orderKey, parseRanks } from "./lib/order";
-import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type ViewRef } from "./lib/views";
+import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type Group, type ViewRef } from "./lib/views";
 import type { GroupBy, SortBy, Task, ViewMode } from "./shared/schema";
 import { computePrefs, useStore, viewKey } from "./store";
 
@@ -114,6 +114,11 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
           <Icon name="sidebar" size={20} />
         </button>
         <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
+        {completedView && (
+          <div className="head-tools">
+            <FoldAllButton groups={groups} completed />
+          </div>
+        )}
         {!completedView && (
           <div className="head-tools">
             <EditModeToggle view={view} />
@@ -147,6 +152,7 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
                 </div>
               )}
             </Popover>
+            {mode !== "timeline" && <FoldAllButton groups={groups} completed={false} />}
             <Popover align="right" title="View" trigger={<span className="icon-btn icon-btn-lg"><Icon name="dots" size={18} /></span>}>
               {(close) => (
                 <div className="menu cm">
@@ -206,6 +212,30 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
   );
 });
 
+/**
+ * Folds or unfolds the subtasks of every task in the view at once (list and
+ * board). Shows "unfold" when everything is folded, else "fold".
+ */
+function FoldAllButton({ groups, completed }: { groups: Group[]; completed: boolean }) {
+  const tasks = useStore((s) => s.tasks);
+  const folded = useStore((s) => s.folded);
+  const setFolds = useStore((s) => s.setFolds);
+  const parents = useMemo(() => {
+    const withKids = new Set(tasks.filter((t) => t.parent_id).map((t) => t.parent_id!));
+    return groups.flatMap((g) => g.tasks).filter((t) => withKids.has(t.id)).map((t) => t.id);
+  }, [groups, tasks]);
+  if (!parents.length) return null;
+  // The Completed view starts folded: there an entry means "opened".
+  const isFolded = (id: string) => (completed ? !folded[`open:${id}`] : !!folded[id]);
+  const all = parents.every(isFolded);
+  const keys = completed ? parents.map((id) => `open:${id}`) : parents;
+  return (
+    <button type="button" className="icon-btn icon-btn-lg" title={all ? "Unfold all subtasks" : "Fold all subtasks"} onClick={() => setFolds(keys, completed ? all : !all)}>
+      <Icon name={all ? "unfoldall" : "foldall"} size={18} />
+    </button>
+  );
+}
+
 /** Sidebar button: in narrow windows it slides the lists over the content. */
 function useToggleSidebar() {
   const narrow = useNarrow();
@@ -214,6 +244,43 @@ function useToggleSidebar() {
     if (narrow) s.setDrawerOpen(!s.drawerOpen);
     else s.setSidebarOpen(!s.sidebarOpen);
   };
+}
+
+/** The sync servers in the title bar: a click switches one on or off (off: its lists are hidden everywhere). */
+function TitlebarServers() {
+  const servers = useStore((s) => s.servers);
+  const states = useStore((s) => s.serverSync);
+  const updateServer = useStore((s) => s.updateServer);
+  if (!servers.length) return null;
+  return (
+    <div className="tb-servers" role="group" aria-label="Sync servers">
+      {servers.map((x) => {
+        const st = x.enabled ? (states[x.id]?.status ?? "idle") : "off";
+        const what = !x.enabled
+          ? "off: its lists are hidden"
+          : st === "error"
+            ? `sync failed: ${states[x.id]?.message ?? ""}`
+            : st === "syncing"
+              ? "syncing…"
+              : states[x.id]?.last
+                ? `synced at ${new Date(states[x.id]!.last!).toLocaleTimeString()}`
+                : "on";
+        return (
+          <button
+            type="button"
+            key={x.id}
+            className={`tb-server sync-${st} ${x.enabled ? "is-on" : ""}`}
+            aria-pressed={x.enabled}
+            title={`${x.name}: ${what}. Click to ${x.enabled ? "hide" : "show"} its lists.`}
+            onClick={() => void updateServer(x.id, { enabled: !x.enabled })}
+          >
+            <i className="sync-dot" />
+            {x.name}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function Titlebar({ onSettings }: { onSettings: () => void }) {
@@ -247,6 +314,7 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
           <Icon name="calendar" size={17} /> <span>Calendar</span>
         </button>
       </nav>
+      <TitlebarServers />
       <div className="tb-drag" data-tauri-drag-region />
       {(update.status === "available" || update.status === "installing") && (
         <button type="button" className="tb-update pearl" disabled={update.status === "installing"} onClick={() => void installUpdate()}>
@@ -392,16 +460,17 @@ export function App() {
     window.addEventListener("vitro:back", back);
     return () => window.removeEventListener("vitro:back", back);
   }, []);
-  const backdrop = useRef<(() => void) | null>(null);
+  const pressWatched = useRef(false);
   useEffect(() => {
-    if (!isMobile || backdrop.current) return;
-    backdrop.current = watchBackdrop();
+    if (!isMobile || pressWatched.current) return;
+    pressWatched.current = true;
     watchPress();
   }, []);
-  // (Sheets opening or closing are no reason: the colour only shows around the keyboard, and a field taking the focus updates it.)
+  // What the keyboard's corners show: known from what is open (no measuring); the app hears only of a change.
+  const sheetUp = addOpen || !!selected || !!composer;
   useEffect(() => {
-    backdrop.current?.();
-  }, [theme]);
+    if (isMobile) setBackdrop(settingsOpen ? "modal" : sheetUp ? "sheet" : "page");
+  }, [settingsOpen, sheetUp, theme]);
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {

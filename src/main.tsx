@@ -6,6 +6,7 @@ import { App } from "./App";
 import { QuickAdd } from "./QuickAdd";
 import { seedDemo } from "./lib/demo";
 import { hasNative, postNative } from "./lib/native";
+import { refreshBackdrop } from "./lib/backdrop";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 /** Readable text colour on top of a highlight colour. */
@@ -116,6 +117,7 @@ function Root() {
       if (isMobile) {
         const css = getComputedStyle(document.documentElement);
         postNative({ type: "theme", dark: theme === "system" ? null : dark, bg: css.getPropertyValue("--bg").trim(), raised: css.getPropertyValue("--raised").trim() });
+        refreshBackdrop();
       }
     };
     apply();
@@ -132,6 +134,8 @@ void useStore
     // Browser preview only: `?demo` fills an empty database with sample data.
     if (!isTauri() && new URLSearchParams(location.search).has("demo")) {
       await seedDemo();
+      // (The sample's completed tasks are not something to undo.)
+      useStore.setState({ undo: null });
       // For the scripted checks of the preview.
       (window as unknown as { __store: typeof useStore }).__store = useStore;
     }

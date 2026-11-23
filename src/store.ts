@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { openDb, type Db } from "./db/driver";
-import { getMeta, loadAll, migrate, put, remove, setMeta, uid } from "./db/repo";
-import { getSyncConfig, setSyncConfig, syncOnce, type SyncConfig } from "./db/sync";
+import { assignOrigin, getMeta, loadAll, migrate, purgeOrigin, put, remove, setMeta, uid } from "./db/repo";
+import { getDefaultServer, getServers, hostName, resetServer, setDefaultServer, setServers, syncOnce, type SyncServer } from "./db/sync";
 import {
   announceChange,
   appVersion,
@@ -145,6 +145,8 @@ interface State {
   calMode: CalMode;
   /** Rows shown in the multi-week calendar. */
   calWeeks: number;
+  /** Week view: long titles wrap onto more lines (else one line that fades out). */
+  calWrap: boolean;
   /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
   calMonthLike: "month" | "multiweek";
   /** Bumped to make the calendar jump to today. */
@@ -156,7 +158,12 @@ interface State {
   theme: Theme;
   shortcut: string;
   shortcutError: string | null;
-  syncConfig: SyncConfig | null;
+  /** Sync servers set up on this device, in their order; off ones are hidden from every view and not synced. */
+  servers: SyncServer[];
+  /** Where new lists and Inbox tasks go. */
+  defaultServer: string;
+  /** Each server's state; `sync` sums them up. */
+  serverSync: Record<string, SyncState>;
   sync: SyncState;
 
   init(): Promise<void>;
@@ -181,6 +188,8 @@ interface State {
   setShowCompleted(v: boolean): void;
   undoLast(): Promise<void>;
   toggleFold(id: string): void;
+  /** Folds (or unfolds) these tasks' subtasks at once (`keys` as `useFold` makes them). */
+  setFolds(keys: string[], on: boolean): void;
   setSelecting(ids: string[] | null): void;
   toggleSelected(id: string): void;
   setShowDetails(v: boolean): Promise<void>;
@@ -191,6 +200,7 @@ interface State {
   setShortcuts(s: Shortcuts): Promise<void>;
   setCalMode(m: CalMode): void;
   setCalWeeks(n: number): void;
+  setCalWrap(on: boolean): void;
   goCalToday(): void;
   editMode(view: ViewRef): EditMode;
   setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
@@ -225,7 +235,13 @@ interface State {
   prefs(view: ViewRef): ViewPrefs;
   setPrefs(view: ViewRef, patch: Partial<ViewPrefs>): Promise<void>;
 
-  saveSyncConfig(cfg: SyncConfig | null): Promise<void>;
+  addServer(s: { name: string; url: string; token: string }): Promise<void>;
+  updateServer(id: string, patch: Partial<Omit<SyncServer, "id">>): Promise<void>;
+  /** The only server: its tasks stay on this device. One of several: its lists leave this device (they stay on the server). */
+  removeServer(id: string): Promise<void>;
+  setDefaultServer(id: string): Promise<void>;
+  /** A list (with its sublists, sections and tasks) moves to another server. */
+  moveListToServer(listId: string, serverId: string, parentId?: string | null): Promise<void>;
   syncNow(): Promise<void>;
 }
 
@@ -273,7 +289,27 @@ export const useStore = create<State>((set, get) => {
     row.updated_at = at;
   }
 
+  /** The server new rows go to: the default one while it is on, else the first one that is on. */
+  function homeServer(): string {
+    const { servers, defaultServer } = get();
+    const on = servers.filter((x) => x.enabled);
+    if (on.some((x) => x.id === defaultServer)) return defaultServer;
+    return on[0]?.id ?? defaultServer;
+  }
+  /** A new row lives where what it belongs to lives (its list, its parent task); an existing row keeps its server. */
+  function originFor(name: EntityName, row: Record<string, unknown>): string {
+    if (typeof row.origin === "string") return row.origin;
+    const listOrigin = (id: unknown) => (typeof id === "string" ? get().lists.find((l) => l.id === id)?.origin : undefined);
+    if (name === "lists") return listOrigin(row.parent_id) ?? homeServer();
+    if (name === "sections") return listOrigin(row.list_id) ?? homeServer();
+    if (name === "tasks")
+      return listOrigin(row.list_id) ?? (typeof row.parent_id === "string" ? get().tasks.find((t) => t.id === row.parent_id)?.origin : undefined) ?? homeServer();
+    return homeServer();
+  }
+
   async function save<T extends { id: string }>(name: EntityName, row: T): Promise<T> {
+    // Set on the row itself too: it may be the object already shown (it then knows its server).
+    (row as { origin?: string }).origin = originFor(name, row as unknown as Record<string, unknown>);
     const saved = (await put(db, name, row as unknown as Row)) as unknown as T;
     void announceChange();
     scheduleSync();
@@ -281,7 +317,7 @@ export const useStore = create<State>((set, get) => {
   }
 
   function scheduleSync(delay = 1500) {
-    if (!get().syncConfig) return;
+    if (!get().servers.some((x) => x.enabled)) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => void get().syncNow(), delay);
   }
@@ -301,7 +337,8 @@ export const useStore = create<State>((set, get) => {
           res.skipped++;
           continue;
         }
-        await put(db, name, { ...row, deleted: 0 });
+        // New rows land on the default server; replaced ones keep theirs.
+        await put(db, name, { ...row, deleted: 0, origin: homeServer() });
         if (name !== "settings") res[name]++;
       }
     }
@@ -309,6 +346,97 @@ export const useStore = create<State>((set, get) => {
     void announceChange();
     scheduleSync(300);
     return res;
+  }
+
+  /**
+   * Rows cannot change servers in place (the old server would keep them, and other
+   * devices would get the same row from two places): they are copied to the new
+   * server under new ids and deleted on the old one.
+   */
+  async function moveTaskToServer(cur: Task, patch: Partial<Task>, to: string) {
+    const kids = get().tasks.filter((t) => t.parent_id === cur.id);
+    const copy: Task = { ...cur, ...patch, id: uid(), origin: to, section_id: patch.section_id ?? null };
+    const kidCopies = kids.map((k) => ({ ...k, id: uid(), origin: to, parent_id: copy.id, list_id: copy.list_id, section_id: null }));
+    const gone = new Set([cur.id, ...kids.map((k) => k.id)]);
+    set({
+      tasks: [...get().tasks.filter((t) => !gone.has(t.id)), copy, ...kidCopies],
+      selectedId: get().selectedId === cur.id ? copy.id : gone.has(get().selectedId ?? "") ? null : get().selectedId,
+    });
+    for (const t of [copy, ...kidCopies]) await put(db, "tasks", t as unknown as Row);
+    for (const x of gone) await remove(db, "tasks", x);
+    void announceChange();
+    scheduleSync();
+  }
+
+  /** Returns the list's new id. */
+  async function moveListTree(listId: string, to: string, parentId: string | null): Promise<string> {
+    const { lists, sections, tasks, view } = get();
+    const ids = listWithDescendants(lists, listId);
+    const listMap = new Map(ids.map((x) => [x, uid()]));
+    const secs = sections.filter((x) => ids.includes(x.list_id));
+    const secMap = new Map(secs.map((x) => [x.id, uid()]));
+    const ts = tasks.filter((t) => t.list_id && ids.includes(t.list_id));
+    const taskMap = new Map(ts.map((t) => [t.id, uid()]));
+    const newLists = lists
+      .filter((l) => ids.includes(l.id))
+      .map((l) => ({ ...l, id: listMap.get(l.id)!, origin: to, parent_id: l.id === listId ? parentId : (listMap.get(l.parent_id ?? "") ?? l.parent_id) }));
+    const newSecs = secs.map((x) => ({ ...x, id: secMap.get(x.id)!, origin: to, list_id: listMap.get(x.list_id)! }));
+    const newTasks = ts.map((t) => ({
+      ...t,
+      id: taskMap.get(t.id)!,
+      origin: to,
+      list_id: listMap.get(t.list_id!)!,
+      section_id: t.section_id ? (secMap.get(t.section_id) ?? null) : null,
+      parent_id: t.parent_id ? (taskMap.get(t.parent_id) ?? t.parent_id) : null,
+    }));
+    const sel = get().selectedId;
+    set({
+      lists: [...lists.filter((l) => !listMap.has(l.id)), ...newLists],
+      sections: [...sections.filter((x) => !secMap.has(x.id)), ...newSecs],
+      tasks: [...tasks.filter((t) => !taskMap.has(t.id)), ...newTasks],
+      view: view.kind === "list" && listMap.has(view.id) ? { kind: "list", id: listMap.get(view.id)! } : view,
+      selectedId: sel && taskMap.has(sel) ? taskMap.get(sel)! : sel,
+    });
+    for (const l of newLists) await put(db, "lists", l as unknown as Row);
+    for (const x of newSecs) await put(db, "sections", x as unknown as Row);
+    for (const t of newTasks) await put(db, "tasks", t as unknown as Row);
+    for (const x of taskMap.keys()) await remove(db, "tasks", x);
+    for (const x of secMap.keys()) await remove(db, "sections", x);
+    for (const x of listMap.keys()) await remove(db, "lists", x);
+    void announceChange();
+    scheduleSync();
+    return listMap.get(listId)!;
+  }
+
+  /** One server's round trip, with its own state. */
+  async function syncServer(server: SyncServer): Promise<number> {
+    const mark = (st: SyncState) => set({ serverSync: { ...get().serverSync, [server.id]: st } });
+    mark({ ...get().serverSync[server.id], status: "syncing", message: undefined });
+    try {
+      const r = await syncOnce(db, server);
+      mark({ status: "idle", last: Date.now() });
+      return r.pulled;
+    } catch (e) {
+      mark({ status: "error", message: e instanceof Error ? e.message : String(e), last: get().serverSync[server.id]?.last });
+      return 0;
+    }
+  }
+
+  /** All servers in one state, for the title bar's button. */
+  function sumUp(): SyncState {
+    const on = get().servers.filter((x) => x.enabled);
+    if (!on.length) return { status: "off" };
+    const states = on.map((x) => get().serverSync[x.id] ?? { status: "idle" as const });
+    const failed = on.filter((x) => get().serverSync[x.id]?.status === "error");
+    if (failed.length) return { status: "error", message: failed.map((x) => `${x.name}: ${get().serverSync[x.id]?.message ?? "failed"}`).join(" · ") };
+    if (states.some((x) => x.status === "syncing")) return { status: "syncing" };
+    const lasts = states.map((x) => x.last ?? 0);
+    return { status: "idle", last: lasts.some((x) => !x) ? undefined : Math.min(...lasts) };
+  }
+
+  async function storeServers(servers: SyncServer[]) {
+    await setServers(db, servers);
+    set({ servers });
   }
 
   function replace<T extends { id: string }>(rows: T[], row: T): T[] {
@@ -344,6 +472,7 @@ export const useStore = create<State>((set, get) => {
     shortcuts: parseShortcuts(null),
     calMode: "month",
     calWeeks: 4,
+    calWrap: false,
     calMonthLike: "month",
     calTodayTick: 0,
     detached: detachedLayer(),
@@ -352,7 +481,9 @@ export const useStore = create<State>((set, get) => {
     theme: "system",
     shortcut: DEFAULT_SHORTCUT,
     shortcutError: null,
-    syncConfig: null,
+    servers: [],
+    defaultServer: "",
+    serverSync: {},
     sync: { status: "off" },
 
     async init() {
@@ -361,7 +492,8 @@ export const useStore = create<State>((set, get) => {
         await migrate(db);
         const theme = ((await getMeta(db, "theme")) as Theme | null) ?? "system";
         const shortcut = (await getMeta(db, "quickadd_shortcut")) ?? DEFAULT_SHORTCUT;
-        const syncConfig = await getSyncConfig(db);
+        const servers = await getServers(db);
+        const defaultServer = await getDefaultServer(db);
         const showDetails = (await getMeta(db, "show_details")) !== "0";
         const highlight = (await getMeta(db, "highlight")) || DEFAULT_HIGHLIGHT;
         const sidebarWidth = Number(await getMeta(db, "sidebar_width")) || SIDEBAR_DEFAULT;
@@ -369,8 +501,9 @@ export const useStore = create<State>((set, get) => {
         const calMode = ((await getMeta(db, "cal_mode")) as CalMode | null) ?? "month";
         const calWeeks = Math.max(2, Math.min(6, Number(await getMeta(db, "cal_weeks")) || 4));
         const calMonthLike = (await getMeta(db, "cal_month_like")) === "multiweek" ? "multiweek" : "month";
-        set({ calWeeks, calMonthLike });
-        set({ theme, shortcut, syncConfig, showDetails, highlight, sidebarWidth, shortcuts, calMode, sync: { status: syncConfig ? "idle" : "off" } });
+        const calWrap = (await getMeta(db, "cal_wrap")) === "1";
+        set({ calWeeks, calMonthLike, calWrap });
+        set({ theme, shortcut, servers, defaultServer, showDetails, highlight, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
         if (handoff) set({ view: handoff, ...(handoff.kind !== "calendar" ? { lastTaskView: handoff } : {}) });
@@ -409,15 +542,23 @@ export const useStore = create<State>((set, get) => {
     },
 
     async reload() {
-      const [lists, sections, tasks, settingRows] = await Promise.all([
+      const [allLists, allSections, allTasks, settingRows, servers, defaultServer] = await Promise.all([
         loadAll<List>(db, "lists"),
         loadAll<Section>(db, "sections"),
         loadAll<Task>(db, "tasks"),
         loadAll<Setting>(db, "settings"),
+        getServers(db),
+        getDefaultServer(db),
       ]);
       const settings: Record<string, string> = {};
       for (const s of settingRows) settings[s.id] = s.value;
-      set({ lists, sections, tasks, settings });
+      // What lives on a server that is switched off is not shown anywhere.
+      const off = new Set(servers.filter((x) => !x.enabled).map((x) => x.id));
+      const shown = <T extends { origin?: string }>(rows: T[]) => (off.size ? rows.filter((r) => !off.has(r.origin ?? "")) : rows);
+      const lists = shown(allLists);
+      const sections = shown(allSections);
+      const tasks = shown(allTasks);
+      set({ lists, sections, tasks, settings, servers, defaultServer });
       const { view, selectedId } = get();
       if (view.kind === "list" && !lists.some((l) => l.id === view.id)) set({ view: { kind: "smart", id: "today" } });
       if (selectedId && !tasks.some((t) => t.id === selectedId)) set({ selectedId: null });
@@ -448,6 +589,19 @@ export const useStore = create<State>((set, get) => {
       const folded = { ...get().folded };
       if (folded[id]) delete folded[id];
       else folded[id] = true;
+      set({ folded });
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify(Object.keys(folded)));
+      } catch {
+        /* storage may be unavailable */
+      }
+    },
+    setFolds(keys, on) {
+      const folded = { ...get().folded };
+      for (const k of keys) {
+        if (on) folded[k] = true;
+        else delete folded[k];
+      }
       set({ folded });
       try {
         localStorage.setItem(FOLDED_KEY, JSON.stringify(Object.keys(folded)));
@@ -514,6 +668,10 @@ export const useStore = create<State>((set, get) => {
         set({ calMonthLike: calMode });
         void setMeta(db, "cal_month_like", calMode);
       }
+    },
+    setCalWrap(calWrap) {
+      set({ calWrap });
+      void setMeta(db, "cal_wrap", calWrap ? "1" : "0");
     },
     setCalWeeks(n) {
       const calWeeks = Math.max(2, Math.min(6, n));
@@ -653,6 +811,11 @@ export const useStore = create<State>((set, get) => {
     async updateTask(id, patch) {
       const cur = get().tasks.find((t) => t.id === id);
       if (!cur) return;
+      // Into a list on another server (or the Inbox of the default one): the task moves there.
+      if (patch.list_id !== undefined && patch.list_id !== cur.list_id && !cur.parent_id) {
+        const to = patch.list_id ? get().lists.find((l) => l.id === patch.list_id)?.origin : homeServer();
+        if (to !== undefined && to !== (cur.origin ?? "")) return moveTaskToServer(cur, patch, to);
+      }
       const next = { ...cur, ...patch };
       // Moving to another list drops a section that does not belong there.
       if (patch.list_id !== undefined && patch.list_id !== cur.list_id && patch.section_id === undefined) {
@@ -743,6 +906,14 @@ export const useStore = create<State>((set, get) => {
       if (!cur) return;
       // A list cannot become its own descendant.
       if (patch.parent_id && listWithDescendants(get().lists, id).includes(patch.parent_id)) return;
+      // Under a list on another server: the list (with all it holds) moves to that server.
+      const parentOrigin = patch.parent_id ? get().lists.find((l) => l.id === patch.parent_id)?.origin : undefined;
+      if (parentOrigin !== undefined && parentOrigin !== (cur.origin ?? "")) {
+        const moved = await moveListTree(id, parentOrigin, patch.parent_id!);
+        const { parent_id: _p, ...rest } = patch;
+        if (Object.keys(rest).length) await get().updateList(moved, rest);
+        return;
+      }
       const next = { ...cur, ...patch };
       set({ lists: replace(get().lists, next) });
       const saved = await save("lists", next);
@@ -855,35 +1026,83 @@ export const useStore = create<State>((set, get) => {
       await save("settings", { id: key, value, updated_at: 0, deleted: 0 } as Setting);
     },
 
-    async saveSyncConfig(cfg) {
-      if (cfg && cfg.url.trim()) {
-        await setSyncConfig(db, cfg);
-        const stored = await getSyncConfig(db);
-        set({ syncConfig: stored, sync: { status: "idle" } });
-        await get().syncNow();
-      } else {
-        await setMeta(db, "sync_url", "");
-        await setMeta(db, "sync_token", "");
-        set({ syncConfig: null, sync: { status: "off" } });
+    async addServer({ name, url, token }) {
+      const server: SyncServer = { id: uid(), name: name.trim() || hostName(url), url, token, enabled: true };
+      const first = get().servers.length === 0;
+      // The first server takes what was on this device (as before); a further one only brings its own lists.
+      if (first) {
+        await assignOrigin(db, "", server.id);
+        await setDefaultServer(db, server.id);
+        set({ defaultServer: server.id });
       }
+      await storeServers([...get().servers, server]);
+      await resetServer(db, server.id);
+      await get().reload();
+      await get().syncNow();
+    },
+
+    async updateServer(id, patch) {
+      const cur = get().servers.find((x) => x.id === id);
+      if (!cur) return;
+      const next = { ...cur, ...patch };
+      await storeServers(get().servers.map((x) => (x.id === id ? next : x)));
+      // A new address has not seen this device's lists of it: start over and send them all.
+      if (patch.url !== undefined && patch.url.trim().replace(/\/+$/, "") !== cur.url) await resetServer(db, id);
+      if (patch.enabled !== undefined && patch.enabled !== cur.enabled) {
+        await get().reload();
+        // Hidden lists cannot stay open.
+        const { view, lists } = get();
+        if (view.kind === "list" && !lists.some((l) => l.id === view.id)) get().setView({ kind: "smart", id: "today" });
+      }
+      set({ sync: sumUp() });
+      if (next.enabled && (patch.url !== undefined || patch.token !== undefined || patch.enabled)) await get().syncNow();
+    },
+
+    async removeServer(id) {
+      const rest = get().servers.filter((x) => x.id !== id);
+      if (rest.length) await purgeOrigin(db, id);
+      else await assignOrigin(db, id, "");
+      if (get().defaultServer === id) {
+        await setDefaultServer(db, rest[0]?.id ?? "");
+        set({ defaultServer: rest[0]?.id ?? "" });
+      }
+      const { [id]: _gone, ...serverSync } = get().serverSync;
+      set({ serverSync });
+      await storeServers(rest);
+      await setMeta(db, `sync_cursor:${id}`, "0");
+      await get().reload();
+      set({ sync: sumUp() });
+    },
+
+    async setDefaultServer(id) {
+      await setDefaultServer(db, id);
+      set({ defaultServer: id });
+    },
+
+    async moveListToServer(listId, serverId, parentId = null) {
+      const cur = get().lists.find((l) => l.id === listId);
+      if (!cur || (cur.origin ?? "") === serverId) return;
+      await moveListTree(listId, serverId, parentId);
     },
 
     async syncNow() {
-      const cfg = get().syncConfig;
-      if (!cfg || syncing) return;
+      const on = get().servers.filter((x) => x.enabled);
+      if (!on.length || syncing) {
+        if (!on.length) set({ sync: { status: "off" } });
+        return;
+      }
       syncing = true;
       set({ sync: { ...get().sync, status: "syncing", message: undefined } });
       try {
-        const r = await syncOnce(db, cfg);
-        if (r.pulled > 0) {
+        let pulled = 0;
+        for (const server of on) pulled += await syncServer(server);
+        if (pulled > 0) {
           await get().reload();
           void announceChange();
         }
-        set({ sync: { status: "idle", last: Date.now() } });
-      } catch (e) {
-        set({ sync: { status: "error", message: e instanceof Error ? e.message : String(e), last: get().sync.last } });
       } finally {
         syncing = false;
+        set({ sync: sumUp() });
       }
     },
   };

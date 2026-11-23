@@ -143,8 +143,10 @@ code, kbd { font: 12px var(--mono); background: var(--active); padding: 1px 6px;
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .vr { width: 1px; height: 16px; background: var(--line); flex: none; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: var(--line); border: 3px solid transparent; background-clip: content-box; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background-color: var(--faint); }
+::-webkit-scrollbar-thumb { background: transparent; border: 3px solid transparent; background-clip: content-box; border-radius: 6px; }
+/* Only while the pointer is over what scrolls (or the bar is being dragged). */
+:hover::-webkit-scrollbar-thumb { background-color: var(--line); }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: var(--faint); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* ---------- Shell ---------- */
@@ -154,22 +156,24 @@ code, kbd { font: 12px var(--mono); background: var(--active); padding: 1px 6px;
 .boot code { user-select: text; }
 
 /* The window frame: navigation on the left, window controls on the right. */
-.titlebar { display: flex; align-items: center; gap: 2px; height: 34px; flex: none; padding-left: 6px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+.titlebar { display: flex; align-items: center; gap: 2px; height: 29px; flex: none; padding-left: 3px; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
 .tb-nav { display: flex; gap: 2px; }
-.tb-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; color: var(--muted); font-weight: 500; font-size: 12.5px; transition: background var(--fast), color var(--fast); }
+.tb-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; color: var(--muted); font-weight: 500; font-size: 12px; transition: background var(--fast), color var(--fast); }
 .tb-btn:hover { background: var(--hover); color: var(--text); }
 .tb-btn.is-active { background: var(--active); color: var(--text); }
-.tb-icon { padding: 0; width: 28px; justify-content: center; }
+.tb-icon { padding: 0; width: 22px; justify-content: center; }
+.tb-icon .icon { width: 15px; height: 15px; }
+.tb-btn > .icon { width: 15px; height: 15px; }
 .tb-drag { flex: 1; align-self: stretch; }
-.tb-update { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; margin-right: 6px; border-radius: 11px; font-size: 12px; font-weight: 500; }
+.tb-update { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px; margin-right: 6px; border-radius: 10px; font-size: 11.5px; font-weight: 500; }
 .tb-update:hover { filter: brightness(1.08); }
 .tb-update:disabled { opacity: 0.8; cursor: default; }
 .win-controls { display: flex; align-self: stretch; margin-left: 6px; }
-.win-controls button { width: 42px; display: grid; place-items: center; color: var(--muted); transition: background var(--fast), color var(--fast); }
+.win-controls button { width: 40px; display: grid; place-items: center; color: var(--muted); transition: background var(--fast), color var(--fast); }
 .win-controls button:hover { background: var(--active); color: var(--text); }
 .win-controls .win-close:hover { background: #e0443a; color: #fff; }
 .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
-.tb-btn .sync-dot { position: absolute; right: 4px; bottom: 4px; border: 1.5px solid var(--chrome); box-sizing: content-box; }
+.tb-btn .sync-dot { position: absolute; right: 2px; bottom: 2px; border: 1.5px solid var(--bg); box-sizing: content-box; }
 .sync-off .sync-dot { background: transparent; border-color: transparent; }
 .sync-idle .sync-dot { background: #3f9d6b; }
 .sync-syncing .sync-dot { background: var(--p2); }
@@ -370,12 +374,14 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 
 /* ---------- Board ---------- */
 
-.kanban { flex: 1; display: flex; gap: 14px; padding: 0 22px 18px; overflow: auto; align-items: flex-start; }
+.kanban { flex: 1; display: flex; gap: 14px; padding: 0 22px 18px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; align-items: flex-start; }
 .column { position: relative; width: 300px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: var(--r-lg); transition: background var(--fast), box-shadow var(--fast); }
 .column.is-drop { background: var(--hover); }
-.column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; }
+.column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; flex: none; }
 .column-head .group-label { font-size: 15px; }
 .column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 60px; padding: 6px 2px 6px; margin: -6px -2px 0; }
+/* Scrolled: the cards fade out under the column's head instead of being cut at its edge. */
+.column-body.is-scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); }
 .column-empty { color: var(--faint); font-size: 13px; text-align: center; padding: 16px 0; border: 1px dashed var(--line); border-radius: var(--r-lg); }
 .column-add { padding: 4px 0; align-items: flex-start; }
 .lane { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -453,7 +459,9 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .month { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 10px 10px; }
 .month-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); flex: none; }
 .month-dow span { padding: 4px 0 6px; text-align: center; font-size: 12.5px; color: var(--faint); }
-.month-grid { flex: 1; display: grid; grid-template-rows: repeat(6, minmax(0, 1fr)); min-height: 0; touch-action: none; }
+.month-grid { flex: 1; min-height: 0; touch-action: none; overflow: hidden; position: relative; }
+/* The weeks, with one hidden above and below: the wheel glides the track and it settles on a row. */
+.month-track { display: grid; will-change: transform; }
 .cal-week { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-height: 0; border-top: 1px solid var(--line-soft); }
 .cal-week.is-allday { border-top: 0; min-height: 30px; }
 .cal-cell { position: relative; border-right: 1px solid var(--line-soft); padding: 30px 4px 3px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-height: 0; transition: background var(--fast); }
@@ -462,8 +470,10 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cal-cell.is-out .cal-chip { opacity: 0.6; }
 .cal-cell.is-sel { background: var(--active); }
 .cal-cell.is-drop, .week-col.is-drop { background: var(--active); box-shadow: inset 0 0 0 1.5px var(--focus); }
-.cal-daynum { position: absolute; top: 5px; left: 8px; font-size: 14px; font-weight: 500; min-width: 24px; height: 22px; padding: 0 6px; margin-left: -6px; display: inline-grid; place-items: center; border-radius: 11px; }
-.cal-daynum.is-today { background: var(--muted); color: var(--bg); }
+.cal-daynum { position: absolute; top: 3px; left: 4px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 1px; }
+.cal-daynum em { font-style: normal; padding-left: 4px; margin-right: -5px; }
+.cal-daynum b { font-weight: inherit; width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: 50%; }
+.cal-daynum.is-today b { background: var(--muted); color: var(--bg); }
 .cal-chip { display: flex; align-items: center; gap: 5px; height: 20px; flex: none; padding: 0 6px 0 5px; font-size: 12.5px; border-radius: 4px; background: color-mix(in srgb, var(--c) 16%, transparent); border-left: 2.5px solid var(--c); color: color-mix(in srgb, var(--c) 55%, var(--text)); cursor: pointer; min-width: 0; transition: filter var(--fast), background var(--fast); }
 .cal-chip:hover { background: color-mix(in srgb, var(--c) 28%, transparent); }
 .cal-chip.is-selected { background: color-mix(in srgb, var(--c) 40%, transparent); }
@@ -499,26 +509,38 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 
 .week { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .week-head, .week-allday, .week-grid { display: grid; grid-template-columns: 58px minmax(0, 1fr); }
-.week-head { grid-template-columns: 58px repeat(7, minmax(0, 1fr)); padding-right: 10px; flex: none; }
+.week-head { flex: none; overflow: hidden; }
+/* Days (with a hidden one at each side): head, all-day row and hours glide together. */
+.week-pane { min-width: 0; overflow: hidden; position: relative; }
+.week-track { display: grid; will-change: transform; }
+.week-day.is-drop { background: var(--active); box-shadow: inset 0 0 0 1.5px var(--focus); }
 .week-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0 5px; margin: 0 3px 3px; border-radius: 10px; }
 .week-day i { font-size: 12.5px; font-style: normal; color: var(--faint); }
-.week-day b { font-size: 15px; font-weight: 500; min-width: 28px; height: 26px; display: inline-grid; place-items: center; border-radius: 13px; padding: 0 6px; }
+.week-day b { font-size: 15px; font-weight: 500; width: 28px; height: 28px; display: inline-grid; place-items: center; border-radius: 50%; }
 .week-day.is-today b { background: var(--muted); color: var(--bg); }
 .week-day.has-deadline { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--signal) 75%, transparent); }
-.week-allday { flex: none; border-block: 1px solid var(--line-soft); max-height: 150px; overflow-y: auto; scrollbar-width: none; padding-right: 10px; }
+.week-allday { flex: none; border-block: 1px solid var(--line-soft); max-height: 150px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
 .week-allday > .week-gutter { padding: 7px 8px 0 0; text-align: right; font-size: 11px; color: var(--faint); }
 .week-allday-row { min-width: 0; touch-action: none; }
 .week-allday .cal-cell { padding-bottom: 5px; }
 .week-scroll { flex: 1; overflow-y: scroll; }
-.week-grid { position: relative; grid-template-columns: 58px repeat(7, minmax(0, 1fr)); background-image: linear-gradient(var(--line-soft) 1px, transparent 1px); background-size: 100% 48px; }
+.week-grid { position: relative; background-image: linear-gradient(var(--line-soft) 1px, transparent 1px); background-size: 100% 48px; }
 .week-gutter { position: relative; }
 .week-hour { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--faint); background: var(--bg); padding: 0 3px; font-variant-numeric: tabular-nums; }
 .week-hour:first-child { display: none; }
 .week-col { position: relative; border-left: 1px solid var(--line-soft); touch-action: none; cursor: cell; }
 .week-event { position: absolute; min-height: 18px; overflow: hidden; border-radius: 5px; cursor: pointer; }
-.week-event .cal-chip { height: 100%; align-items: flex-start; padding-top: 2px; background: color-mix(in srgb, var(--c) 24%, var(--bg)); }
+.week-event .cal-chip { height: 100%; display: block; padding-top: 2px; background: color-mix(in srgb, var(--c) 24%, var(--bg)); }
+.cal-chip-line { display: flex; align-items: center; gap: 5px; min-width: 0; height: 16px; }
+.cal-chip-line > .icon { flex: none; }
+/* One line: the end fades out instead of being cut off. */
+.week-event .cal-chip-title { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
+/* Wrapped (Options › Wrap Titles): as many lines as fit, the time under them. */
+.week.is-wrap .week-event .cal-chip-line { height: auto; align-items: flex-start; }
+.week.is-wrap .week-event .cal-chip-line > .icon { margin-top: 2px; }
+.week.is-wrap .week-event .cal-chip-title { white-space: normal; overflow-wrap: anywhere; line-height: 15px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); -webkit-mask-image: none; mask-image: none; }
 .week-event .cal-chip.is-deadline { background: var(--bg); }
-.week-event-time { position: absolute; left: 8px; top: 20px; font-size: 11px; color: var(--muted); pointer-events: none; font-variant-numeric: tabular-nums; }
+.week-event-time { display: block; margin-top: 1px; font-size: 11px; line-height: 14px; color: var(--muted); pointer-events: none; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 12px), transparent); }
 .week-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: ns-resize; }
 .week-resize::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 18px; height: 2px; margin-left: -9px; border-radius: 1px; background: var(--muted); opacity: 0; transition: opacity var(--fast); }
 .week-event:hover .week-resize::after, .week-event.is-resizing .week-resize::after { opacity: 0.7; }
@@ -600,7 +622,8 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .time-cols.is-below { position: static; width: auto; margin-top: 8px; box-shadow: none; animation: none; }
 .time-col { display: flex; flex-direction: column; gap: 2px; max-height: 186px; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .time-col::-webkit-scrollbar { width: 5px; }
-.time-col::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background-clip: content-box; background-color: color-mix(in oklab, var(--faint) 55%, transparent); }
+.time-col::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background-clip: content-box; background-color: transparent; }
+.time-col:hover::-webkit-scrollbar-thumb { background-color: color-mix(in oklab, var(--faint) 55%, transparent); }
 .time-col::-webkit-scrollbar-track { background: transparent; }
 .time-col-min { justify-content: flex-start; }
 .time-cell { border: 1px solid transparent; flex: none; height: 28px; border-radius: 9px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); transition: background var(--fast); }
@@ -628,7 +651,7 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .subtask-add input { padding: 0; color: var(--text); }
 .subtask-add input::placeholder { color: var(--faint); }
 .subtask-add input { flex: 1; }
-.detail-foot { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 14px 0 16px; flex: none; }
+.detail-foot { display: flex; align-items: center; gap: 6px; padding: 6px 14px 14px; flex: none; }
 .foot-trigger { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 7px; font-size: 13.5px; transition: background var(--fast); }
 .foot-trigger.is-quiet { color: var(--muted); }
 .pop-trigger:hover .foot-trigger { background: var(--hover); }
@@ -762,9 +785,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 @media (max-width: 520px) {
   .detail-head .dl-trigger em { display: none; }
   .detail-head { gap: 4px; padding: 0 8px; }
-  .titlebar { padding-left: 4px; }
-  .win-controls button { width: 40px; }
-  .tb-icon { width: 30px; }
+  .titlebar { padding-left: 3px; }
+  .win-controls button { width: 38px; }
+  .tb-icon { width: 24px; }
   .form-row { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1130,6 +1153,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* No vertical lines; numbers centred; today and the open day as circles. */
 .is-mobile .cal-cell { border-right: 0; padding: 30px 1px 2px; border-radius: 10px; }
 .is-mobile .cal-daynum { left: 50%; top: 4px; transform: translateX(-50%); margin: 0; width: 24px; min-width: 0; height: 24px; padding: 0; border-radius: 50%; font-size: 14px; font-weight: 500; }
+/* The phone's circle is the number's own box (the desktop draws it on the number inside). */
+.is-mobile .cal-daynum { display: inline-grid; place-items: center; gap: 0; }
+.is-mobile .cal-daynum b { width: auto; height: auto; border-radius: 0; background: none; color: inherit; }
+.is-mobile .cal-daynum.is-today { background: var(--muted); color: var(--bg); }
 .is-mobile .cal-cell.is-sel { background: color-mix(in oklab, var(--hl) 16%, transparent); }
 .is-mobile .cal-cell.is-sel .cal-daynum { background: var(--ink); color: var(--on-ink); }
 .is-mobile .cal-cell.is-out .cal-daynum { color: var(--faint); }
@@ -1309,3 +1336,52 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* ---------- Writing in a sheet: the page under it keeps its height (see main.tsx) ---------- */
 html.pin-h #root { overflow: clip; }
 html.pin-h .app { height: var(--app-h); flex: none; }
+
+/* ---------- Several sync servers ---------- */
+/* Title bar: one quiet button per server; a click hides or shows its lists. */
+.tb-servers { display: flex; align-items: center; gap: 2px; margin-left: 6px; padding-left: 8px; position: relative; }
+.tb-servers::before { content: ""; position: absolute; left: 0; top: 50%; height: 14px; margin-top: -7px; width: 1px; background: var(--line-soft); }
+.tb-server { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 7px; border-radius: 6px; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; transition: background var(--fast), color var(--fast), opacity var(--fast); }
+.tb-server:hover { background: var(--hover); color: var(--text); }
+.tb-server.is-on { color: var(--text); }
+.tb-server:not(.is-on) { opacity: 0.55; }
+.tb-server:not(.is-on) .sync-dot { background: transparent; box-shadow: inset 0 0 0 1px var(--faint); }
+/* The server a list lives on, in the sidebar (and its menu). */
+.server-mark { flex: none; display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 4px; font: 600 9.5px/1 var(--font); font-style: normal; letter-spacing: 0.02em; color: var(--muted); background: color-mix(in oklab, var(--text) 8%, transparent); }
+.menu-label > .server-mark { margin: 0 1px; }
+/* Settings: a card per server. */
+.server-card { display: flex; flex-direction: column; gap: 9px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 12px; }
+.server-card.is-off .form-row, .server-card.is-off .server-name { opacity: 0.6; }
+.server-top { display: flex; align-items: center; gap: 8px; }
+.server-name { flex: 1; min-width: 0; height: 30px; padding: 0 8px; margin-left: -8px; border: 1.5px solid transparent; border-radius: var(--r); background: transparent; font-weight: 600; font-size: 14px; transition: border-color var(--fast), background var(--fast); }
+.server-name:hover { background: var(--hover); }
+.server-name:focus { border-color: var(--text); background: var(--field); }
+.server-default { height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; color: var(--muted); transition: background var(--fast), color var(--fast); }
+.server-default:hover { background: var(--hover); color: var(--text); }
+.server-default.is-active { background: var(--active); color: var(--text); font-weight: 500; cursor: default; }
+.server-toggle { display: grid; place-items: center; width: 40px; height: 28px; border-radius: var(--r); }
+.server-toggle:hover { background: var(--hover); }
+.server-add { align-self: center; }
+.btn.is-danger { color: var(--red); }
+.btn.is-danger:hover { border-color: var(--red); }
+
+/* ---------- Desktop: the lists in the sidebar quietly subdued (as in his TickTick) ---------- */
+html:not(.is-mobile) .sidebar { opacity: 0.7; filter: brightness(0.9); }
+
+/* ---------- Right-click menu: the phone's rules — even padding all round, square cells, one highlight radius (8 + 6 = 14) ---------- */
+.floating:has(> .menu.cm) { border-radius: 14px; }
+.menu.cm { padding: 6px; }
+.menu.cm.cm-task { width: 192px; min-width: 0; }
+.menu.cm .cm-group { padding: 0; }
+.menu.cm .cm-group + .cm-group { margin-top: 4px; }
+.menu.cm .cm-icons { gap: 4px; justify-content: flex-start; }
+.menu.cm .cm-icon { width: 42px; height: 42px; border-radius: 8px; }
+.menu.cm .menu-item, .menu.cm .cm-subhead { border-radius: 8px; }
+.menu.cm .cm-group + .menu-item, .menu.cm .cm-group + .cm-sep { margin-top: 4px; }
+.menu-item.is-danger .icon { color: var(--red); }
+
+/* ---------- Sidebar: lists in any order (drag them) ---------- */
+.nav-lists { position: relative; }
+.nav-row.is-sorting { opacity: 0.45; }
+html.is-sorting-lists, html.is-sorting-lists * { cursor: grabbing !important; user-select: none; }
+.nav-drop-line { left: 8px; right: 8px; }
