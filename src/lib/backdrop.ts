@@ -6,9 +6,9 @@
 import { hasNative, postNative } from "./native";
 
 // Floating things that step aside while typing are not what the keyboard sits on.
-const SKIP = ".m-bar, .undo-btn, .sel-bar, .m-tabs, .floating-copy, .drag-ghost";
+const SKIP = ".m-bar, .undo-btn, .sel-bar, .m-tabs, .floating-copy, .drag-ghost, .is-rising";
 // Sheets that sit on the keyboard: their own colour, even while they glide in.
-const SHEETS = ".m-sheet.is-open, .m-task-sheet:not(.is-closing)";
+const SHEETS = ".m-sheet.is-open:not(.is-rising), .m-task-sheet:not(.is-closing)";
 
 let ctx: CanvasRenderingContext2D | null = null;
 
@@ -83,15 +83,14 @@ export function watchBackdrop() {
     syncBackdrop();
     timers = [setTimeout(syncBackdrop, 60), setTimeout(syncBackdrop, 320)];
   };
-  document.addEventListener("focusin", soon, true);
-  document.addEventListener("pointerdown", soon, true);
+  // Only around the keyboard (its corners are where the colour shows): a text field taking the focus,
+  // the keyboard's resize, the theme, coming back. Not on taps: it used to run on every touch, in the
+  // middle of sheets, the drawer and the calendar opening and closing.
+  document.addEventListener("focusin", (e) => (e.target as Element).matches?.("input, textarea, [contenteditable='true']") && soon(), true);
   window.addEventListener("resize", soon);
+  window.addEventListener("vitro:backdrop", soon);
   document.addEventListener("visibilitychange", soon);
   new MutationObserver(soon).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  setInterval(() => {
-    const a = document.activeElement;
-    if (a && a.matches("input, textarea, [contenteditable='true']")) syncBackdrop();
-  }, 500);
   soon();
   return soon;
 }

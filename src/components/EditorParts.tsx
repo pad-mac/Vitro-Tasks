@@ -14,9 +14,10 @@ import { Check, Icon, Rich } from "./ui";
 const MARGIN = 34;
 
 /** Scrolls the editor's body so that `el` (a subtask's line, the add line, a field) is in view. */
-export function keepInView(el: Element | null, margin = MARGIN) {
+export function keepInView(el: Element | null, margin = MARGIN, caret = false) {
   const box = el?.closest<HTMLElement>(".detail-body");
   if (!el || !box) return;
+  const before = box.scrollTop;
   const row = (el.closest(".subtask") ?? el) as HTMLElement;
   const r = row.getBoundingClientRect();
   const b = box.getBoundingClientRect();
@@ -26,10 +27,36 @@ export function keepInView(el: Element | null, margin = MARGIN) {
     const f = el as HTMLTextAreaElement;
     const atEnd = typeof f.selectionStart === "number" && f.selectionStart === f.value?.length;
     if (atEnd && r.bottom > b.bottom - margin) box.scrollTop += r.bottom - b.bottom + margin;
-    return;
-  }
-  if (r.bottom > b.bottom - margin) box.scrollTop += r.bottom - b.bottom + margin;
+  } else if (r.bottom > b.bottom - margin) box.scrollTop += r.bottom - b.bottom + margin;
   else if (r.top < b.top + margin) box.scrollTop -= b.top + margin - r.top;
+  if (caret && box.scrollTop !== before) refreshCaret(el);
+}
+
+/**
+ * iOS draws the caret itself and did not always move it when the editor was
+ * scrolled from script (the keyboard coming up): it stayed where the line had
+ * been, further down. Setting the selection again makes WebKit report where the
+ * caret is now. Not while typing (that would reset the keyboard's suggestions).
+ */
+function refreshCaret(el: Element) {
+  const f = el as HTMLInputElement | HTMLTextAreaElement;
+  if (typeof f.selectionStart !== "number") return;
+  requestAnimationFrame(() => {
+    if (document.activeElement !== f || f.selectionStart === null || f.selectionEnd === null) return;
+    const a = f.selectionStart;
+    const z = f.selectionEnd;
+    const dir = f.selectionDirection ?? "none";
+    const n = f.value.length;
+    if (n > 0) {
+      const away = a === n ? 0 : n;
+      f.setSelectionRange(away, away);
+      f.setSelectionRange(a, z, dir);
+    } else {
+      // An empty line has no other place for the caret: a hair of indent moves it, and back.
+      f.style.textIndent = "0.01px";
+      requestAnimationFrame(() => (f.style.textIndent = ""));
+    }
+  });
 }
 
 /**
@@ -46,14 +73,20 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
     const B = body.current;
     if (!B) return;
     let frame = 0;
+    // While typing, the caret is left to the browser (see refreshCaret).
+    let typedAt = 0;
     const cut = () => B.classList.toggle("is-cut", B.scrollTop + B.clientHeight < B.scrollHeight - 1);
     const follow = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const a = document.activeElement;
-        if (a && B.contains(a)) keepInView(a);
+        if (a && B.contains(a)) keepInView(a, MARGIN, Date.now() - typedAt > 700);
         cut();
       });
+    };
+    const typed = () => {
+      typedAt = Date.now();
+      follow();
     };
     // The body (the keyboard, the sheet's height) and each of its parts (rows added, a longer description).
     const ro = new ResizeObserver(follow);
@@ -74,7 +107,7 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
       }
     };
     B.addEventListener("focusin", follow);
-    B.addEventListener("input", follow);
+    B.addEventListener("input", typed);
     B.addEventListener("scroll", cut, { passive: true });
     for (const x of boxes) x.addEventListener("scroll", pin, true);
     follow();
@@ -83,7 +116,7 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
       ro.disconnect();
       mo.disconnect();
       B.removeEventListener("focusin", follow);
-      B.removeEventListener("input", follow);
+      B.removeEventListener("input", typed);
       B.removeEventListener("scroll", cut);
       for (const x of boxes) x.removeEventListener("scroll", pin, true);
     };

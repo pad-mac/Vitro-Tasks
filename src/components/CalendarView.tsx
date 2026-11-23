@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -171,7 +171,7 @@ function EdgeHandles({ task, start = true, end = true }: { task: Task; start?: b
 
 function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
   const lists = useStore((s) => s.lists);
-  const selectedId = useStore((s) => s.selectedId);
+  const isSelected = useStore((s) => s.selectedId === entry.task.id);
   const select = useStore((s) => s.select);
   const { task, kind } = entry;
   const onMenu = useTaskMenu(task.id);
@@ -179,7 +179,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
   const time = timeOf(entry);
   return (
     <div
-      className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
+      className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""}`}
       data-id={task.id}
       style={{ ["--c" as string]: color }}
       title={`${kind === "deadline" ? "Deadline: " : ""}${plainText(task.title)}`}
@@ -200,7 +200,7 @@ function Chip({ entry, timed }: { entry: DayEntry; timed?: boolean }) {
 
 function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: number; c1: number; lane: number; top: number; from: string; to: string; n: number }) {
   const lists = useStore((s) => s.lists);
-  const selectedId = useStore((s) => s.selectedId);
+  const isSelected = useStore((s) => s.selectedId === task.id);
   const select = useStore((s) => s.select);
   const onMenu = useTaskMenu(task.id);
   const color = lists.find((l) => l.id === task.list_id)?.color ?? "var(--faint)";
@@ -208,7 +208,7 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
   const right = task.end_date! > to;
   return (
     <div
-      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${selectedId === task.id ? "is-selected" : ""}`}
+      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""}`}
       data-id={task.id}
       style={{
         ["--c" as string]: color,
@@ -368,6 +368,9 @@ function WeekRow({
     </div>
   );
 }
+
+/** The phone's month: a week re-renders only when its own props change (see PhoneMonth). */
+const PhoneWeekRow = memo(WeekRow);
 
 /** Press on an empty day and drag across days; the range opens the new-task card. */
 function useDayRange() {
@@ -800,6 +803,10 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
       if (!splitRef.current) setFocus(null);
     }, 190);
   };
+  // Weeks are memoised: opening a day re-renders its week (and the panel), not every week in the view.
+  const openDayRef = useRef<(day: string) => void>(() => {});
+  const expand = useCallback((day: string) => openDayRef.current(day), []);
+  const focusPair = useMemo<[string, string] | null>(() => (focus ? [focus, focus] : null), [focus]);
   const openDay = (day: string) => {
     if (split && focus === day) return closeDay();
     const wasSplit = split;
@@ -819,6 +826,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
       if (r) scrollToY(r.offsetTop);
     });
   };
+  openDayRef.current = openDay;
 
   // "Today": back to the current week.
   useEffect(() => {
@@ -917,14 +925,14 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
           return (
             <Fragment key={ws}>
               <div className={`m-week ${focusWeek === ws ? "is-focus" : ""}`} data-week={ws} style={{ height: open ? splitRowH : rowH }}>
-                <WeekRow
+                <PhoneWeekRow
                   start={ws}
                   tasks={tasks}
                   month
                   titleMonth={month}
                   capacity={open ? splitCapacity : capacity}
-                  range={sweep ?? (focus && focusWeek === ws ? [focus, focus] : null)}
-                  onExpand={(day) => openDay(day)}
+                  range={sweep ?? (focusWeek === ws ? focusPair : null)}
+                  onExpand={expand}
                 />
               </div>
               {focusWeek === ws && focus && (
@@ -982,7 +990,7 @@ export function EditModeToggle({ view }: { view: import("../lib/views").ViewRef 
   );
 }
 
-export function CalendarView() {
+function CalendarViewImpl() {
   const today = todayKey();
   const mode = useStore((s) => s.calMode);
   const setMode = useStore((s) => s.setCalMode);
@@ -1139,3 +1147,6 @@ export function CalendarView() {
     </div>
   );
 }
+
+/** Memoised: App re-renders for the sheet, the drawer, the quick add and the keyboard; the calendar under them need not. */
+export const CalendarView = memo(CalendarViewImpl);

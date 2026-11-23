@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { CalendarView, EditModeToggle } from "./components/CalendarView";
 import { ContextMenu } from "./components/ContextMenu";
 import { HoldMenu } from "./components/HoldMenu";
@@ -62,7 +62,8 @@ function groupOptions(view: ViewRef): { value: GroupBy; label: string }[] {
   return all.filter((o) => (o.value === "section" ? view.kind === "list" : true));
 }
 
-function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
+// Memoised: App re-renders for the sheet, the drawer, the quick add and the keyboard; the lists under them need not.
+const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
@@ -203,7 +204,7 @@ function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
       {mode === "timeline" && <TimelineView view={view} groups={groups} sectioned={sectioned} />}
     </>
   );
-}
+});
 
 /** Sidebar button: in narrow windows it slides the lists over the content. */
 function useToggleSidebar() {
@@ -385,7 +386,6 @@ export function App() {
   // iOS: the colour behind the web view is whatever sits at the bottom of the
   // page (a sheet, the quick add, the page), so the keyboard's rounded corners match it.
   const theme = useStore((s) => s.theme);
-  const sheetOpen = addOpen || !!selected || !!composer;
   // The edge swipe on the settings page goes back.
   useEffect(() => {
     const back = () => setSettingsOpen(false);
@@ -398,9 +398,10 @@ export function App() {
     backdrop.current = watchBackdrop();
     watchPress();
   }, []);
+  // (Sheets opening or closing are no reason: the colour only shows around the keyboard, and a field taking the focus updates it.)
   useEffect(() => {
     backdrop.current?.();
-  }, [sheetOpen, theme]);
+  }, [theme]);
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {

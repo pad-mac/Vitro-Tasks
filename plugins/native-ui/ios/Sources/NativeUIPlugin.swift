@@ -86,7 +86,7 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       applyStyle()
     case "backdrop":
       backdrop = UIColor(hexString: body["color"] as? String)
-      applyStyle()
+      applyBackdrop()
     case "fit":
       if !keyboardUp { resize(0) }
     default:
@@ -110,12 +110,17 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       webview.backgroundColor = bg
       webview.scrollView.backgroundColor = bg
     }
-    // Behind the web view (what the keyboard's rounded corners show while the
-    // web view ends above it): the colour at the bottom of the page, as the page reports it.
-    if let color = backdrop ?? background {
-      webview.superview?.backgroundColor = color
-      webview.window?.backgroundColor = color
-    }
+    applyBackdrop()
+  }
+
+  /// Behind the web view (what the keyboard's rounded corners show while the
+  /// web view ends above it): the colour at the bottom of the page, as the page
+  /// reports it. Only the views behind the web view change (no traits, no web
+  /// view colour, which can make the page repaint), and only when it differs.
+  private func applyBackdrop() {
+    guard let webview = webview, let color = backdrop ?? background else { return }
+    if let host = webview.superview, host.backgroundColor != color { host.backgroundColor = color }
+    if let window = webview.window, window.backgroundColor != color { window.backgroundColor = color }
   }
 
   private func emit(_ name: String, _ payload: [String: Any]) {

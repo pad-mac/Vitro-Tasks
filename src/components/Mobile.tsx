@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { haptic, isMobile } from "../lib/platform";
-import { onNative, postNative } from "../lib/native";
+import { hasNative, onNative, postNative } from "../lib/native";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
 import { isTyping } from "../lib/shortcuts";
@@ -169,6 +169,49 @@ export function MobileAdd({
     setFloat(null);
     setPicked({});
   }, [open]);
+  // In the iOS app the keyboard shortens the web view a moment after the sheet starts to rise: what had
+  // risen then went below the new bottom edge and the sheet seemed to start again from lower. It waits
+  // for the keyboard (or a moment) and rises once, from where the keyboard will end. Meanwhile the colour
+  // behind the keyboard stays the page's (`is-rising`), so the gap the keyboard slides into does not switch colour.
+  const [risen, setRisen] = useState(false);
+  const [rising, setRising] = useState(false);
+  useLayoutEffect(() => {
+    if (!open) {
+      setRisen(false);
+      setRising(false);
+      return;
+    }
+    if (!hasNative() || document.documentElement.classList.contains("kb-up")) {
+      setRisen(true);
+      return;
+    }
+    const h0 = innerHeight;
+    let done = 0;
+    const go = (keyboard: boolean) => {
+      stop();
+      flushSync(() => {
+        setRisen(true);
+        setRising(keyboard);
+      });
+      if (!keyboard) return void window.dispatchEvent(new Event("vitro:backdrop"));
+      done = window.setTimeout(() => {
+        setRising(false);
+        window.dispatchEvent(new Event("vitro:backdrop"));
+      }, 320);
+    };
+    const onResize = () => innerHeight < h0 - 120 && go(true);
+    // No keyboard coming (a hardware keyboard): it opens anyway. The first keyboard after launch can be slow.
+    const wait = window.setTimeout(() => go(false), 300);
+    window.addEventListener("resize", onResize);
+    const stop = () => {
+      clearTimeout(wait);
+      window.removeEventListener("resize", onResize);
+    };
+    return () => {
+      stop();
+      clearTimeout(done);
+    };
+  }, [open]);
   const base: Partial<Task> = { ...(preset ?? (view.kind === "calendar" ? { start_date: todayKey() } : defaultsForView(view))), ...picked };
   const close = () => {
     inputRef.current?.blur();
@@ -250,7 +293,7 @@ export function MobileAdd({
       <div className={`m-scrim ${open ? "is-open" : ""}`} onClick={close} />
       <div
         ref={ref}
-        className={`m-sheet m-add-sheet ${open ? "is-open" : ""} ${drag ? "is-pulling" : ""}`}
+        className={`m-sheet m-add-sheet ${open && risen ? "is-open" : ""} ${rising ? "is-rising" : ""} ${drag ? "is-pulling" : ""}`}
         style={drag ? { transform: `translateY(${drag}px)` } : undefined}
         aria-hidden={!open}
       >
@@ -873,7 +916,8 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
     if (id) {
       const wantFull = sheetFullNext === id;
       sheetFullNext = null;
-      setFull(wantFull);
+      // From one task to another inside the open sheet (a subtask opened, back to its parent): full stays full.
+      setFull((f) => wantFull || (!!prev && f));
       if (wantFull)
         requestAnimationFrame(() => {
           const t = ref.current?.querySelector<HTMLTextAreaElement>("textarea.detail-title");

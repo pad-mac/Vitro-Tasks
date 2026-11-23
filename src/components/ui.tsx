@@ -263,18 +263,31 @@ export function usePresence<T>(value: T | null, ms = 140): [T | null, boolean] {
  * above it when there is no room, and closes on outside press or Escape.
  */
 /** Text on one line that fades out at its end when it does not fit (instead of a hard cut or "…"). */
-export function FadeText({ children, className = "" }: { children: ReactNode; className?: string }) {
+/** A name that fades out at its right edge when cut. With `floor`, the flex item it sits in (its `.pop`)
+ *  never squeezes it below that many pixels (or below its own width, if shorter). */
+export function FadeText({ children, className = "", floor }: { children: ReactNode; className?: string; floor?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [over, setOver] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const check = () => setOver(el.scrollWidth > el.clientWidth + 1);
+    const range = document.createRange();
+    const item = floor ? el.closest<HTMLElement>(".pop") : null;
+    const check = () => {
+      if (item) {
+        // Everything but the name (padding, dot, arrows) stays the same width however much the name is cut.
+        range.selectNodeContents(el);
+        const own = range.getBoundingClientRect().width;
+        const chrome = item.getBoundingClientRect().width - el.getBoundingClientRect().width;
+        item.style.minWidth = `${chrome + Math.min(own, floor!)}px`;
+      }
+      setOver(el.scrollWidth > el.clientWidth + 1);
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [children]);
+  }, [children, floor]);
   return (
     <span ref={ref} className={`fade-text ${over ? "is-over" : ""} ${className}`}>
       {children}

@@ -263,6 +263,16 @@ const nextPos = (rows: { position: number }[]) => rows.reduce((m, r) => Math.max
 
 export const useStore = create<State>((set, get) => {
   /** Writes a row locally, mirrors it in memory, and queues a sync. */
+  /**
+   * The database's timestamp, taken back into the row that was saved, without a
+   * second render of everything (it landed in the middle of animations: a picker
+   * closing, the sheet). Nothing on screen shows it; if a newer edit replaced the
+   * row meanwhile, only the old object is touched (as before: memory keeps the newer edit).
+   */
+  function stamp(row: { updated_at: number }, at: number) {
+    row.updated_at = at;
+  }
+
   async function save<T extends { id: string }>(name: EntityName, row: T): Promise<T> {
     const saved = (await put(db, name, row as unknown as Row)) as unknown as T;
     void announceChange();
@@ -636,7 +646,7 @@ export const useStore = create<State>((set, get) => {
       };
       set({ tasks: [...get().tasks, task] });
       // Only the timestamp comes back: the line may already have been written in.
-      void save("tasks", task).then((saved) => set({ tasks: get().tasks.map((t) => (t.id === task.id ? { ...t, updated_at: saved.updated_at } : t)) }));
+      void save("tasks", task).then((saved) => stamp(task, saved.updated_at));
       return task;
     },
 
@@ -650,8 +660,7 @@ export const useStore = create<State>((set, get) => {
       }
       set({ tasks: replace(get().tasks, next) });
       const saved = await save("tasks", next);
-      // Only take the timestamp back: a newer edit may already be in memory.
-      set({ tasks: get().tasks.map((t) => (t.id === id ? { ...t, updated_at: saved.updated_at } : t)) });
+      stamp(next, saved.updated_at);
       // Subtasks follow their parent into another list.
       if (next.list_id !== cur.list_id) {
         for (const child of get().tasks.filter((t) => t.parent_id === id)) {
@@ -737,7 +746,7 @@ export const useStore = create<State>((set, get) => {
       const next = { ...cur, ...patch };
       set({ lists: replace(get().lists, next) });
       const saved = await save("lists", next);
-      set({ lists: get().lists.map((l) => (l.id === id ? { ...l, updated_at: saved.updated_at } : l)) });
+      stamp(next, saved.updated_at);
     },
 
     async deleteList(id) {

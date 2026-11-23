@@ -46,11 +46,29 @@ if (isMobile && window.visualViewport) {
   // keyboard while it still slides away: the editor "flashed"). It is moved
   // back and follows the keyboard instead. Runs before the frame is painted.
   let lastH = innerHeight;
+  // The page's own height without the keyboard. While a sheet (an overlay) is being written in,
+  // the page under it keeps that height: the calendar's rows and the lists do not squeeze (nor
+  // lay out again) because the keyboard came; it covers that part of the page anyway.
+  let fullH = innerHeight;
+  const pinPage = () => {
+    const root = document.documentElement;
+    if (innerHeight >= fullH - 80) {
+      fullH = innerHeight;
+      root.classList.remove("pin-h");
+      return;
+    }
+    if (document.activeElement?.closest(".m-sheet, .m-task-sheet") || root.classList.contains("pin-h")) {
+      root.style.setProperty("--app-h", `${fullH}px`);
+      root.classList.add("pin-h");
+    }
+  };
   window.addEventListener("resize", () => {
+    pinPage();
     const d = innerHeight - lastH;
     lastH = innerHeight;
     if (Math.abs(d) < 120) return;
-    const riders = document.querySelectorAll<HTMLElement>(".m-task-sheet:not(.is-full):not(.is-closing), .m-sheet.is-open, .m-task-sheet.is-full .detail-bar");
+    // A sheet still on its way in (the quick add) rises on its own once the keyboard is there.
+    const riders = document.querySelectorAll<HTMLElement>(".m-task-sheet:not(.is-full):not(.is-closing), .m-sheet.is-open:not(.is-rising), .m-task-sheet.is-full .detail-bar");
     for (const el of riders) el.animate([{ translate: `0 ${-d}px` }, { translate: "0 0" }], { duration: 280, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
   });
   document.addEventListener("visibilitychange", () => setTimeout(onResize, 50));

@@ -349,7 +349,7 @@ export function useLeaving(task: Task, parent?: Task): boolean {
 
 export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; showList?: boolean; depth?: number; parent?: Task }) {
   const tasks = useStore((s) => s.tasks);
-  const selectedId = useStore((s) => s.selectedId);
+  const isSelected = useStore((s) => s.selectedId === task.id);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const showCompleted = useStore((s) => s.showCompleted);
@@ -365,7 +365,7 @@ export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; sho
   return (
     <>
       <div
-        className={`task-row p${task.priority} ${selectedId === task.id && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
+        className={`task-row p${task.priority} ${isSelected && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
         style={{ paddingLeft: 10 + depth * 26 }}
         data-id={task.id}
         data-depth={depth}

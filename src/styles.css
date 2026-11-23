@@ -1033,13 +1033,15 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .detail-bar .dl-empty .icon, .m-task-sheet .detail-bar [title="More"] .icon { transform: translateY(0.5px); }
 /* The list: its dot sits on the margin (or right after the back button). */
 .m-task-sheet .foot-trigger { height: 40px; padding: 0 12px; margin-left: -12px; gap: 10px; border-radius: 20px; font-size: 16px; }
-.m-task-sheet .pane-back + .pop .foot-trigger, .m-task-sheet .pane-back + .pop-trigger .foot-trigger { margin-left: 0; }
+.m-task-sheet .pane-back + .pop .foot-trigger, .m-task-sheet .pane-back + .pop-trigger .foot-trigger { margin-left: -4px; }
 .m-task-sheet .foot-trigger .dot { width: 10px; height: 10px; }
 /* A long list name gives way (ellipsis) before the buttons do; the countdown stays on the task's row. */
 .m-task-sheet .detail-bar > .pop { flex: none; }
+/* Plain flex all the way down (no percentages): each name takes what it needs, and only when the row is full do both give way, in proportion to their length. */
 .m-task-sheet .detail-bar > .pop:has(.foot-trigger) { min-width: 0; flex: 0 1 auto; }
-.m-task-sheet .detail-bar > .pop:has(.foot-trigger) > .pop-trigger { max-width: 100%; min-width: 0; }
-.m-task-sheet .detail-bar .foot-trigger { min-width: 0; max-width: 100%; white-space: nowrap; display: flex; }
+.m-task-sheet .detail-bar > .pop:has(.foot-trigger) > .pop-trigger { display: flex; flex: 0 1 auto; min-width: 0; }
+.m-task-sheet .detail-bar .foot-trigger { flex: 0 1 auto; min-width: 0; white-space: nowrap; display: flex; }
+.m-task-sheet .detail-bar .foot-trigger .fade-text { flex: 0 1 auto; }
 .m-task-sheet .detail-bar .foot-trigger .dot, .m-task-sheet .detail-bar .foot-trigger .icon { flex: none; }
 .m-task-sheet .detail-bar .dl-trigger em, .m-task-sheet .detail-bar .dl-trigger .dl-sep { display: none; }
 .m-task-sheet .detail-bar > .pane-back { flex: none; }
@@ -1069,7 +1071,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .sub-open .icon { width: 14px; height: 14px; }
 .m-task-sheet .subtask-has-notes .icon { width: 15px; height: 15px; }
 /* An up-down chevron says the list can be changed. */
-.m-task-sheet .foot-trigger::after { content: ""; flex: none; width: 13px; height: 13px; margin-left: -3px; background: currentColor; opacity: 0.45; -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; }
+.m-task-sheet .foot-trigger:not(.is-quiet)::after { content: ""; flex: none; width: 13px; height: 13px; margin-left: -3px; background: currentColor; opacity: 0.45; -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4.5 6.2 8 2.7l3.5 3.5M4.5 9.8 8 13.3l3.5-3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / contain no-repeat; }
 
 /* Pickers that open from the sheet (and elsewhere on the phone): thumb-sized. */
 .is-mobile .pop-panel { border-radius: 16px; }
@@ -1231,8 +1233,6 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .floating-copy.subtask .subtask-notes { font-size: 13px; line-height: 17px; padding-bottom: 7px; margin-top: -1px; }
 .is-mobile .floating-copy.subtask .sub-open { width: 30px; height: 30px; margin-right: -8px; }
 .is-mobile .floating-copy.subtask .sub-open .icon { width: 14px; height: 14px; }
-.m-task-sheet .detail-bar > .pop:has(.foot-trigger.is-quiet) { flex-shrink: 2; min-width: 76px; }
-.m-task-sheet .detail-bar > .pop:has(.foot-trigger:not(.is-quiet)) { min-width: 96px; }
 
 /* ---------- Settings: in the sidebar; their page has only a round back button ---------- */
 .sidebar-wrap.is-drawer { flex-direction: column; }
@@ -1293,13 +1293,19 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .card-sub.is-selected { background: var(--active); }
 .is-mobile .card-sub, .is-mobile .group-head, .is-mobile .m-task-sheet .subtask { transition: background var(--fast); }
 
-/* No double-tap wait before a tap counts (anything with its own touch-action keeps it). */
-:where(.is-mobile) * { touch-action: manipulation; }
 
 /* ---------- The editor's list and section buttons: a little smaller, tight, names fade out when too long ---------- */
 .fade-text { min-width: 0; overflow: hidden; white-space: nowrap; }
 .fade-text.is-over { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
 .m-task-sheet .detail-bar .foot-trigger { height: 40px; padding: 0 10px; margin-left: -10px; gap: 7px; font-size: 15px; }
-/* The section sits close after the list's arrows (about 14px between them). */
+/* The section sits close after the list's arrows (12px from their box to its text). */
 .m-task-sheet .detail-bar .foot-trigger.is-quiet { margin-left: 0; font-size: 14px; }
-.m-task-sheet .detail-bar > .pop:has(.foot-trigger.is-quiet) { margin-left: -14px; }
+.m-task-sheet .detail-bar > .pop:has(.foot-trigger:not(.is-quiet)) + .pop:has(.foot-trigger.is-quiet) { margin-left: -16px; }
+/* The spacer is a flex item too: without this it costs the names two gaps instead of one. */
+.m-task-sheet .detail-bar > .push { margin-right: -8px; }
+/* When both must give way, the section gives more (the list is what you look for). */
+.m-task-sheet .detail-bar > .pop:has(.foot-trigger.is-quiet) { flex-shrink: 2; }
+
+/* ---------- Writing in a sheet: the page under it keeps its height (see main.tsx) ---------- */
+html.pin-h #root { overflow: clip; }
+html.pin-h .app { height: var(--app-h); flex: none; }

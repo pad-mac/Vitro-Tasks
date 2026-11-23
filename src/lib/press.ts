@@ -21,6 +21,10 @@ const PRESSABLE = [
 ].join(", ");
 // Inside these the finger is doing something else (typing, ticking, folding).
 const NOT = "input, textarea, [contenteditable='true'], .check, .fold, .sub-open, .sel-group";
+// A tap on a line in the editor writes in it (nothing opens): no grey for the tap,
+// only once the finger rests as for a hold (its menu takes over from there).
+const HOLD_ONLY = ".m-task-sheet .subtask[data-id]";
+const HOLD_DELAY = 200;
 const DELAY = 70;
 const SLOP = 8;
 
@@ -30,6 +34,7 @@ export function watchPress() {
   let y = 0;
   let timer = 0;
   let shown = false;
+  let holdOnly = false;
   const clear = (after = 0) => {
     clearTimeout(timer);
     const target = el;
@@ -49,13 +54,17 @@ export function watchPress() {
       const hit = t.closest<HTMLElement>(PRESSABLE);
       if (!hit || hit.closest(".floating-copy, .drag-ghost")) return;
       el = hit;
+      holdOnly = hit.matches(HOLD_ONLY);
       x = e.touches[0].clientX;
       y = e.touches[0].clientY;
-      timer = window.setTimeout(() => {
-        if (!el) return;
-        el.classList.add("is-pressed");
-        shown = true;
-      }, DELAY);
+      timer = window.setTimeout(
+        () => {
+          if (!el) return;
+          el.classList.add("is-pressed");
+          shown = true;
+        },
+        holdOnly ? HOLD_DELAY : DELAY,
+      );
     },
     { passive: true, capture: true },
   );
@@ -72,6 +81,7 @@ export function watchPress() {
     "touchend",
     () => {
       if (!el) return;
+      if (holdOnly) return clear();
       // A tap: the grey stays on until what the tap opens takes over (the row's
       // own "selected" grey replaces it in the same frame), so it never fades
       // out and back in; with nothing taking over it goes after a moment.

@@ -40,7 +40,7 @@ function CardSub({ task, parent }: { task: Task; parent: Task }) {
 }
 
 function Card({ task, showList }: { task: Task; showList: boolean }) {
-  const selectedId = useStore((s) => s.selectedId);
+  const isSelected = useStore((s) => s.selectedId === task.id);
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const showDetails = useStore((s) => s.showDetails);
@@ -56,7 +56,7 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
   return (
     <article
       data-id={task.id}
-      className={`card ${selectedId === task.id && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
+      className={`card ${isSelected && !selecting ? "is-selected" : ""} ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
       onClick={(e) => selectTap(task.id) || select(task.id, anchorOf(e.currentTarget))}
       onContextMenu={selecting ? (e) => e.preventDefault() : onMenu}
       {...(selecting ? {} : dragProps(task.id))}
