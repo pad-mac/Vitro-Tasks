@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { SMART_VIEWS, childLists, countOpen, hiddenLists, listWithDescendants, type SmartId, type ViewRef } from "../lib/views";
 import type { List } from "../shared/schema";
-import { useStore } from "../store";
+import { hiddenSmartViews, useStore } from "../store";
 import { useDropTarget } from "./tasks";
 import { Icon, InlineInput, ServerMark } from "./ui";
 
-const SMART_ICONS: Record<SmartId, string> = {
+export const SMART_ICONS: Record<SmartId, string> = {
   all: "layers",
   today: "sun",
   next7: "week",
@@ -234,6 +234,8 @@ export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSe
   const setView = useStore((s) => s.setView);
   const [adding, setAdding] = useState(false);
   const listsBox = useRef<HTMLDivElement>(null);
+  const hiddenRaw = useStore((s) => s.settings["sidebar:hidden"]);
+  const hiddenSmart = useMemo(() => hiddenSmartViews({ "sidebar:hidden": hiddenRaw ?? "[]" }), [hiddenRaw]);
   const reorder = useListReorder(listsBox);
   const data = useMemo(() => ({ lists, sections, tasks, hidden: hiddenLists(settings) }), [lists, sections, tasks, settings]);
   const counts = useMemo(() => {
@@ -245,7 +247,7 @@ export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSe
     <div className={`sidebar-wrap ${drawer ? "is-drawer" : ""}`} style={{ width: drawer ? Math.min(width, 300) : width }}>
     <nav className="sidebar">
       <div className="nav-group">
-        {SMART_VIEWS.map((v) => (
+        {SMART_VIEWS.filter((v) => !hiddenSmart.includes(v.id)).map((v) => (
           <SmartRow key={v.id} id={v.id} name={v.name} count={countOpen({ kind: "smart", id: v.id }, data)} />
         ))}
       </div>

@@ -49,7 +49,21 @@ export interface DropHint {
   y: number | null;
 }
 
-export const LIST_COLORS = ["#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a"];
+/** The views (All, Today, …) hidden from the sidebar. */
+export function hiddenSmartViews(settings: Record<string, string>): SmartId[] {
+  try {
+    const v = JSON.parse(settings["sidebar:hidden"] ?? "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/** List colours: the first eight are given to new lists in turn; with a custom one in the menu. */
+export const LIST_COLORS = [
+  "#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a",
+  "#4aa3d8", "#6e74d6", "#d1609b", "#e07a86", "#8fae3a", "#b3916a", "#8d6e5a",
+];
 
 export type Theme = "system" | "light" | "dark";
 
@@ -81,8 +95,6 @@ export type MenuTarget =
 export type EditMode = "popup" | "pane";
 export type CalMode = "month" | "week" | "multiweek";
 
-/** Default highlight: brushed silver. */
-export const DEFAULT_HIGHLIGHT = "#b4b9bf";
 
 export const SIDEBAR_DEFAULT = 262;
 
@@ -140,7 +152,6 @@ interface State {
   sidebarWidth: number;
   /** Narrow windows: the list sidebar slides over the content. */
   drawerOpen: boolean;
-  highlight: string;
   shortcuts: Shortcuts;
   calMode: CalMode;
   /** Rows shown in the multi-week calendar. */
@@ -196,7 +207,6 @@ interface State {
   setSidebarOpen(v: boolean): void;
   setSidebarWidth(px: number, save?: boolean): void;
   setDrawerOpen(v: boolean): void;
-  setHighlight(color: string): Promise<void>;
   setShortcuts(s: Shortcuts): Promise<void>;
   setCalMode(m: CalMode): void;
   setCalWeeks(n: number): void;
@@ -204,6 +214,8 @@ interface State {
   goCalToday(): void;
   editMode(view: ViewRef): EditMode;
   setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
+  /** Which of All, Today, … the sidebar shows (Settings → Sidebar; synced). */
+  setSmartShown(id: SmartId, shown: boolean): Promise<void>;
   setListVisibility(listId: string, key: VisibilityKey, shown: boolean): Promise<void>;
   checkUpdate(): Promise<void>;
   installUpdate(): Promise<void>;
@@ -468,7 +480,6 @@ export const useStore = create<State>((set, get) => {
     sidebarOpen: true,
     sidebarWidth: SIDEBAR_DEFAULT,
     drawerOpen: false,
-    highlight: DEFAULT_HIGHLIGHT,
     shortcuts: parseShortcuts(null),
     calMode: "month",
     calWeeks: 4,
@@ -495,7 +506,6 @@ export const useStore = create<State>((set, get) => {
         const servers = await getServers(db);
         const defaultServer = await getDefaultServer(db);
         const showDetails = (await getMeta(db, "show_details")) !== "0";
-        const highlight = (await getMeta(db, "highlight")) || DEFAULT_HIGHLIGHT;
         const sidebarWidth = Number(await getMeta(db, "sidebar_width")) || SIDEBAR_DEFAULT;
         const shortcuts = parseShortcuts(await getMeta(db, "shortcuts"));
         const calMode = ((await getMeta(db, "cal_mode")) as CalMode | null) ?? "month";
@@ -503,7 +513,7 @@ export const useStore = create<State>((set, get) => {
         const calMonthLike = (await getMeta(db, "cal_month_like")) === "multiweek" ? "multiweek" : "month";
         const calWrap = (await getMeta(db, "cal_wrap")) === "1";
         set({ calWeeks, calMonthLike, calWrap });
-        set({ theme, shortcut, servers, defaultServer, showDetails, highlight, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
+        set({ theme, shortcut, servers, defaultServer, showDetails, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
         if (handoff) set({ view: handoff, ...(handoff.kind !== "calendar" ? { lastTaskView: handoff } : {}) });
@@ -653,10 +663,6 @@ export const useStore = create<State>((set, get) => {
     setDrawerOpen(v) {
       set({ drawerOpen: v });
     },
-    async setHighlight(color) {
-      set({ highlight: color });
-      await setMeta(db, "highlight", color);
-    },
     async setShortcuts(shortcuts) {
       set({ shortcuts });
       await setMeta(db, "shortcuts", JSON.stringify(shortcuts));
@@ -690,6 +696,14 @@ export const useStore = create<State>((set, get) => {
       set({ settings: { ...get().settings, [key]: mode } });
       await save("settings", { id: key, value: mode, updated_at: 0, deleted: 0 } as Setting);
     },
+    async setSmartShown(smart, shown) {
+      const id = "sidebar:hidden";
+      const hidden = hiddenSmartViews(get().settings).filter((x) => x !== smart);
+      const value = JSON.stringify(shown ? hidden : [...hidden, smart]);
+      set({ settings: { ...get().settings, [id]: value } });
+      await save("settings", { id, value, updated_at: 0, deleted: 0 } as Setting);
+    },
+
     async setListVisibility(listId, key, shown) {
       const id = `listvis:${listId}`;
       const value = JSON.stringify({ ...listVisibility(get().settings, listId), [key]: shown });
@@ -886,7 +900,7 @@ export const useStore = create<State>((set, get) => {
       const list: List = {
         id: uid(),
         name,
-        color: LIST_COLORS[lists.length % LIST_COLORS.length],
+        color: LIST_COLORS[lists.length % 8],
         parent_id: parentId,
         position: nextPos(lists),
         view_mode: "list",

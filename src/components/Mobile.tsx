@@ -85,7 +85,7 @@ export function MobileBar({
             </button>
           </div>
           {/* Focus has to happen inside the tap itself, or iOS keeps the keyboard closed. */}
-          <button type="button" className="m-add pearl" aria-label="Add task" onClick={onAdd} {...pressProps}>
+          <button type="button" className="m-add" aria-label="Add task" onClick={onAdd} {...pressProps}>
             <Icon name="plus" size={24} />
           </button>
         </>

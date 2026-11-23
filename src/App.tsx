@@ -44,6 +44,7 @@ const MODES: { value: ViewMode; label: string; icon: string }[] = [
 const SORTS: { value: SortBy; label: string }[] = [
   { value: "date", label: "Date" },
   { value: "deadline", label: "Deadline" },
+  { value: "datedeadline", label: "Date & Deadline" },
   { value: "priority", label: "Priority" },
   { value: "title", label: "Title" },
   { value: "created", label: "Created time" },
@@ -317,7 +318,7 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
       <TitlebarServers />
       <div className="tb-drag" data-tauri-drag-region />
       {(update.status === "available" || update.status === "installing") && (
-        <button type="button" className="tb-update pearl" disabled={update.status === "installing"} onClick={() => void installUpdate()}>
+        <button type="button" className="tb-update" disabled={update.status === "installing"} onClick={() => void installUpdate()}>
           <Icon name="download" size={14} />
           {update.status === "installing" ? `Updating… ${Math.round((update.progress ?? 0) * 100)}%` : `Update to ${update.version}`}
         </button>

@@ -153,6 +153,16 @@ const DATE_BUCKETS: { key: string; label: string; date: (today: string) => strin
   { key: "none", label: "No Date", date: () => null },
 ];
 
+/**
+ * A task's first date: its planned date or its deadline, whichever comes first
+ * (with its time; a day without a time after the timed ones that day).
+ */
+export function firstWhen(t: Task): string | null {
+  const a = t.start_date ? `${t.start_date}T${t.start_time ?? "~"}` : null;
+  const b = t.deadline_date ? `${t.deadline_date}T${t.deadline_time ?? "~"}` : null;
+  return a && b ? (a < b ? a : b) : (a ?? b);
+}
+
 export function compareTasks(sort: SortBy): (a: Task, b: Task) => number {
   const nullsLast = (x: string | null, y: string | null) =>
     x === y ? 0 : x === null ? 1 : y === null ? -1 : x < y ? -1 : 1;
@@ -165,6 +175,8 @@ export function compareTasks(sort: SortBy): (a: Task, b: Task) => number {
         return nullsLast(a.start_date, b.start_date) || nullsLast(a.start_time, b.start_time) || byPos(a, b);
       case "deadline":
         return nullsLast(a.deadline_date, b.deadline_date) || nullsLast(a.deadline_time, b.deadline_time) || byPos(a, b);
+      case "datedeadline":
+        return nullsLast(firstWhen(a), firstWhen(b)) || byPos(a, b);
       case "priority":
         return b.priority - a.priority || nullsLast(a.start_date, b.start_date) || byPos(a, b);
       case "title":
@@ -268,12 +280,12 @@ export function subgroupTasks(tasks: Task[], sort: SortBy, today = todayKey()): 
   const pinned = tasks.filter((t) => t.pinned);
   const rest = tasks.filter((t) => !t.pinned);
   if (pinned.length) out.push({ key: "pinned", label: "Pinned", tasks: pinned, tone: "pinned" });
-  if (sort === "date" || sort === "deadline") {
-    const field = sort === "date" ? "start_date" : "deadline_date";
+  if (sort === "date" || sort === "deadline" || sort === "datedeadline") {
+    const day = (t: Task) => (sort === "date" ? t.start_date : sort === "deadline" ? t.deadline_date : (firstWhen(t)?.slice(0, 10) ?? null));
     for (const b of DATE_BUCKETS) {
-      const inBucket = rest.filter((t) => dateBucket(t[field], today) === b.key);
+      const inBucket = rest.filter((t) => dateBucket(day(t), today) === b.key);
       if (!inBucket.length) continue;
-      const label = b.key === "none" ? (sort === "date" ? "No Date" : "No Deadline") : b.label;
+      const label = b.key === "none" ? (sort === "deadline" ? "No Deadline" : "No Date") : b.label;
       out.push({ key: b.key, label, tasks: inBucket, tone: b.key === "overdue" ? "overdue" : undefined });
     }
   } else if (sort === "priority") {

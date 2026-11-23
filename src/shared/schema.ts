@@ -170,7 +170,8 @@ export interface SyncMeta {
 
 export type ViewMode = "list" | "kanban" | "timeline";
 export type GroupBy = "section" | "date" | "deadline" | "priority" | "list" | "none";
-export type SortBy = "manual" | "date" | "deadline" | "priority" | "title" | "created";
+/** `datedeadline`: by whichever comes first of the planned date and the deadline (both count the same). */
+export type SortBy = "manual" | "date" | "deadline" | "datedeadline" | "priority" | "title" | "created";
 
 export interface List extends SyncMeta {
   name: string;

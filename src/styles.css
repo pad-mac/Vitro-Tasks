@@ -28,16 +28,6 @@
   --red: #e0443a;
   --signal: #d9541e;
   --signal-soft: rgba(217, 84, 30, 0.1);
-  /* Highlight: one base colour (silver by default, set in Settings), rendered
-     as a quiet pearl finish. --ink-mix darkens it for text on a light theme. */
-  --hl: #b4b9bf;
-  --on-hl: #1d1d1f;
-  --ink-mix: #000;
-  --pearl-base: #ffffff;
-  --pearl-edge: rgba(255, 255, 255, 0.85);
-  --rim-l: 0.84;
-  --rim-c: 0.07;
-  --glint: 0.5;
   --p1: #4772fa;
   --p2: #f0a22e;
   --p3: #e0443a;
@@ -64,12 +54,6 @@
   --red: #f0655c;
   --signal: #ff8a54;
   --signal-soft: rgba(255, 138, 84, 0.13);
-  --ink-mix: #fff;
-  --pearl-base: #3a3d42;
-  --pearl-edge: rgba(255, 255, 255, 0.12);
-  --rim-l: 0.64;
-  --rim-c: 0.065;
-  --glint: 0.07;
   --p1: #6f93ff;
   --p2: #f0b04a;
   --p3: #f0655c;
@@ -77,42 +61,14 @@
   color-scheme: dark;
 }
 
-:root, .hl-swatch {
-  --hl-ink: color-mix(in oklab, var(--hl), var(--ink-mix) 42%);
-  --accent: var(--hl-ink);
-  --focus: color-mix(in oklab, var(--hl), var(--ink-mix) 22%);
-  /* Pearl: a near-neutral fill (text keeps full contrast), a hairline rim in
-     low-chroma iridescent hues tinted by the highlight colour, a light top
-     edge and a soft shadow. Quiet at rest; the rim drifts a little on hover. */
-  --pearl-a: color-mix(in oklab, var(--hl) 10%, var(--pearl-base));
-  --pearl-b: color-mix(in oklab, var(--hl) 24%, var(--pearl-base));
-  --pearl-strong: color-mix(in oklab, var(--hl) 46%, var(--pearl-base));
-  --rim-1: color-mix(in oklch, oklch(var(--rim-l) var(--rim-c) 350), var(--hl) 38%);
-  --rim-2: color-mix(in oklch, oklch(var(--rim-l) var(--rim-c) 290), var(--hl) 38%);
-  --rim-3: color-mix(in oklch, oklch(var(--rim-l) var(--rim-c) 225), var(--hl) 38%);
-  --rim-4: color-mix(in oklch, oklch(var(--rim-l) var(--rim-c) 165), var(--hl) 38%);
-  --rim-5: color-mix(in oklch, oklch(var(--rim-l) var(--rim-c) 85), var(--hl) 38%);
-  --pearl-rim: conic-gradient(from var(--holo-a), var(--rim-1), var(--rim-2), var(--rim-3), var(--rim-4), var(--rim-5), var(--rim-1));
-  --pearl-glint: linear-gradient(112deg, transparent 34%, rgba(255, 255, 255, var(--glint)) 50%, transparent 66%);
+:root {
+  /* No custom highlight: what is selected or marked takes the ink of the theme
+     (near black, near white in dark), fills a quiet grey; nothing is tinted. */
+  --accent: var(--ink);
+  --focus: color-mix(in oklab, var(--text) 42%, transparent);
 }
 
-@property --holo-a {
-  syntax: "<angle>";
-  inherits: true;
-  initial-value: 210deg;
-}
-
-/* The pearl finish, for selected and highlighted elements. */
-.pearl {
-  border: 1px solid transparent !important;
-  background: var(--pearl-glint) padding-box, linear-gradient(180deg, var(--pearl-a), var(--pearl-b)) padding-box, var(--pearl-rim) border-box !important;
-  color: var(--text) !important;
-  box-shadow: inset 0 1px 0 var(--pearl-edge), 0 1px 2px rgba(0, 0, 0, 0.07);
-  transition: --holo-a 900ms cubic-bezier(0.3, 0, 0.2, 1), box-shadow var(--fast);
-}
-.pearl:hover, .pop-trigger:hover .pearl { --holo-a: 290deg; }
-@media (prefers-reduced-motion: reduce) { .pearl { transition: none; } }
-.accent-text { color: var(--hl-ink); }
+.accent-text { color: var(--text); font-weight: 500; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -165,8 +121,8 @@ code, kbd { font: 12px var(--mono); background: var(--active); padding: 1px 6px;
 .tb-icon .icon { width: 15px; height: 15px; }
 .tb-btn > .icon { width: 15px; height: 15px; }
 .tb-drag { flex: 1; align-self: stretch; }
-.tb-update { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px; margin-right: 6px; border-radius: 10px; font-size: 11.5px; font-weight: 500; }
-.tb-update:hover { filter: brightness(1.08); }
+.tb-update { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px; margin-right: 6px; border-radius: 10px; font-size: 11.5px; font-weight: 500; background: var(--ink); color: var(--on-ink); }
+.tb-update:hover { opacity: 0.88; }
 .tb-update:disabled { opacity: 0.8; cursor: default; }
 .win-controls { display: flex; align-self: stretch; margin-left: 6px; }
 .win-controls button { width: 40px; display: grid; place-items: center; color: var(--muted); transition: background var(--fast), color var(--fast); }
@@ -247,10 +203,11 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .chip-btn:hover:not(:disabled) { color: var(--text); border-color: var(--faint); }
 .chip-btn:disabled { opacity: 0.4; cursor: default; }
 
-.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); padding: 2px; gap: 2px; height: 32px; }
-.segmented button { display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 6px; color: var(--muted); transition: background var(--fast), color var(--fast); }
+/* Segmented controls, the native way: a quiet well, the chosen segment raised (no filled colour). */
+.segmented { display: inline-flex; border-radius: var(--r); background: var(--hover); padding: 2px; gap: 2px; height: 32px; }
+.segmented button { display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 6px; color: var(--muted); transition: background var(--fast), color var(--fast), box-shadow var(--fast); }
 .segmented button:hover { color: var(--text); }
-.segmented button.is-active { background: var(--ink); color: var(--on-ink); }
+.segmented button.is-active { background: var(--raised); color: var(--text); font-weight: 500; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--line); }
 .stepper { padding: 0; gap: 0; overflow: hidden; }
 .stepper button { height: 100%; padding: 0 9px; color: var(--muted); display: inline-grid; place-items: center; transition: background var(--fast), color var(--fast); }
 .stepper button:hover { background: var(--hover); color: var(--text); }
@@ -272,7 +229,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .menu-two > div + div { border-left: 1px solid var(--line-soft); padding-left: 6px; }
 .menu-item { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 5px 10px; border-radius: 7px; text-align: left; white-space: nowrap; transition: background var(--fast); }
 .menu-item:hover { background: var(--hover); }
-.menu-item.is-active { color: var(--hl-ink); font-weight: 500; }
+.menu-item.is-active { color: var(--ink); font-weight: 500; }
 .menu-item.is-danger:hover { color: var(--red); }
 .menu-item > .icon { color: var(--muted); }
 .menu-item.is-active > .icon { color: inherit; }
@@ -297,17 +254,22 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .seg button:disabled { opacity: 0.4; cursor: default; }
 .cm-picker { min-width: 0; padding-bottom: 0; }
 .cm-picker .date-pop { padding: 6px 6px 10px; }
-.cm-deadline { display: inline-flex; align-items: center; gap: 6px; color: var(--signal); font-size: 12.5px; }
-.cm-deadline em { font-style: normal; opacity: 0.75; }
-.switch { position: relative; width: 28px; height: 16px; border-radius: 8px; border: 1px solid transparent; background: var(--line) padding-box; flex: none; transition: background var(--fast); }
-.switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--float); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: translate var(--fast); }
-.switch.is-on { background: linear-gradient(180deg, color-mix(in oklab, var(--hl), var(--ink-mix) 8%), color-mix(in oklab, var(--hl), var(--ink-mix) 26%)) padding-box, var(--pearl-rim) border-box; }
-.switch.is-on::after { translate: 12px 0; }
+.cm-deadline, .hm-deadline { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
+.cm-deadline em, .hm-deadline em { font-style: normal; color: var(--muted); font-size: 0.9em; }
+.menu-item.has-deadline .menu-label > .icon:first-child { color: var(--red); }
+/* A switch: a thin outlined track with a dot; on, both take the ink and the dot moves over. */
+.switch { position: relative; width: 24px; height: 14px; border-radius: 7px; border: 1.25px solid var(--faint); flex: none; box-sizing: border-box; transition: background var(--fast), border-color var(--fast); }
+.switch::after { content: ""; position: absolute; top: 50%; left: 2px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--faint); transition: translate var(--fast), background var(--fast); }
+.switch.is-on { border-color: var(--ink); }
+.switch.is-on::after { background: var(--ink); translate: 10px 0; }
 .view-switch { display: flex; gap: 4px; padding: 0 6px 4px; }
 .view-switch button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 6px; border-radius: var(--r); color: var(--faint); font-size: 11.5px; transition: background var(--fast), color var(--fast); }
 .view-switch button:hover { background: var(--hover); color: var(--text); }
 .view-switch button.is-active { color: var(--text); background: var(--active); }
-.swatches { display: flex; gap: 6px; padding: 8px 10px; }
+.swatches { display: grid; grid-template-columns: repeat(8, 16px); justify-content: space-between; row-gap: 8px; padding: 8px 10px; }
+/* Any colour: a rainbow ring until a custom colour is set, then that colour. */
+.swatch-custom { position: relative; cursor: pointer; background: conic-gradient(#e0443a, #f0a22e, #c9a227, #5f9e5a, #3fa796, #4aa3d8, #5b8def, #9a6bd1, #d1609b, #e0443a); }
+.swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .swatch { width: 16px; height: 16px; border-radius: 50%; transition: transform var(--fast); }
 .swatch:hover { transform: scale(1.15); }
 .swatch.is-active { box-shadow: 0 0 0 2px var(--float), 0 0 0 3.5px var(--text); }
@@ -316,7 +278,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 /* ---------- Links in task text ---------- */
 
 .link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); text-underline-offset: 2px; cursor: pointer; transition: text-decoration-color var(--fast), color var(--fast); }
-.link:hover { color: var(--hl-ink); text-decoration-color: currentColor; }
+.link:hover { color: var(--ink); text-decoration-color: currentColor; }
 .rich-view { cursor: text; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; outline: 0; }
 
 /* ---------- Checkbox and priority ---------- */
@@ -545,7 +507,7 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .week-resize::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 18px; height: 2px; margin-left: -9px; border-radius: 1px; background: var(--muted); opacity: 0; transition: opacity var(--fast); }
 .week-event:hover .week-resize::after, .week-event.is-resizing .week-resize::after { opacity: 0.7; }
 .week-event.is-resizing { box-shadow: var(--shadow); z-index: 3; }
-.week-draft { position: absolute; left: 2px; right: 3px; border-radius: 5px; background: color-mix(in oklab, var(--hl) 30%, transparent); border-left: 2.5px solid var(--focus); color: var(--hl-ink); font-size: 11px; padding: 2px 6px; pointer-events: none; z-index: 2; overflow: hidden; font-variant-numeric: tabular-nums; }
+.week-draft { position: absolute; left: 2px; right: 3px; border-radius: 5px; background: color-mix(in oklab, var(--text) 10%, transparent); border-left: 2.5px solid var(--focus); color: var(--ink); font-size: 11px; padding: 2px 6px; pointer-events: none; z-index: 2; overflow: hidden; font-variant-numeric: tabular-nums; }
 .week-now { position: absolute; left: 0; right: 0; border-top: 1.5px solid var(--red); z-index: 2; pointer-events: none; }
 .week-now::before { content: ""; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
 
@@ -605,9 +567,12 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .mini-cal-day { border: 1px solid transparent; width: 30px; height: 30px; justify-self: center; display: grid; place-items: center; padding: 0; border-radius: 50%; font-size: 12.5px; font-variant-numeric: tabular-nums; transition: background var(--fast); }
 .mini-cal-day:hover { background: var(--active); }
 .mini-cal-day.is-out { color: var(--faint); }
-.mini-cal-day.in-range { background: color-mix(in oklab, var(--hl) 18%, transparent); }
+.mini-cal-day.in-range { background: var(--active); }
+/* The picked day: an empty ring, nothing filled. */
+.mini-cal-day.is-selected { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 600; }
+.mini-cal-day.is-selected:hover { background: transparent; }
 .mini-cal-day:disabled { opacity: 0.35; cursor: default; background: none; }
-.mini-cal-day.is-today { color: var(--hl-ink); font-weight: 700; }
+.mini-cal-day.is-today { color: var(--red); font-weight: 600; }
 .date-pop-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .date-pop-foot .push { flex: 1; }
 .date-pop-foot { gap: 4px; }
@@ -628,6 +593,7 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .time-col-min { justify-content: flex-start; }
 .time-cell { border: 1px solid transparent; flex: none; height: 28px; border-radius: 9px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); transition: background var(--fast); }
 .time-cell:hover { background: var(--active); }
+.time-cell.is-selected { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 600; }
 .subtasks { display: flex; flex-direction: column; gap: 1px; margin: 0 -9px; }
 /* The check has as much room to the box's left edge as above and below it (34 − 16 = 2 × 9). */
 .subtask { display: flex; align-items: center; gap: 11px; min-height: 34px; padding: 0 9px; border-radius: 7px; transition: background var(--fast); }
@@ -674,18 +640,12 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .form-error { color: var(--red); font-size: 12.5px; user-select: text; text-align: center; }
 .sync-state { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; flex-basis: 100%; justify-content: center; user-select: text; text-align: center; }
 .sync-state.sync-off .sync-dot { background: var(--faint); }
-.highlights { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-.hl-swatch { position: relative; width: 26px; height: 26px; border-radius: 50%; border: 1px solid transparent; background: var(--pearl-glint) padding-box, linear-gradient(180deg, var(--pearl-b), var(--pearl-strong)) padding-box, var(--pearl-rim) border-box; box-shadow: inset 0 1px 0 var(--pearl-edge), 0 1px 2px rgba(0, 0, 0, 0.12); transition: transform var(--fast), box-shadow var(--fast); cursor: pointer; display: grid; place-items: center; color: var(--text); }
-.hl-swatch:hover { transform: scale(1.08); }
-.hl-swatch.is-active { box-shadow: 0 0 0 2px var(--float), 0 0 0 3.5px var(--text); }
-.hl-custom { color: #2b2b2e; background: var(--pearl-glint) padding-box, conic-gradient(from 210deg, oklch(0.88 0.05 350), oklch(0.88 0.05 290), oklch(0.88 0.05 225), oklch(0.88 0.05 165), oklch(0.88 0.05 85), oklch(0.88 0.05 350)) padding-box, var(--pearl-rim) border-box; }
-.hl-custom.is-active { background: var(--pearl-glint) padding-box, linear-gradient(180deg, var(--pearl-b), var(--pearl-strong)) padding-box, var(--pearl-rim) border-box; }
-.hl-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .shortcuts { display: flex; flex-direction: column; gap: 2px; }
 .shortcut-row { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 0 4px; }
 .shortcut-row > span { flex: 1; color: var(--text); }
 .kbd-btn { min-width: 96px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line); font-size: 12.5px; text-align: center; transition: border-color var(--fast), background var(--fast); }
 .kbd-btn:hover { border-color: var(--faint); }
+.kbd-btn.is-recording { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .kbd-btn kbd { background: none; padding: 0; font-family: var(--font); font-weight: 500; }
 .text-btn.inline { display: inline; padding: 0 4px; text-decoration: underline; }
 
@@ -697,13 +657,13 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 label.btn { cursor: pointer; }
 .btn.is-disabled { opacity: 0.45; pointer-events: none; }
 .check-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--muted); font-size: 12.5px; cursor: pointer; align-self: flex-start; }
-.check-row input { accent-color: var(--hl-ink); }
+.check-row input { accent-color: var(--ink); }
 .form-ok { color: var(--text); font-size: 12.5px; text-align: center; user-select: text; animation: fade var(--fast); }
 
 /* ---------- Reordering ---------- */
 
 /* Where a dragged task lands: one line per group that glides between the rows. */
-.drop-line { position: absolute; left: 6px; right: 6px; top: 0; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--hl-ink); pointer-events: none; z-index: 3; transition: transform 90ms cubic-bezier(0.2, 0, 0, 1); animation: fade var(--fast); will-change: transform; }
+.drop-line { position: absolute; left: 6px; right: 6px; top: 0; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--ink); pointer-events: none; z-index: 3; transition: transform 90ms cubic-bezier(0.2, 0, 0, 1); animation: fade var(--fast); will-change: transform; }
 .column > .drop-line { left: 4px; right: 4px; }
 /* Above the dragged copy under the finger, so the place it lands stays visible. */
 .is-touch-dragging .drop-line { z-index: 330; }
@@ -909,7 +869,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-tabs button.is-active { color: var(--text); background: color-mix(in oklab, var(--active) 85%, transparent); }
 .m-badge { position: absolute; top: 8px; left: calc(50% + 7px); width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
 .m-add { pointer-events: auto; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
-.m-add.pearl { box-shadow: inset 0 1px 0 var(--pearl-edge), 0 10px 26px rgba(0, 0, 0, 0.14); }
+.m-add { background: var(--float); border: 1px solid var(--line-soft); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14); }
 /* iOS app: the glass bar is native. The page keeps an invisible + under the
    native one (its tap has to happen here so the keyboard can open). */
 .is-native .m-tabs { visibility: hidden; }
@@ -1157,7 +1117,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .cal-daynum { display: inline-grid; place-items: center; gap: 0; }
 .is-mobile .cal-daynum b { width: auto; height: auto; border-radius: 0; background: none; color: inherit; }
 .is-mobile .cal-daynum.is-today { background: var(--muted); color: var(--bg); }
-.is-mobile .cal-cell.is-sel { background: color-mix(in oklab, var(--hl) 16%, transparent); }
+.is-mobile .cal-cell.is-sel { background: color-mix(in oklab, var(--text) 8%, transparent); }
 .is-mobile .cal-cell.is-sel .cal-daynum { background: var(--ink); color: var(--on-ink); }
 .is-mobile .cal-cell.is-out .cal-daynum { color: var(--faint); }
 .is-mobile .cal-chip { height: 19px; font-size: 11.5px; padding: 0 3px; border-radius: 4px; gap: 3px; }
@@ -1220,9 +1180,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* ---------- Select mode ---------- */
 .sel-circle { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border: 1.5px solid var(--faint); border-radius: 50%; color: var(--bg); transition: background var(--fast), border-color var(--fast); }
 .sel-circle .icon { display: block; width: 11px; height: 11px; }
-.sel-circle.is-on { background: var(--hl-ink); border-color: var(--hl-ink); }
-.sel-circle.is-partly { border-color: var(--hl-ink); }
-.sel-circle.is-partly::after { content: ""; width: 8px; height: 2px; border-radius: 1px; background: var(--hl-ink); }
+.sel-circle.is-on { background: var(--ink); border-color: var(--ink); }
+.sel-circle.is-partly { border-color: var(--ink); }
+.sel-circle.is-partly::after { content: ""; width: 8px; height: 2px; border-radius: 1px; background: var(--ink); }
 .task-row > .sel-circle { margin-top: 1px; }
 .card-top > .sel-circle { margin-top: 1px; }
 .task-row.is-picked, .card.is-picked { background: var(--active); }
@@ -1385,3 +1345,22 @@ html:not(.is-mobile) .sidebar { opacity: 0.7; filter: brightness(0.9); }
 .nav-row.is-sorting { opacity: 0.45; }
 html.is-sorting-lists, html.is-sorting-lists * { cursor: grabbing !important; user-select: none; }
 .nav-drop-line { left: 8px; right: 8px; }
+
+/* ---------- Desktop calendar: list colours as clear as on the phone ----------
+   (Thin desktop text and a duller screen washed them out: a little more colour, a little more weight.) */
+html:not(.is-mobile) .cal-chip { font-weight: 500; background: color-mix(in srgb, var(--c) 21%, transparent); color: color-mix(in srgb, var(--c) 72%, var(--text)); }
+html:not(.is-mobile) .cal-chip:hover { background: color-mix(in srgb, var(--c) 32%, transparent); }
+html:not(.is-mobile) .cal-chip.is-selected { background: color-mix(in srgb, var(--c) 44%, transparent); }
+html:not(.is-mobile) .cal-chip.is-timed { background: none; color: color-mix(in srgb, var(--c) 78%, var(--text)); }
+html:not(.is-mobile) .cal-chip.is-timed:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
+html:not(.is-mobile) .cal-chip.is-deadline { background: none; color: var(--signal); }
+html:not(.is-mobile) .week-event .cal-chip { background: color-mix(in srgb, var(--c) 30%, var(--bg)); }
+
+/* ---------- Settings: rows with a switch ---------- */
+.toggle-list { display: flex; flex-direction: column; }
+.toggle-row { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; margin: 0 -10px; border-radius: var(--r); text-align: left; transition: background var(--fast); }
+.toggle-row:hover { background: var(--hover); }
+.toggle-row > span { flex: 1; }
+.toggle-row > .icon { color: var(--muted); }
+/* The phone's hold menu: a set deadline's mark is red too. */
+.hold-menu .hm-item:has(.hm-deadline) > .icon { color: var(--red); }

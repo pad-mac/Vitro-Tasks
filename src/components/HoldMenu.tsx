@@ -293,7 +293,7 @@ export function HoldMenu() {
     ["date:pick", "pickdate", "Pick Date", null],
   ];
   const cls = (key: string, extra = "") => `${extra} ${hot === key ? "is-hot" : ""}`;
-  const item = (key: string, icon: React.ReactNode, label: string, extra?: React.ReactNode, danger = false) => (
+  const item = (key: string, icon: React.ReactNode, label: React.ReactNode, extra?: React.ReactNode, danger = false) => (
     <button type="button" data-hm={key} className={cls(key, `hm-item ${danger ? "is-danger" : ""}`)} onClick={() => holdMenu.act(key)}>
       {icon}
       <span className="hm-label">{label}</span>
@@ -333,13 +333,16 @@ export function HoldMenu() {
         {item(
           "deadline",
           <Icon name="deadline" size={17} />,
-          task.deadline_date ? "Deadline" : "Add Deadline",
+          // With a deadline the row shows it (red mark, the date, the days left) instead of a label.
           task.deadline_date ? (
-            <span className="hm-value">
+            <span className="hm-deadline">
               {formatDateTime(task.deadline_date, task.deadline_time, today)}
-              {task.status === 0 && ` · ${deadlineCountdown(task.deadline_date, today)}`}
+              {task.status === 0 && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
             </span>
-          ) : null,
+          ) : (
+            "Add Deadline"
+          ),
+          null,
         )}
         <div className="hm-sep" />
         {task.status === 0 ? item("wontdo", <Icon name="ban" size={17} />, "Won't Do") : item("reopen", <Icon name="tasks" size={17} />, "Reopen")}

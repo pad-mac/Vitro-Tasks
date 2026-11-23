@@ -182,18 +182,20 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
           </button>
         ))}
       </IconRow>
-      <button type="button" className="menu-item" onClick={() => setPage("deadline")}>
+      {/* With a deadline, the item shows it (red mark, the date, the days left) instead of a label. */}
+      <button type="button" className={`menu-item ${task.deadline_date ? "has-deadline" : ""}`} onClick={() => setPage("deadline")}>
         <span className="menu-label">
-          <Icon name="deadline" size={15} /> {task.deadline_date ? "Deadline" : "Add deadline"}
+          <Icon name="deadline" size={15} />
+          {task.deadline_date ? (
+            <span className="cm-deadline">
+              {formatDateTime(task.deadline_date, task.deadline_time, today)}
+              {task.status === 0 && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
+            </span>
+          ) : (
+            "Add deadline"
+          )}
         </span>
-        {task.deadline_date ? (
-          <span className="cm-deadline">
-            {formatDateTime(task.deadline_date, task.deadline_time, today)}
-            {task.status === 0 && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
-          </span>
-        ) : (
-          <Icon name="chevron" size={12} />
-        )}
+        <Icon name="chevron" size={12} />
       </button>
       <div className="cm-sep" />
       {!task.parent_id && (
@@ -281,12 +283,26 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
           <button
             type="button"
             key={c}
-            className={`swatch ${c === list.color ? "is-active" : ""}`}
+            className={`swatch ${c === list.color.toLowerCase() ? "is-active" : ""}`}
             style={{ background: c }}
             aria-label={`Color ${c}`}
             onClick={() => void updateList(id, { color: c })}
           />
         ))}
+        {/* Any colour: the system's colour picker; saved when it closes. */}
+        <label
+          className={`swatch swatch-custom ${LIST_COLORS.includes(list.color.toLowerCase()) ? "" : "is-active"}`}
+          style={LIST_COLORS.includes(list.color.toLowerCase()) ? undefined : { background: list.color }}
+          title="Custom colour"
+        >
+          <input
+            type="color"
+            defaultValue={list.color}
+            ref={(el) => {
+              if (el) el.onchange = () => void updateList(id, { color: el.value });
+            }}
+          />
+        </label>
       </div>
       <div className="cm-sep" />
       <span className="cm-label">Show tasks in</span>

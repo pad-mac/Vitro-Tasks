@@ -1,21 +1,38 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { todayKey } from "../lib/dates";
 import { isMobile, isTauri, saveTextFile } from "../lib/platform";
 import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
-import { DEFAULT_HIGHLIGHT, useStore, type ImportResult, type Theme } from "../store";
+import { hiddenSmartViews, useStore, type ImportResult, type Theme } from "../store";
+import { SMART_VIEWS } from "../lib/views";
+import { SMART_ICONS } from "./Sidebar";
 import type { SyncServer } from "../db/sync";
 import { Icon } from "./ui";
 
-const HIGHLIGHTS: [string, string][] = [
-  ["Silver", DEFAULT_HIGHLIGHT],
-  ["Graphite", "#7a7f86"],
-  ["Champagne", "#cdb88f"],
-  ["Rose gold", "#cf9f92"],
-  ["Steel blue", "#86a0c4"],
-  ["Sage", "#98ad95"],
-  ["Lavender", "#aaa0c8"],
-];
+
+/** Which of All, Today, Next 7 Days, … the sidebar shows. */
+function SidebarSection() {
+  const raw = useStore((s) => s.settings["sidebar:hidden"]);
+  const setShown = useStore((s) => s.setSmartShown);
+  const hidden = useMemo(() => hiddenSmartViews({ "sidebar:hidden": raw ?? "[]" }), [raw]);
+  return (
+    <section>
+      <span className="micro">Sidebar</span>
+      <div className="toggle-list">
+        {SMART_VIEWS.map((v) => {
+          const on = !hidden.includes(v.id);
+          return (
+            <button type="button" key={v.id} className="toggle-row" role="switch" aria-checked={on} onClick={() => void setShown(v.id, !on)}>
+              <Icon name={SMART_ICONS[v.id]} size={16} />
+              <span>{v.name}</span>
+              <i className={`switch ${on ? "is-on" : ""}`} />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 /** One sync server: its name, address and token; on or off; where new lists go; remove. */
 function ServerRow({ server, several }: { server: SyncServer; several: boolean }) {
@@ -295,7 +312,7 @@ function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
   return (
     <div className="shortcut-row">
       <span>{label}</span>
-      <button type="button" className={`kbd-btn ${recording ? "is-recording pearl" : ""}`} onClick={() => setRecording(!recording)}>
+      <button type="button" className={`kbd-btn ${recording ? "is-recording" : ""}`} onClick={() => setRecording(!recording)}>
         {recording ? "Press keys…" : shortcuts[id] ? <kbd>{shortcuts[id]}</kbd> : <span className="faint">None</span>}
       </button>
     </div>
@@ -313,8 +330,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const checkUpdate = useStore((s) => s.checkUpdate);
   const installUpdate = useStore((s) => s.installUpdate);
   const [keys, setKeys] = useState(shortcut);
-  const highlight = useStore((s) => s.highlight);
-  const setHighlight = useStore((s) => s.setHighlight);
   const setShortcuts = useStore((s) => s.setShortcuts);
 
   return (
@@ -337,26 +352,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
-          <span className="micro">Highlight</span>
-          <div className="highlights">
-            {HIGHLIGHTS.map(([name, c]) => (
-              <button
-                type="button"
-                key={c}
-                title={name}
-                aria-label={name}
-                className={`hl-swatch ${highlight.toLowerCase() === c ? "is-active" : ""}`}
-                style={{ ["--hl" as string]: c }}
-                onClick={() => void setHighlight(c)}
-              />
-            ))}
-            <label className={`hl-swatch hl-custom ${HIGHLIGHTS.some(([, c]) => c === highlight.toLowerCase()) ? "" : "is-active"}`} title="Custom colour" style={{ ["--hl" as string]: highlight }}>
-              <input type="color" value={highlight} onChange={(e) => void setHighlight(e.target.value)} />
-              <Icon name="plus" size={12} />
-            </label>
-          </div>
-          <p className="form-hint">Selected days, times and other highlights take this colour as a quiet pearl finish.</p>
         </section>
+
+        <SidebarSection />
 
         {!isMobile && (
         <>

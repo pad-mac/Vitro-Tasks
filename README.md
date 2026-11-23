@@ -11,9 +11,9 @@ Every task has two independent dates:
 
 | Area | Details |
 | --- | --- |
-| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar (right-click the list). Drag lists in the sidebar into any order (on the middle of another list, a list becomes its sublist). The sidebar is resizable by dragging its edge. |
-| Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. |
-| View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting. |
+| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar, and takes one of 15 colours or any custom one (right-click the list). Drag lists in the sidebar into any order (on the middle of another list, a list becomes its sublist). The sidebar is resizable by dragging its edge. |
+| Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. Settings → Sidebar chooses which of them the sidebar shows. |
+| View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting (date, deadline, date & deadline — whichever of the two comes first —, priority, title, created, custom). |
 | Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
 | Order | Drag tasks into any order, in lists and on boards, whatever the sort. With the sort "Custom" this sets the tasks' own order; with any other sort the view remembers your order on top of it, and the sort menu offers "Restore default order". Dropping into another group changes what the group stands for (section, date, priority, list). |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
@@ -50,7 +50,7 @@ Example: `Draft chapter wed ^30.11. !high #research`
 
 All of them can be changed under Settings → Shortcuts. Single-key shortcuts do nothing while you are typing.
 
-Settings → Appearance also sets the highlight colour (silver by default), shown as a quiet pearl finish with a thin iridescent edge.
+Selected things take the plain colours of the theme (no highlight colour): a picked date gets an empty ring, switches are a thin outline with a dot.
 
 ### Importing from TickTick
 

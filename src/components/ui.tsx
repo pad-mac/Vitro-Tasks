@@ -191,11 +191,11 @@ const PATHS20: Record<string, ReactNode> = {
       <path d="M12 4v12" />
     </>
   ),
-  // Editing in a popup: a window with a card floating inside it.
+  // Editing in a popup: a window with a small card floating in its lower right.
   editpopup: (
     <>
       <rect x="3" y="4" width="14" height="12" rx="2.2" />
-      <rect x="7" y="7.5" width="7" height="5" rx="1.2" />
+      <rect x="9" y="8.5" width="5.5" height="5" rx="1.1" />
     </>
   ),
 };
@@ -547,7 +547,7 @@ export function MiniCalendar({
           <button
             type="button"
             key={d}
-            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected pearl" : ""} ${range && d !== value && d >= range[0] && d <= range[1] ? "in-range" : ""}`}
+            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected" : ""} ${range && d !== value && d >= range[0] && d <= range[1] ? "in-range" : ""}`}
             disabled={!!min && d < min}
             onClick={() => onPick(d)}
           >
@@ -576,14 +576,14 @@ function TimeColumns({ time, onPick, side }: { time: string | null; onPick: (t: 
     <div className={`time-cols is-${side}`}>
       <div className="time-col" ref={hours}>
         {Array.from({ length: 24 }, (_, i) => (
-          <button type="button" key={i} className={`time-cell ${i === h ? "is-selected pearl" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
+          <button type="button" key={i} className={`time-cell ${i === h ? "is-selected" : ""}`} onClick={() => onPick(`${pad(i)}:${pad(m ?? 0)}`)}>
             {pad(i)}
           </button>
         ))}
       </div>
       <div className="time-col time-col-min">
         {MINUTES.map((x) => (
-          <button type="button" key={x} className={`time-cell ${x === m ? "is-selected pearl" : ""}`} onClick={() => onPick(`${pad(h ?? 9)}:${pad(x)}`)}>
+          <button type="button" key={x} className={`time-cell ${x === m ? "is-selected" : ""}`} onClick={() => onPick(`${pad(h ?? 9)}:${pad(x)}`)}>
             :{pad(x)}
           </button>
         ))}

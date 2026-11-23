@@ -9,17 +9,6 @@ import { hasNative, postNative } from "./lib/native";
 import { refreshBackdrop } from "./lib/backdrop";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
-/** Readable text colour on top of a highlight colour. */
-function onColor(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return "#1f1f1f";
-  const n = parseInt(m[1], 16);
-  const [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.32 ? "#1d1d1f" : "#ffffff";
-}
 import { useStore } from "./store";
 
 const isQuickAdd = windowLabel() === "quickadd";
@@ -102,12 +91,6 @@ if (isMobile) {
 
 function Root() {
   const theme = useStore((s) => s.theme);
-  const highlight = useStore((s) => s.highlight);
-  useEffect(() => {
-    const root = document.documentElement.style;
-    root.setProperty("--hl", highlight);
-    root.setProperty("--on-hl", onColor(highlight));
-  }, [highlight]);
   useEffect(() => {
     const mq = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
