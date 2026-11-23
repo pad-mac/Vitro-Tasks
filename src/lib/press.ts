@@ -72,11 +72,13 @@ export function watchPress() {
     "touchend",
     () => {
       if (!el) return;
-      // A quick tap: show it for a moment so the touch is seen.
+      // A tap: the grey stays on until what the tap opens takes over (the row's
+      // own "selected" grey replaces it in the same frame), so it never fades
+      // out and back in; with nothing taking over it goes after a moment.
       if (!shown) el.classList.add("is-pressed");
-      clear(140);
+      clear(420);
     },
-    { capture: true },
+    { capture: true, passive: true },
   );
   document.addEventListener("touchcancel", () => clear(), { capture: true });
   // Scrolling the list under a resting finger.

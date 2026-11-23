@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { defaultsForView, subgroupTasks, subtasksOf, type Group, type Subgroup, type ViewRef } from "../lib/views";
 import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
-import { TaskMeta, dragProps, useCreateTask, useLeaving, useReorderTarget, useTaskMenu } from "./tasks";
+import { TaskMeta, dragProps, useCreateTask, useFold, useLeaving, useReorderTarget, useTaskMenu } from "./tasks";
 import { Check, Icon, InlineInput, MenuItem, Popover, Rich } from "./ui";
 import { GroupSelect, SelectCircle, selectTap } from "./Select";
 
@@ -47,8 +47,7 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
   const showCompleted = useStore((s) => s.showCompleted);
   const tasks = useStore((s) => s.tasks);
   const lingering = useStore((s) => s.lingering);
-  const folded = useStore((s) => !!s.folded[task.id]);
-  const toggleFold = useStore((s) => s.toggleFold);
+  const [folded, toggleFold] = useFold(task.id);
   const selecting = useStore((s) => s.selecting);
   const onMenu = useTaskMenu(task.id);
   const subs = subtasksOf(tasks, task.id).filter((c) => showCompleted || c.status === 0 || (task.status !== 0 && !lingering[task.id]) || lingering[c.id]);
@@ -76,7 +75,7 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
             aria-label={folded ? "Show subtasks" : "Hide subtasks"}
             onClick={(e) => {
               e.stopPropagation();
-              toggleFold(task.id);
+              toggleFold();
             }}
           >
             <Icon name="chevron" size={13} />

@@ -328,6 +328,18 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
 }
 
 /**
+ * Whether a task's subtasks are folded away, and the switch. In the Completed
+ * view everything starts folded (there a stored mark means "opened").
+ */
+export function useFold(id: string): [boolean, () => void] {
+  const completed = useStore((s) => s.view.kind === "smart" && s.view.id === "completed");
+  const key = completed ? `open:${id}` : id;
+  const mark = useStore((s) => !!s.folded[key]);
+  const toggle = useStore((s) => s.toggleFold);
+  return [completed ? !mark : mark, () => toggle(key)];
+}
+
+/**
  * A task just completed goes (struck through, fading) unless the view keeps
  * done tasks: completed shown, or a subtask under a parent that is done and stays.
  */
@@ -343,8 +355,7 @@ export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; sho
   const showCompleted = useStore((s) => s.showCompleted);
   const showDetails = useStore((s) => s.showDetails);
   const lingering = useStore((s) => s.lingering);
-  const folded = useStore((s) => !!s.folded[task.id]);
-  const toggleFold = useStore((s) => s.toggleFold);
+  const [folded, toggleFold] = useFold(task.id);
   const selecting = useStore((s) => s.selecting);
   const onMenu = useTaskMenu(task.id);
   // A done parent shows all its subtasks; one just completed (still on its way out) only those that were open.
@@ -384,7 +395,7 @@ export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; sho
             aria-label={folded ? "Show subtasks" : "Hide subtasks"}
             onClick={(e) => {
               e.stopPropagation();
-              toggleFold(task.id);
+              toggleFold();
             }}
           >
             <Icon name="chevron" size={13} />

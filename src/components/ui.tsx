@@ -262,6 +262,26 @@ export function usePresence<T>(value: T | null, ms = 140): [T | null, boolean] {
  * page (so scrolling containers cannot clip it), opens below the trigger or
  * above it when there is no room, and closes on outside press or Escape.
  */
+/** Text on one line that fades out at its end when it does not fit (instead of a hard cut or "…"). */
+export function FadeText({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [over, setOver] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children]);
+  return (
+    <span ref={ref} className={`fade-text ${over ? "is-over" : ""} ${className}`}>
+      {children}
+    </span>
+  );
+}
+
 let probe: HTMLElement | null = null;
 /** The screen's safe-area insets (status bar, home indicator) in pixels. */
 export function safeInsets(): { top: number; bottom: number } {

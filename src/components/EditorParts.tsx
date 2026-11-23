@@ -10,8 +10,8 @@ import { useStore } from "../store";
 import { useReorderTarget } from "./tasks";
 import { Check, Icon, Rich } from "./ui";
 
-/** Room kept below the line being written (the next line peeks out). */
-const MARGIN = 14;
+/** Room kept below the line being written: clear of the fade at the body's bottom edge. */
+const MARGIN = 34;
 
 /** Scrolls the editor's body so that `el` (a subtask's line, the add line, a field) is in view. */
 export function keepInView(el: Element | null, margin = MARGIN) {
@@ -35,7 +35,8 @@ export function keepInView(el: Element | null, margin = MARGIN) {
 /**
  * The body scrolls as one; whatever is being written stays in view while the
  * keyboard comes up, lines are added or the description grows. `is-cut` marks
- * a body with more than it shows (the half-open sheet fades it out).
+ * a body with more below than it shows: its bottom edge fades out into the
+ * bar (half open, full screen, while writing).
  * The boxes around the body never scroll: WebKit scrolls even
  * `overflow: hidden` boxes to show a focused field, which pushed the whole
  * editor up and left it there.
@@ -45,12 +46,13 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
     const B = body.current;
     if (!B) return;
     let frame = 0;
+    const cut = () => B.classList.toggle("is-cut", B.scrollTop + B.clientHeight < B.scrollHeight - 1);
     const follow = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        B.classList.toggle("is-cut", B.scrollHeight > B.clientHeight + 1);
         const a = document.activeElement;
         if (a && B.contains(a)) keepInView(a);
+        cut();
       });
     };
     // The body (the keyboard, the sheet's height) and each of its parts (rows added, a longer description).
@@ -73,6 +75,7 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
     };
     B.addEventListener("focusin", follow);
     B.addEventListener("input", follow);
+    B.addEventListener("scroll", cut, { passive: true });
     for (const x of boxes) x.addEventListener("scroll", pin, true);
     follow();
     return () => {
@@ -81,9 +84,15 @@ export function useEditorScroll(body: RefObject<HTMLElement | null>) {
       mo.disconnect();
       B.removeEventListener("focusin", follow);
       B.removeEventListener("input", follow);
+      B.removeEventListener("scroll", cut);
       for (const x of boxes) x.removeEventListener("scroll", pin, true);
     };
   }, [body]);
+}
+
+/** A position between two neighbours (the first's own when they share one: renumbered after). */
+function between(a: Task, b: Task): number {
+  return b.position > a.position ? (a.position + b.position) / 2 : a.position;
 }
 
 /** The first line of a description, for previews. */
@@ -110,7 +119,8 @@ function SubtaskRow({
   onEdit: () => void;
   onDone: () => void;
   onOpen: () => void;
-  onNext: () => void;
+  /** Enter: a new line under this one (`empty`: this line was left empty, so it goes instead). */
+  onNext: (empty: boolean) => void;
   onRemoved: () => void;
 }) {
   const update = useStore((s) => s.updateTask);
@@ -119,6 +129,7 @@ function SubtaskRow({
   const [value, setValue] = useState(task.title);
   const ref = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const gone = useRef(false);
   // Picks up changes made elsewhere while not being written in.
   useEffect(() => {
     if (!editing) setValue(task.title);
@@ -161,18 +172,26 @@ function SubtaskRow({
             }}
             onBlur={() => {
               save(value);
-              if (!value.trim()) setValue(task.title);
+              // A new line left without a title is not kept.
+              if (!value.trim() && !task.title.trim() && !gone.current) {
+                gone.current = true;
+                void del(task.id);
+              } else if (!value.trim()) setValue(task.title);
               onDone();
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 save(value);
-                onNext();
+                const empty = !value.trim() && !task.title.trim();
+                if (empty) gone.current = true;
+                onNext(empty);
+                if (empty) void del(task.id);
               } else if (e.key === "Backspace" && !value) {
                 // Deleting past the start of an empty line removes it.
                 e.preventDefault();
                 clearTimeout(timer.current);
+                gone.current = true;
                 onRemoved();
                 void del(task.id);
               } else if (e.key === "Escape") {
@@ -209,6 +228,7 @@ function SubtaskRow({
  */
 export function SubtaskList({ parent, subs, onOpen }: { parent: Task; subs: Task[]; onOpen: (id: string) => void }) {
   const addTask = useStore((s) => s.addTask);
+  const addTaskNow = useStore((s) => s.addTaskNow);
   const update = useStore((s) => s.updateTask);
   const details = useStore((s) => s.showDetails);
   const focusSubtask = useStore((s) => s.focusSubtask);
@@ -246,7 +266,15 @@ export function SubtaskList({ parent, subs, onOpen }: { parent: Task; subs: Task
             onEdit={() => setEditing(s.id)}
             onDone={() => setEditing((cur) => (cur === s.id ? null : cur))}
             onOpen={() => onOpen(s.id)}
-            onNext={focusAdd}
+            onNext={(empty) => {
+              // Enter on the last line (or on an empty one) goes on to the add line;
+              // in the middle of the list a new line opens right under this one.
+              const next = subs[i + 1];
+              if (empty || !next) return focusAdd();
+              const made = addTaskNow({ title: "", parent_id: parent.id, list_id: parent.list_id, position: between(s, next) });
+              if (made.position === s.position) for (const p of subtaskPositions([...subs.slice(0, i + 1), made, ...subs.slice(i + 1)], made.id, i + 1)) void update(p.id, { position: p.position });
+              flushSync(() => setEditing(made.id));
+            }}
             onRemoved={() => {
               // The caret goes on at the end of the line above (or to the add line).
               const prev = subs[i - 1] ?? subs[i + 1];

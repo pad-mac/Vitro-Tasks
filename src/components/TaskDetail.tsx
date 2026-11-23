@@ -5,7 +5,7 @@ import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
-import { Check, DateField, DeadlineField, Flag, FloatingPanel, Icon, MenuItem, Popover, Rich, usePresence } from "./ui";
+import { Check, DateField, DeadlineField, FadeText, Flag, FloatingPanel, Icon, MenuItem, Popover, Rich, usePresence } from "./ui";
 import { hasLink } from "../lib/rich";
 
 /** Text field that edits locally and saves shortly after typing stops, or on blur. */
@@ -124,7 +124,7 @@ function ListPicker({ listId, onPick, prefer = "above" }: { listId: string | nul
       trigger={
         <span className="foot-trigger">
           {list ? <i className="dot" style={{ background: list.color }} /> : <Icon name="inbox" size={14} />}
-          {list?.name ?? "Inbox"}
+          <FadeText>{list?.name ?? "Inbox"}</FadeText>
         </span>
       }
     >
@@ -245,7 +245,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
     <>
       {!task.parent_id && <ListPicker prefer="above" listId={task.list_id} onPick={(id) => void update(task.id, { list_id: id })} />}
       {!task.parent_id && listSections.length > 0 && (
-        <Popover prefer="above" trigger={<span className="foot-trigger is-quiet">{section?.name ?? "No section"}</span>}>
+        <Popover prefer="above" trigger={<span className="foot-trigger is-quiet"><FadeText>{section?.name ?? "No section"}</FadeText></span>}>
           {(close) => (
             <div className="menu menu-scroll">
               <MenuItem active={!section} onClick={() => { void update(task.id, { section_id: null }); close(); }}>No section</MenuItem>

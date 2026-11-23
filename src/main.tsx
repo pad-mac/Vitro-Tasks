@@ -41,6 +41,18 @@ if (isMobile && window.visualViewport) {
   vv.addEventListener("resize", onResize);
   vv.addEventListener("scroll", onResize);
   window.addEventListener("resize", onResize);
+  // The iOS app resizes the web view at the start of the keyboard's slide, so
+  // whatever sits on the keyboard jumped to where it will end (behind the
+  // keyboard while it still slides away: the editor "flashed"). It is moved
+  // back and follows the keyboard instead. Runs before the frame is painted.
+  let lastH = innerHeight;
+  window.addEventListener("resize", () => {
+    const d = innerHeight - lastH;
+    lastH = innerHeight;
+    if (Math.abs(d) < 120) return;
+    const riders = document.querySelectorAll<HTMLElement>(".m-task-sheet:not(.is-full):not(.is-closing), .m-sheet.is-open, .m-task-sheet.is-full .detail-bar");
+    for (const el of riders) el.animate([{ translate: `0 ${-d}px` }, { translate: "0 0" }], { duration: 280, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+  });
   document.addEventListener("visibilitychange", () => setTimeout(onResize, 50));
   onResize();
 }

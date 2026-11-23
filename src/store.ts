@@ -203,6 +203,8 @@ interface State {
   setShortcut(s: string): Promise<void>;
 
   addTask(patch: Partial<Task> & { title: string }): Promise<Task>;
+  /** Adds a task at once (shown before it is saved): for a line that has to exist within a keystroke. */
+  addTaskNow(patch: Partial<Task> & { title: string }): Task;
   updateTask(id: string, patch: Partial<Task>): Promise<void>;
   /** Shows a change while it is being dragged, without saving it. */
   previewTask(id: string, patch: Partial<Task>): void;
@@ -606,6 +608,36 @@ export const useStore = create<State>((set, get) => {
       const saved = await save("tasks", task);
       set({ tasks: [...get().tasks, saved] });
       return saved;
+    },
+
+    addTaskNow(patch) {
+      const now = Date.now();
+      const task: Task = {
+        id: uid(),
+        list_id: null,
+        section_id: null,
+        parent_id: null,
+        notes: "",
+        priority: 0,
+        status: 0,
+        start_date: null,
+        start_time: null,
+        end_date: null,
+        end_time: null,
+        deadline_date: null,
+        deadline_time: null,
+        completed_at: null,
+        position: nextPos(get().tasks),
+        pinned: 0,
+        created_at: now,
+        updated_at: now,
+        deleted: 0,
+        ...patch,
+      };
+      set({ tasks: [...get().tasks, task] });
+      // Only the timestamp comes back: the line may already have been written in.
+      void save("tasks", task).then((saved) => set({ tasks: get().tasks.map((t) => (t.id === task.id ? { ...t, updated_at: saved.updated_at } : t)) }));
+      return task;
     },
 
     async updateTask(id, patch) {

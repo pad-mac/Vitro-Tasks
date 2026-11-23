@@ -792,7 +792,12 @@ export function useEdgeSwipe() {
         return;
       }
       const st = useStore.getState();
-      if (!start.open && dx > 44) {
+      // On a page over the lists (settings) the swipe goes back, as everywhere on iOS; it never opens the lists under it.
+      if (!start.open && dx > 44 && document.querySelector(".modal-overlay, .modal")) {
+        window.dispatchEvent(new CustomEvent("vitro:back"));
+        haptic("light");
+        start = null;
+      } else if (!start.open && dx > 44) {
         st.setDrawerOpen(true);
         haptic("light");
         start = null;
@@ -825,6 +830,24 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   const [shown, closing] = usePresence(task, 220);
   const [full, setFull] = useState(false);
   const [typing, setTyping] = useState(false);
+  // Half open, writing makes the sheet taller and stopping makes it shorter again: it glides, no jump.
+  const lastHeight = useRef(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    const was = lastHeight.current;
+    lastHeight.current = h;
+    if (!full && was && Math.abs(was - h) > 20) el.animate([{ height: `${was}px` }, { height: `${h}px` }], { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+  }, [typing]);
+  // The height as last laid out (the keyboard changes it too), read before the next change shows.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => (lastHeight.current = el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // Half open and not writing, the editor is a preview from its top (the title is in the scrolling body).
   useEffect(() => {
     const body = ref.current?.querySelector<HTMLElement>(".detail-body");

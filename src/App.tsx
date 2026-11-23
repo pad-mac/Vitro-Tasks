@@ -386,6 +386,12 @@ export function App() {
   // page (a sheet, the quick add, the page), so the keyboard's rounded corners match it.
   const theme = useStore((s) => s.theme);
   const sheetOpen = addOpen || !!selected || !!composer;
+  // The edge swipe on the settings page goes back.
+  useEffect(() => {
+    const back = () => setSettingsOpen(false);
+    window.addEventListener("vitro:back", back);
+    return () => window.removeEventListener("vitro:back", back);
+  }, []);
   const backdrop = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (!isMobile || backdrop.current) return;
