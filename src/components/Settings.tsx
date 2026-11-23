@@ -54,7 +54,7 @@ function ServerRow({ server, several }: { server: SyncServer; several: boolean }
       : st?.status === "error"
         ? (st.message ?? "Sync failed")
         : st?.last
-          ? `Synced at ${new Date(st.last).toLocaleTimeString()}`
+          ? `Synced at ${new Date(st.last).toLocaleTimeString()}${st.outdated ? " · update this server to sync repeats" : ""}`
           : "Connected";
   return (
     <div className={`server-card ${server.enabled ? "" : "is-off"}`}>
@@ -202,10 +202,10 @@ function DataSection() {
   const summary = (r: ImportResult) => {
     const parts = [`${r.lists} list${r.lists === 1 ? "" : "s"}`, `${r.sections} section${r.sections === 1 ? "" : "s"}`, `${r.tasks} task${r.tasks === 1 ? "" : "s"}`];
     let text = `Imported ${parts.join(", ")}.`;
-    if (r.skipped) text += ` ${r.skipped} already here, left as they are.`;
+    if (r.skipped) text += ` ${r.skipped} already here, left as they are${r.repeats ? ` (${r.repeats} of them got their repeat rule)` : ""}.`;
     if (r.notes) {
       const lost: string[] = [];
-      if (r.notes.repeating) lost.push(`${r.notes.repeating} repeat rules`);
+      if (r.notes.repeating) lost.push(`${r.notes.repeating} repeat rules this app cannot follow`);
       if (r.notes.reminders) lost.push(`${r.notes.reminders} reminders`);
       if (r.notes.tags.length) lost.push(`tags (${r.notes.tags.join(", ")})`);
       if (lost.length) text += ` Not carried over: ${lost.join(", ")}.`;

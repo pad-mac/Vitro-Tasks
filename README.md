@@ -18,6 +18,7 @@ Every task has two independent dates:
 | Order | Drag tasks into any order, in lists and on boards, whatever the sort. With the sort "Custom" this sets the tasks' own order; with any other sort the view remembers your order on top of it, and the sort menu offers "Restore default order". Dropping into another group changes what the group stands for (section, date, priority, list). |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
 | Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration, and the left or right edge of an all-day entry (one day or several) to change its first or last day. Scrolling glides through weeks (month view) or days (week view, horizontal scroll) and settles on a whole week or day. Deadlines appear as outlined entries. In the week view, long titles fade out at the end, or wrap (Options → Wrap Titles in Week View); drop an entry on a day's date to make it an all-day entry of that day. One-day entries with a time show only a bar and text in the list colour. In the week view, days with a deadline get a frame around their date. |
+| Repeats | Next to "Add time" in every date picker (editor, right-click menu, the phone's add sheet): Daily, Weekly (on the date's weekday), Monthly (on its day), Yearly, Every weekday, or Custom — by due date or by completion date, every N days / weeks / months / years, on chosen weekdays, on days of the month (or the last day), on the nth or last weekday of a month, in a chosen month, ending never, on a date or after N times. Completing a repeating task moves it on to its next date (after today if it was overdue; missed days are not owed) and keeps a completed copy of the done occurrence, with its subtasks; the next occurrence starts with its subtasks open. Undo takes both back; Won't do skips one occurrence the same way. A task shows once everywhere, with a small ↻ mark beside its date; only the calendar also shows its later occurrences, lighter, and clicking one opens the task. Moving the task moves the series (a rule on the date's own weekday or day follows the date). |
 | Tasks | Priority (flag), hard deadline (target symbol, with days left), notes, subtasks, pinning, completion, won't do. Links and `[markdown](links)` in titles and notes are clickable. Each view has a switch next to the sort button that chooses editing in a popup or in the side pane. A completed task is struck through for a moment, then goes; an Undo button stays at the bottom left until you change the view. With details hidden, a small mark shows which tasks have a description. Tasks with subtasks have an arrow at the end of their row (list and board) that folds them away, and a button at the top of the list and board folds or unfolds all of them; the fold is remembered on each device. In Completed, tasks start folded. |
 | Subtasks | In the editor, tap a subtask to edit its title in place; Enter opens a new line right under it (on the last line, or on an empty one, it goes to the add line), and Backspace on an empty title removes it. The arrow at the end opens it on its own. With details shown, a subtask's description is previewed under its title. |
 | Select | View menu → Select (lists and boards): tap tasks, or a group's circle, to select them; Select All in the header. The bar at the bottom sets a date, moves to a list or a section, deletes (tap twice), and under ··· sets priority, completes, won't do, pins, sets the deadline to today, duplicates. Escape or the ✓ leaves. |
@@ -39,10 +40,12 @@ Works in the quick add bar and in every "Add task" field.
 | `today`, `tomorrow`, `fri`, `24.12.`, `2026-12-24`, `in 3 days` | planned date |
 | `14:30` | planned time |
 | `^fri`, `^24.12.` | deadline |
+| `daily`, `weekly`, `every day`, `every week`, `every other week`, `every second day`, `every 3 months`, `every mon and thu`, `every 2 weeks on mon, wed`, `every weekday`, `every weekend`, `every 15th`, `every first monday`, `every last friday` | repeat (the task starts on the first day the rule allows, or on a typed date); typing `every ` suggests phrases |
+| `täglich`, `wöchentlich`, `jeden Tag`, `jeden Montag und Donnerstag`, `jede zweite Woche`, `alle 3 Monate`, `werktags`, `montags`, `jeden 15.` | the same in German (`jeden ` and `alle 2` suggest phrases) |
 | `!low`, `!med`, `!high` (or `!1` `!2` `!3`) | priority |
 | `#research` | list; typing `#` shows matching lists, pick one with the arrow keys and `Enter` or `Tab` |
 
-Example: `Draft chapter wed ^30.11. !high #research`
+Example: `Draft chapter wed ^30.11. !high #research` · `Team call every 2 weeks on mon 10:00 #work`
 
 ### Keys
 
@@ -67,8 +70,9 @@ In TickTick: Settings → Account → Generate backup. In Vitro Tasks: Settings 
 | Tag `deadline` | Deadline on the same date (the planned date stays) |
 | Priority low / medium / high | Priority low / medium / high |
 | Completed, won't do | Completed, won't do (completed tasks can be left out) |
+| Repeat | Repeat rule on open tasks (as TickTick writes them: `FREQ=WEEKLY;INTERVAL=1;BYDAY=TU`, `UNTIL`, `COUNT`) |
 
-Repeat rules, reminders and other tags are not carried over; the import tells you how many there were. Importing the same backup again only adds what is new.
+Reminders and other tags are not carried over; the import tells you how many there were. Importing the same backup again only adds what is new — and gives tasks from an earlier import (before repeats) their repeat rule.
 
 ## iPhone (prototype)
 
@@ -102,6 +106,8 @@ How it works: every row carries `updated_at` and a `deleted` flag. The app sends
 
 The token is a single shared secret, so one server serves one person (or one shared set of lists).
 
+Updating the server: `cd /opt/vitro-tasks && git pull && cd server && docker compose up -d --build` (the schema upgrades itself on start). Repeat rules (since 0.11) need a server from 0.11 on; an older one still syncs everything else, the rules stay on the device that set them, and Settings → Sync servers says to update it. After the update they go up with the next sync. From 0.11 on the server leaves out fields it does not know instead of refusing them, so a newer app never stops syncing with it.
+
 ## Releasing
 
 Set the new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` and push to `main`. The Build workflow publishes a release `vX.Y.Z` with the installer whenever that version has no release yet; installed apps pick the update up from there. The iPhone build and its SideStore source are added to the same release.
@@ -124,4 +130,4 @@ The iPhone build runs in `.github/workflows/ios.yml` on a macOS 26 runner (Xcode
 
 ## Not in this version
 
-Recurring tasks, reminders, tags, focus timer, and accounts for more than one person on a server. On the phone: the timeline is not adapted yet, and tasks cannot be dragged onto lists in the drawer (use Move to).
+Reminders, tags, focus timer, skipping a single later occurrence from the calendar, and accounts for more than one person on a server. On the phone: the timeline is not adapted yet, and tasks cannot be dragged onto lists in the drawer (use Move to).

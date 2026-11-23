@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SubtaskList, useEditorScroll } from "./EditorParts";
 import { formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
+import { dateForRule } from "./RepeatPicker";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
@@ -205,6 +206,8 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
         time={task.start_time}
         placeholder="Date"
         tone={open && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
+        repeat={task.parent_id ? undefined : task.repeat}
+        onRepeat={task.parent_id ? undefined : (r) => void update(task.id, { repeat: r })}
         onChange={(d, t) =>
           void update(task.id, {
             start_date: d,
@@ -380,6 +383,7 @@ export function Composer() {
       ...(p.priority ? { priority: p.priority } : {}),
       ...(p.deadline_date ? { deadline_date: p.deadline_date, deadline_time: p.deadline_time } : {}),
       ...(p.start_time && !d.start_time ? { start_time: p.start_time } : {}),
+      ...(p.repeat ? { repeat: p.repeat, start_date: dateForRule(p.repeat, d.start_date ?? null) } : {}),
       ...(list ? { list_id: list.id } : {}),
     });
     close();

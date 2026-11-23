@@ -1,5 +1,5 @@
 import type { Db } from "./driver";
-import { applyRemote, assignOrigin, collectDirty, getMeta, markClean, markOriginDirty, setMeta } from "./repo";
+import { applyRemote, assignOrigin, collectDirty, getMeta, markClean, markOriginDirty, markRepeatsDirty, setMeta } from "./repo";
 import type { SyncRequest, SyncResponse } from "../shared/schema";
 
 /** Where to sync. `id` names the server in the app's list (rows carry it as their `origin`). */
@@ -22,7 +22,12 @@ export interface SyncResult {
   pushed: number;
   pulled: number;
   cursor: number;
+  /** The server is older than this app and refused fields it does not know (repeat rules): they stay on this device. */
+  outdated?: boolean;
 }
+
+/** Fields added after the first server versions; an older server refuses rows that carry them. */
+const NEWER_TASK_FIELDS = ["repeat"];
 
 const cleanUrl = (url: string) => url.trim().replace(/\/+$/, "");
 const cursorKey = (id?: string) => (id ? `sync_cursor:${id}` : "sync_cursor");
@@ -90,20 +95,41 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
   const origin = cfg.id ?? "";
   const since = Number((await getMeta(db, cursorKey(cfg.id))) ?? "0") || 0;
   const changes = await collectDirty(db, origin);
-  const body: SyncRequest = { since, changes };
-  const res = await fetchImpl(`${cleanUrl(cfg.url)}/v1/sync`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${cfg.token}` },
-    body: JSON.stringify(body),
-  });
+  const post = (body: SyncRequest) =>
+    fetchImpl(`${cleanUrl(cfg.url)}/v1/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${cfg.token}` },
+      body: JSON.stringify(body),
+    });
+  let res = await post({ since, changes });
+  let outdated = false;
+  if (res.status === 400 && changes.tasks?.length) {
+    // A server from before repeats refuses task rows with fields it does not
+    // know: send them without, so everything else still syncs.
+    const text = await res.clone().text().catch(() => "");
+    if (/invalid tasks row/.test(text)) {
+      const tasks = changes.tasks.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !NEWER_TASK_FIELDS.includes(k))));
+      res = await post({ since, changes: { ...changes, tasks } });
+      outdated = res.ok;
+    }
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Sync server answered ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
   }
   const data = (await res.json()) as SyncResponse;
   await markClean(db, changes);
+  const known = await getMeta(db, outdatedKey(cfg.id));
+  if (outdated) await setMeta(db, outdatedKey(cfg.id), "1");
+  else if (known === "1" && changes.tasks?.length) {
+    // Updated since: the repeat rules it missed go up with the next round.
+    await setMeta(db, outdatedKey(cfg.id), "");
+    await markRepeatsDirty(db, origin);
+  }
   const pulled = await applyRemote(db, data.changes, origin);
   await setMeta(db, cursorKey(cfg.id), String(data.cursor));
   const pushed = Object.values(changes).reduce((n, rows) => n + (rows?.length ?? 0), 0);
-  return { pushed, pulled, cursor: data.cursor };
+  return { pushed, pulled, cursor: data.cursor, outdated: outdated || (known === "1" && !changes.tasks?.length) };
 }
+
+const outdatedKey = (id?: string) => (id ? `sync_outdated:${id}` : "sync_outdated");

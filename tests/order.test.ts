@@ -8,7 +8,7 @@ const task = (p: Partial<Task>): Task => ({
   id: `t${++n}`, list_id: null, section_id: null, parent_id: null, title: `task ${n}`, notes: "",
   priority: 0, status: 0, start_date: null, start_time: null, end_date: null, end_time: null,
   deadline_date: null, deadline_time: null, completed_at: null, position: n, pinned: 0,
-  created_at: n, updated_at: n, deleted: 0, ...p,
+  created_at: n, updated_at: n, deleted: 0, repeat: null, ...p,
 });
 const ids = (ts: Task[]) => ts.map((t) => t.id);
 

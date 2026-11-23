@@ -156,7 +156,7 @@ export function MobileAdd({
   const suggest = useListSuggest(value, setValue, inputRef as RefObject<HTMLInputElement>);
   const parsed = parseQuick(value);
   const title = parsed.title;
-  const typed = !!(parsed.start_date || parsed.deadline_date || parsed.priority || parsed.listQuery);
+  const typed = !!(parsed.start_date || parsed.deadline_date || parsed.priority || parsed.listQuery || parsed.repeat);
   useEffect(() => {
     openAddImpl = onOpen;
     return () => {
@@ -358,7 +358,10 @@ export function MobileAdd({
               !!picked.list_id,
               "is-wide",
             )}
-            <span className="m-tools-value">{when}</span>
+            <span className="m-tools-value">
+              {when}
+              {when && base.repeat && <Icon name="repeat" size={13} />}
+            </span>
             <button type="button" className="m-tool" aria-label="Full screen" {...keepFocus} onClick={() => void expand()}>
               <Icon name="expand" size={18} />
             </button>

@@ -8,7 +8,6 @@ import {
   postgresDdl,
   withDefaults,
   type ChangeSet,
-  type EntityName,
   type Row,
   type SyncRequest,
   type SyncResponse,
@@ -20,15 +19,8 @@ export async function migrate(pool: pg.Pool): Promise<void> {
   for (const stmt of postgresDdl()) await pool.query(stmt);
 }
 
-function validRow(name: EntityName, row: Row): boolean {
-  return (
-    !!row &&
-    typeof row.id === "string" &&
-    row.id.length > 0 &&
-    row.id.length <= 200 &&
-    Number.isFinite(Number(row.updated_at)) &&
-    Object.keys(row).every((k) => colNames(name).includes(k))
-  );
+function validRow(row: Row): boolean {
+  return !!row && typeof row.id === "string" && row.id.length > 0 && row.id.length <= 200 && Number.isFinite(Number(row.updated_at));
 }
 
 /**
@@ -49,7 +41,8 @@ export async function sync(pool: pg.Pool, req: SyncRequest): Promise<SyncRespons
         `INSERT INTO ${name} (${cols.join(", ")}, seq) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}, nextval('vitro_seq')) ` +
         `ON CONFLICT (id) DO UPDATE SET ${set.join(", ")}, seq = EXCLUDED.seq WHERE ${name}.updated_at < EXCLUDED.updated_at`;
       for (const row of req.changes?.[name] ?? []) {
-        if (!validRow(name, row)) throw new HttpError(400, `invalid ${name} row`);
+        if (!validRow(row)) throw new HttpError(400, `invalid ${name} row`);
+        // Fields this server does not know yet (from a newer app) are left out, not refused.
         const full = withDefaults(name, row);
         await client.query(sql, cols.map((c) => full[c] ?? null));
       }

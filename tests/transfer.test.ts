@@ -53,6 +53,11 @@ describe("TickTick import", () => {
     expect(byTitle("blutabnahme, nüchtern")).toMatchObject({ start_date: "2026-11-17", start_time: "08:30", end_time: "09:15", end_date: null, priority: 3, notes: "[Praxis](https://example.org)\nZweite Zeile (Labor)" });
   });
 
+  it("keeps repeat rules on open tasks only", () => {
+    expect(byTitle("blutabnahme, nüchtern").repeat).toBe("FREQ=WEEKLY;INTERVAL=1");
+    expect(r.tasks.filter((t) => t.repeat).length).toBe(1);
+  });
+
   it("makes checklist items subtasks and keeps other lines as notes", () => {
     const list = byTitle("Einkauf");
     expect(list).toMatchObject({ status: 1, notes: "Für Sonntag", priority: 2 });
@@ -67,7 +72,7 @@ describe("TickTick import", () => {
 
   it("maps the deadline tag to a deadline and reports what does not carry over", () => {
     expect(byTitle("Abgabe Hausarbeit")).toMatchObject({ start_date: "2026-12-01", deadline_date: "2026-12-01" });
-    expect(r.notes).toEqual({ repeating: 1, tags: ["gift"], reminders: 1 });
+    expect(r.notes).toEqual({ repeating: 0, tags: ["gift"], reminders: 1 });
   });
 
   it("can leave completed tasks out, and reuses existing lists by name", () => {

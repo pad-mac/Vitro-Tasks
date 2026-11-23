@@ -5,6 +5,8 @@ import { addDays, todayKey } from "../lib/dates";
 import { haptic } from "../lib/platform";
 import { PRIORITY_LABELS, orderedLists } from "../lib/views";
 import { useStore } from "../store";
+import { describeRepeat } from "../lib/repeat";
+import { RepeatPanel, dateForRule } from "./RepeatPicker";
 import { Flag, Icon, MiniCalendar } from "./ui";
 
 // ---------- Sheet gesture ----------
@@ -95,6 +97,8 @@ export function DayPicker({
   range,
   picks,
   clearLabel = "Remove date",
+  repeat,
+  onRepeat,
 }: {
   date: string | null;
   time: string | null;
@@ -103,8 +107,12 @@ export function DayPicker({
   range?: [string, string] | null;
   picks?: DayPick[];
   clearLabel?: string;
+  /** With `onRepeat`: a Repeat row under the time (the date it gets when the rule needs one comes along). */
+  repeat?: string | null;
+  onRepeat?: (repeat: string | null, date: string | null) => void;
 }) {
   const today = todayKey();
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const quick: DayPick[] = picks ?? [
     ["Today", today],
     ["Tomorrow", addDays(today, 1)],
@@ -130,6 +138,19 @@ export function DayPicker({
           </button>
         )}
       </label>
+      {onRepeat && (
+        <>
+          <button type="button" className={`p-repeat ${repeatOpen ? "is-open" : ""}`} onClick={() => setRepeatOpen((o) => !o)}>
+            <Icon name="repeat" size={17} />
+            <span>Repeat</span>
+            <em>{repeat ? describeRepeat(repeat, date) : "Never"}</em>
+            <Icon name="chevron" size={14} />
+          </button>
+          {repeatOpen && (
+            <RepeatPanel side="below" value={repeat ?? null} base={date ?? today} onChange={(r) => onRepeat(r, dateForRule(r, date))} onClose={() => setRepeatOpen(false)} />
+          )}
+        </>
+      )}
       {date && (
         <button type="button" className="p-clear" onClick={() => onChange(null, null)}>
           {clearLabel}
@@ -149,6 +170,7 @@ export interface PropValues {
   priority?: number;
   list_id?: string | null;
   section_id?: string | null;
+  repeat?: string | null;
 }
 
 /** Start and end of a task: a Start / End switch over one picker. */
@@ -158,7 +180,13 @@ export function SpanPicker({ v, onChange }: { v: PropValues; onChange: (patch: P
   const end = v.end_date ?? null;
   const atEnd = edge === "end" && !!start;
   const setStart = (d: string | null, t: string | null) =>
-    onChange({ start_date: d, start_time: d ? t : null, ...(d && end && end >= d ? {} : { end_date: null, end_time: null }) });
+    onChange({
+      start_date: d,
+      start_time: d ? t : null,
+      ...(d && end && end >= d ? {} : { end_date: null, end_time: null }),
+      // No date, no series.
+      ...(d ? {} : { repeat: null }),
+    });
   const setEnd = (d: string | null, t: string | null) => {
     if (!start) return;
     const ok = d !== null && d >= start;
@@ -191,7 +219,14 @@ export function SpanPicker({ v, onChange }: { v: PropValues; onChange: (patch: P
           clearLabel="Remove end"
         />
       ) : (
-        <DayPicker date={start} time={v.start_time ?? null} range={start && end ? [start, end] : null} onChange={setStart} />
+        <DayPicker
+          date={start}
+          time={v.start_time ?? null}
+          range={start && end ? [start, end] : null}
+          onChange={setStart}
+          repeat={v.repeat ?? null}
+          onRepeat={(r, d) => onChange({ repeat: r, ...(d !== start ? { start_date: d, ...(d && end && end >= d ? {} : { end_date: null, end_time: null }) } : {}) })}
+        />
       )}
     </>
   );

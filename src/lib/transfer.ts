@@ -1,5 +1,6 @@
 // Import and export: Vitro's own CSV (round-trips everything) and TickTick backups.
 import { ENTITIES, SYNC_COLS, colNames, entity, type EntityName, type List, type Row, type Section, type Task } from "../shared/schema";
+import { parseRule } from "./repeat";
 
 // ---------- CSV ----------
 
@@ -248,7 +249,7 @@ export function readTickTick(text: string, existing: ExistingLists, opts: { incl
     const due = r[C.due] ? localParts(r[C.due], tz) : null;
     const created = Date.parse((r[C.created] || "").replace(/\+0000$/, "Z")) || now;
     const tags = (r[C.tags] || "").split(",").map((t) => t.trim()).filter(Boolean);
-    if (r[C.repeat]) notes.repeating++;
+    if (r[C.repeat] && !status && !parseRule(r[C.repeat])) notes.repeating++;
     if (r[C.reminder]) notes.reminders++;
     for (const t of tags) if (t !== "deadline" && !notes.tags.includes(t)) notes.tags.push(t);
 
@@ -264,6 +265,8 @@ export function readTickTick(text: string, existing: ExistingLists, opts: { incl
       start_date: null, start_time: null, end_date: null, end_time: null, deadline_date: null, deadline_time: null,
       completed_at: status ? Date.parse((r[C.completed] || "").replace(/\+0000$/, "Z")) || now : null,
       position: Number(r[C.order]) || 0, pinned: 0, created_at: created, updated_at: now, deleted: 0,
+      // Open tasks keep their rule; a done one is a past occurrence.
+      repeat: !status && r[C.repeat] && parseRule(r[C.repeat]) ? r[C.repeat].replace(/^RRULE:/i, "") : null,
     };
     const first = start ?? due;
     if (first) {
@@ -302,7 +305,7 @@ export function readTickTick(text: string, existing: ExistingLists, opts: { incl
         tasks.push({
           ...task, id: hashId("tt-c", task.id, String(i++), m[2]), parent_id: task.id, section_id: task.section_id,
           title: m[2].trim(), notes: "", priority: 0, status: m[1] === "▪" ? 1 : 0, completed_at: m[1] === "▪" ? task.completed_at ?? now : null,
-          start_date: null, start_time: null, end_date: null, end_time: null, deadline_date: null, deadline_time: null, position: i,
+          start_date: null, start_time: null, end_date: null, end_time: null, deadline_date: null, deadline_time: null, position: i, repeat: null,
         });
       }
       task.notes = keep.join("\n").trim();

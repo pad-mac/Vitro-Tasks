@@ -14,6 +14,8 @@ import {
   todayKey,
 } from "../lib/dates";
 import { openExternal } from "../lib/platform";
+import { describeRepeat } from "../lib/repeat";
+import { RepeatPanel, dateForRule } from "./RepeatPicker";
 import { richParts } from "../lib/rich";
 
 // ---------- Icons ----------
@@ -147,6 +149,14 @@ const PATHS: Record<string, ReactNode> = {
     <>
       <rect x="2.5" y="3" width="11" height="10" rx="1.8" />
       <path d="M2.5 6h11" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="M2.8 7.4V6.6a2.3 2.3 0 0 1 2.3-2.3h7.6" />
+      <path d="M11 2.4l1.9 1.9L11 6.2" />
+      <path d="M13.2 8.6v.8a2.3 2.3 0 0 1-2.3 2.3H3.3" />
+      <path d="M5 13.6l-1.9-1.9L5 9.8" />
     </>
   ),
 };
@@ -604,30 +614,43 @@ export function DatePickerPanel({
   min,
   range,
   picks,
+  repeat,
+  onRepeat,
+  clearLabel = "Clear",
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
+  /** The last quick pick, which takes the date away. */
+  clearLabel?: string;
   /** Called after a day was picked or the value cleared. */
   onDone: () => void;
   min?: string | null;
   range?: [string, string] | null;
   /** Quick picks above the calendar (default: today, tomorrow, next week). */
   picks?: [string, string][];
+  /** The task's repeat rule; with `onRepeat` the footer offers Repeat beside the time. */
+  repeat?: string | null;
+  onRepeat?: (repeat: string | null) => void;
 }) {
   const today = todayKey();
-  const [timeOpen, setTimeOpen] = useState<"right" | "left" | "below" | null>(null);
+  const [open, setOpen] = useState<{ what: "time" | "repeat"; side: "right" | "left" | "below" } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const pick = (d: string) => {
     onChange(d, time);
     onDone();
   };
-  // The time columns float beside the panel, on whichever side has room.
-  const toggleTime = () => {
-    if (timeOpen) return setTimeOpen(null);
+  // The time columns and the repeat choices float beside the panel, on whichever side has room.
+  const toggle = (what: "time" | "repeat") => {
+    if (open?.what === what) return setOpen(null);
     const r = box.current?.getBoundingClientRect();
-    const need = 130;
-    setTimeOpen(!r || r.right + need <= innerWidth ? (r ? "right" : "below") : r.left - need >= 0 ? "left" : "below");
+    const need = what === "time" ? 130 : 272;
+    setOpen({ what, side: !r ? "below" : r.right + need <= innerWidth ? "right" : r.left - need >= 0 ? "left" : "below" });
+  };
+  const setRepeat = (r: string | null) => {
+    const d = dateForRule(r, date);
+    if (d !== date) onChange(d, time);
+    onRepeat?.(r);
   };
   const quick = picks ?? [
     ["Today", today],
@@ -635,31 +658,56 @@ export function DatePickerPanel({
     ["Next week", addDays(today, 7)],
   ];
   return (
-    <div className="date-pop" ref={box}>
+    <div className={`date-pop ${onRepeat ? "has-repeat" : ""}`} ref={box}>
       <div className="quick-picks">
         {quick.map(([label, d]) => (
           <button type="button" key={label} className="chip-btn" disabled={!!min && d < min} onClick={() => pick(d)}>
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          className="chip-btn"
+          disabled={!date}
+          onClick={() => {
+            onChange(null, null);
+            // No date, no series.
+            if (repeat) onRepeat?.(null);
+            onDone();
+          }}
+        >
+          {clearLabel}
+        </button>
       </div>
       <MiniCalendar value={date} onPick={pick} min={min} range={range} />
       <div className="date-pop-foot">
-        <button type="button" className={`time-trigger ${time ? "" : "is-empty"} ${timeOpen ? "is-open" : ""}`} onClick={toggleTime}>
-          <Icon name="clock" size={14} />
-          {time ?? "Add time"}
-        </button>
-        {time && (
-          <button type="button" className="text-btn" title="Remove the time" onClick={() => onChange(date, null)}>
-            No time
+        <span className={`foot-pill ${time ? "" : "is-empty"} ${open?.what === "time" ? "is-open" : ""}`}>
+          <button type="button" className="time-trigger" onClick={() => toggle("time")}>
+            <Icon name="clock" size={14} />
+            {time ?? "Add time"}
           </button>
+          {time && (
+            <button type="button" className="pill-x" title="Remove the time" aria-label="Remove the time" onClick={() => onChange(date, null)}>
+              <Icon name="x" size={10} />
+            </button>
+          )}
+        </span>
+        {onRepeat && (
+          <span className={`foot-pill is-repeat ${repeat ? "" : "is-empty"} ${open?.what === "repeat" ? "is-open" : ""}`} title={repeat ? describeRepeat(repeat, date, true) : undefined}>
+            <button type="button" className="repeat-trigger" onClick={() => toggle("repeat")}>
+              <Icon name="repeat" size={14} />
+              <span className="pill-text">{repeat ? describeRepeat(repeat, date) : "Repeat"}</span>
+            </button>
+            {repeat && (
+              <button type="button" className="pill-x" title="Do not repeat" aria-label="Do not repeat" onClick={() => setRepeat(null)}>
+                <Icon name="x" size={10} />
+              </button>
+            )}
+          </span>
         )}
-        <span className="push" />
-        <button type="button" className="text-btn" disabled={!date} onClick={() => { onChange(null, null); onDone(); }}>
-          Clear
-        </button>
       </div>
-      {timeOpen && <TimeColumns side={timeOpen} time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
+      {open?.what === "time" && <TimeColumns side={open.side} time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
+      {open?.what === "repeat" && <RepeatPanel side={open.side} value={repeat ?? null} base={date ?? today} onChange={setRepeat} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -674,10 +722,17 @@ export function DateField({
   align,
   ghost,
   className = "",
+  repeat,
+  onRepeat,
+  clearLabel,
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
+  clearLabel?: string;
+  /** Offers the repeat choices beside the time; the trigger shows the repeat mark once set. */
+  repeat?: string | null;
+  onRepeat?: (repeat: string | null) => void;
   placeholder: string;
   tone?: "signal" | "overdue";
   icon?: string;
@@ -695,10 +750,15 @@ export function DateField({
         <span className={`date-trigger ${date ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""} ${ghost ? "is-ghost" : ""}`}>
           {icon && <Icon name={icon} size={14} />}
           <span>{date ? formatDateTime(date, time, today) : placeholder}</span>
+          {repeat && date && (
+            <span className="repeat-mark" title={describeRepeat(repeat, date, true)}>
+              <Icon name="repeat" size={12} />
+            </span>
+          )}
         </span>
       }
     >
-      {(close) => <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} />}
+      {(close) => <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} repeat={repeat} onRepeat={onRepeat} clearLabel={clearLabel} />}
     </Popover>
   );
 }

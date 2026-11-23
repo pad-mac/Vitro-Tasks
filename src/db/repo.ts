@@ -112,6 +112,11 @@ export async function markOriginDirty(db: Db, origin: string): Promise<void> {
   for (const name of ENTITY_NAMES) await db.exec(`UPDATE ${name} SET dirty = 1 WHERE origin = $1`, [origin]);
 }
 
+/** Marks a server's repeating tasks for upload again (a server that could not take their rules before). */
+export async function markRepeatsDirty(db: Db, origin: string): Promise<void> {
+  await db.exec(`UPDATE tasks SET dirty = 1 WHERE origin = $1 AND repeat IS NOT NULL AND repeat <> ''`, [origin]);
+}
+
 /** Clears the dirty flag for rows that were uploaded and not edited since. */
 export async function markClean(db: Db, pushed: ChangeSet): Promise<void> {
   for (const name of ENTITY_NAMES) {

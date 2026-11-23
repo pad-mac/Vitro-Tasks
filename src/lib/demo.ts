@@ -29,7 +29,7 @@ export async function seedDemo(): Promise<void> {
   await add({ title: "Send style sheet to contributors", list_id: volume.id, start_date: addDays(t, 1) });
   await add({ title: "Call with publisher", list_id: volume.id, priority: 2, start_date: addDays(t, 2), start_time: "11:00", end_time: "12:00" });
   await add({ title: "Proof introduction", list_id: volume.id, start_date: addDays(t, 10), end_date: addDays(t, 12), deadline_date: addDays(t, 14) });
-  await add({ title: "Water the plants", list_id: home.id, start_date: t });
+  await add({ title: "Water the plants", list_id: home.id, start_date: t, repeat: "FREQ=DAILY;INTERVAL=3" });
   await add({ title: "Book train tickets", list_id: home.id, priority: 1, deadline_date: addDays(t, 2) });
   await add({ title: "Renew library card", list_id: home.id });
   await add({ title: "Look into bike repair", priority: 1 });

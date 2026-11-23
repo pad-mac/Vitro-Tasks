@@ -1,14 +1,27 @@
-// Suggestions for "#list" while typing a task: arrow keys move, Enter or Tab picks.
+// Suggestions while typing a task: lists after "#", repeats after "every" /
+// "jeden" / "alle 2". Arrow keys move, Enter or Tab picks.
 import { useMemo, useState, type KeyboardEvent, type RefObject } from "react";
+import { repeatSuggestions } from "../lib/quickparse";
 import { orderedLists } from "../lib/views";
 import { useStore } from "../store";
+import { Icon } from "./ui";
 
 export interface ListOption {
+  kind?: "list";
   id: string;
   name: string;
   path: string;
   color: string;
 }
+
+export interface RepeatOption {
+  kind: "repeat";
+  id: string;
+  phrase: string;
+  label: string;
+}
+
+export type SuggestOption = ListOption | RepeatOption;
 
 /** The token typed into the field for a list: its name without spaces. */
 export const listToken = (name: string) => name.replace(/\s+/g, "");
@@ -34,22 +47,26 @@ export function useListSuggest(value: string, setValue: (v: string) => void, inp
   const before = value.slice(0, pos);
   const m = /(^|\s)#([^\s#]*)$/.exec(before);
   const query = m ? m[2].toLowerCase() : null;
-  const items = useMemo(() => {
-    if (query === null) return [];
+  const repeats = useMemo(() => (query === null ? repeatSuggestions(before) : null), [query, before]);
+  const items = useMemo<SuggestOption[]>(() => {
+    if (query === null) return repeats ? repeats.items.map((x) => ({ kind: "repeat" as const, id: x.phrase, ...x })) : [];
     const q = query.replace(/\s+/g, "");
     const key = (o: ListOption) => listToken(o.name).toLowerCase();
     const starts = options.filter((o) => key(o).startsWith(q));
     const contains = options.filter((o) => !key(o).startsWith(q) && (key(o).includes(q) || o.path.toLowerCase().includes(q)));
     return [...starts, ...contains].slice(0, 7);
-  }, [options, query]);
+  }, [options, query, repeats]);
   const open = items.length > 0 && dismissed !== before;
   const active = Math.min(index, items.length - 1);
 
-  const accept = (o: ListOption) => {
-    const start = before.length - (query?.length ?? 0) - 1;
+  const accept = (o: SuggestOption) => {
+    // The typed part gives way to the chosen token or phrase, and the caret goes after it.
+    const typed = o.kind === "repeat" ? (repeats?.typed ?? "") : `#${query ?? ""}`;
+    const token = o.kind === "repeat" ? o.phrase : `#${listToken(o.name)}`;
+    const start = before.length - typed.length;
     const rest = value.slice(before.length).replace(/^\S*/, "");
-    const next = `${value.slice(0, start)}#${listToken(o.name)} ${rest.trimStart()}`;
-    const pos = start + listToken(o.name).length + 2;
+    const next = `${value.slice(0, start)}${token} ${rest.trimStart()}`;
+    const pos = start + token.length + 1;
     setValue(next);
     setIndex(0);
     requestAnimationFrame(() => {
@@ -110,9 +127,19 @@ export function SuggestList({ s, className = "" }: { s: ReturnType<typeof useLis
           }}
           onMouseEnter={() => s.setIndex(i)}
         >
-          <i className="dot" style={{ background: o.color }} />
-          <span className="suggest-name">{o.path}</span>
-          <span className="suggest-token">#{listToken(o.name)}</span>
+          {o.kind === "repeat" ? (
+            <>
+              <Icon name="repeat" size={13} />
+              <span className="suggest-name">{o.phrase}</span>
+              <span className="suggest-token">{o.label}</span>
+            </>
+          ) : (
+            <>
+              <i className="dot" style={{ background: o.color }} />
+              <span className="suggest-name">{o.path}</span>
+              <span className="suggest-token">#{listToken(o.name)}</span>
+            </>
+          )}
         </button>
       ))}
     </div>

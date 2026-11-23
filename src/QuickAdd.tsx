@@ -6,6 +6,7 @@ import { useCreateTask } from "./components/tasks";
 import { formatDateTime } from "./lib/dates";
 import { hideCurrentWindow, onEvent, requestOpenTask, setQuickAddHeight, showMainWindow } from "./lib/platform";
 import { matchList, parseQuick } from "./lib/quickparse";
+import { describeRepeat } from "./lib/repeat";
 import { PRIORITY_LABELS } from "./lib/views";
 import { useStore } from "./store";
 
@@ -30,6 +31,11 @@ export function ParsedChips({ value, typedListOnly }: { value: string; typedList
       {parsed.start_date && (
         <span className="qa-chip">
           <Icon name="calendar" size={12} /> {formatDateTime(parsed.start_date, parsed.start_time)}
+        </span>
+      )}
+      {parsed.repeat && (
+        <span className="qa-chip">
+          <Icon name="repeat" size={12} /> {describeRepeat(parsed.repeat, parsed.start_date)}
         </span>
       )}
       {parsed.deadline_date && (
@@ -124,7 +130,7 @@ export function QuickAdd() {
           ) : value.trim() ? (
             <ParsedChips value={value} />
           ) : (
-            <span className="qa-hint">tomorrow 14:00 · ^fri deadline · !high · #list · Ctrl+Enter adds and opens · Esc closes</span>
+            <span className="qa-hint">tomorrow 14:00 · every mon · ^fri deadline · !high · #list · Ctrl+Enter adds and opens</span>
           )}
         </div>
       )}

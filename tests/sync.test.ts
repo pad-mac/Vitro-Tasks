@@ -120,12 +120,50 @@ describe.skipIf(!url)("sync", () => {
     expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "k1")!.title).toBe("from slow clock");
   });
 
-  it("refuses rows with unknown columns", async () => {
+  it("leaves out fields it does not know (from a newer app), never putting them into SQL", async () => {
     const res = await fetch(`${cfg.url}/v1/sync`, {
       method: "POST",
       headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({ since: 0, changes: { tasks: [{ id: "x", updated_at: 1, "title; DROP TABLE tasks": 1 }] } }),
+      body: JSON.stringify({ since: 0, changes: { tasks: [{ id: "x", updated_at: 1, title: "kept", "title; DROP TABLE tasks": 1, later_field: "y" }] } }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const row = (await pool.query("SELECT title FROM tasks WHERE id = 'x'")).rows[0];
+    expect(row.title).toBe("kept");
+  });
+
+  it("carries repeat rules between devices", async () => {
+    const a = await memoryDb();
+    const b = await memoryDb();
+    await put(a, "tasks", task("r1", "weekly", { start_date: "2026-11-24", repeat: "FREQ=WEEKLY;INTERVAL=1" }), 5000);
+    await syncOnce(a, cfg);
+    await syncOnce(b, cfg);
+    expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "r1")?.repeat).toBe("FREQ=WEEKLY;INTERVAL=1");
+  });
+
+  it("still syncs with a server from before repeats, and sends the rules once it is updated", async () => {
+    const a = await memoryDb();
+    // An old server: refuses any task row with a field it does not know.
+    let old = true;
+    const seen: string[] = [];
+    const oldFetch: typeof fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const rows: Record<string, unknown>[] = body.changes?.tasks ?? [];
+      if (old && rows.some((r) => "repeat" in r)) return new Response(JSON.stringify({ error: "invalid tasks row" }), { status: 400 });
+      for (const r of rows) seen.push(`${r.id}:${"repeat" in r ? r.repeat : "-"}`);
+      return fetch(input, init);
+    };
+    await put(a, "tasks", task("old-r1", "on old server", { start_date: "2026-11-24", repeat: "FREQ=DAILY;INTERVAL=2" }), 6000);
+    const first = await syncOnce(a, cfg, oldFetch);
+    expect(first).toMatchObject({ pushed: 1, outdated: true });
+    expect(seen).toEqual(["old-r1:-"]);
+    // The rule stays on the device.
+    expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "old-r1")?.repeat).toBe("FREQ=DAILY;INTERVAL=2");
+    // Updated server: the next upload with task rows goes through whole, and the missed rules follow.
+    old = false;
+    await put(a, "tasks", task("old-r2", "after the update"), 7000);
+    const second = await syncOnce(a, cfg, oldFetch);
+    expect(second.outdated).toBe(false);
+    await syncOnce(a, cfg, oldFetch);
+    expect(seen).toContain("old-r1:FREQ=DAILY;INTERVAL=2");
   });
 });

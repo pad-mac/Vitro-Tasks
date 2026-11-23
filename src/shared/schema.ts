@@ -73,6 +73,8 @@ export const ENTITIES: Entity[] = [
       { name: "position", type: "real", def: "0" },
       { name: "pinned", type: "int", def: "0" },
       { name: "created_at", type: "int", def: "0" },
+      // Repeat rule in iCalendar RRULE form ("FREQ=WEEKLY;INTERVAL=1"); null: once.
+      { name: "repeat", type: "text" },
     ],
   },
   {
@@ -208,6 +210,10 @@ export interface Task extends SyncMeta {
   position: number;
   pinned: number;
   created_at: number;
+  /** Repeat rule (see lib/repeat); null for a task that happens once. */
+  repeat: string | null;
+  /** Never stored: set on the calendar's projected later occurrences of a repeating task, to the real task's id. */
+  ghostOf?: string;
 }
 
 export interface Setting extends SyncMeta {

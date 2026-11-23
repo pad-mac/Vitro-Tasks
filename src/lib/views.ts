@@ -1,5 +1,6 @@
 // Pure view logic: which tasks a view shows, and how they are grouped and sorted.
-import { addDays, todayKey } from "./dates";
+import { addDays, diffDays, todayKey } from "./dates";
+import { occurrences, parseRule } from "./repeat";
 import { applyRanks, type Ranks } from "./order";
 import type { GroupBy, List, Section, SortBy, Task, ViewMode } from "../shared/schema";
 
@@ -327,6 +328,38 @@ export function defaultsForView(view: ViewRef, today = todayKey()): Partial<Task
     if (view.id === "deadlines") return { deadline_date: today };
   }
   return {};
+}
+
+/**
+ * The calendar's tasks plus the later occurrences of open repeating tasks
+ * from `from` to `to`, as entries with ids "<id>~<date>" and `ghostOf` set to
+ * the real task. Only the calendar shows these; every other view shows a
+ * repeating task once, on its current date.
+ */
+export function withRepeats(tasks: Task[], from: string, to: string): Task[] {
+  let out: Task[] | null = null;
+  for (const t of tasks) {
+    if (!t.repeat || t.status !== 0 || t.parent_id || t.ghostOf) continue;
+    const base = t.start_date ?? t.deadline_date;
+    const rule = base ? parseRule(t.repeat) : null;
+    if (!rule || !base) continue;
+    // A span that starts before `from` can still reach into it.
+    const span = t.start_date && t.end_date && t.end_date > t.start_date ? diffDays(t.start_date, t.end_date) : 0;
+    for (const d of occurrences(rule, base, span ? addDays(from, -span) : from, to, 62)) {
+      if (d === base) continue;
+      const delta = diffDays(base, d);
+      const shift = (x: string | null) => (x ? addDays(x, delta) : null);
+      (out ??= tasks.slice()).push({
+        ...t,
+        id: `${t.id}~${d}`,
+        ghostOf: t.id,
+        start_date: shift(t.start_date),
+        end_date: shift(t.end_date),
+        deadline_date: shift(t.deadline_date),
+      });
+    }
+  }
+  return out ?? tasks;
 }
 
 /** Tasks that fall on a calendar day, as planned work or as a deadline. */

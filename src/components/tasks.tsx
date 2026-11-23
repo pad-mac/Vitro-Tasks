@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
+import { dateForRule } from "./RepeatPicker";
+import { describeRepeat } from "../lib/repeat";
 import { subtasksOf } from "../lib/views";
 import { haptic, isMobile } from "../lib/platform";
 import type { Task } from "../shared/schema";
@@ -231,8 +233,13 @@ export function useCreateTask() {
     if (!p.title) return null;
     const list = matchList(p.listQuery, lists);
     const patch: Partial<Task> & { title: string } = { ...base, title: p.title };
-    // A bare time ("15:00") keeps the day the task is being added to.
+    // A bare time ("15:00") keeps the day the task is being added to; so does a
+    // typed repeat without a date (moved to the first day its rule allows).
     if (p.start_date && !(p.dateImplied && base.start_date)) patch.start_date = p.start_date;
+    if (p.repeat) {
+      patch.repeat = p.repeat;
+      if (p.dateImplied && base.start_date) patch.start_date = dateForRule(p.repeat, base.start_date);
+    }
     if (p.start_time) patch.start_time = p.start_time;
     if (p.deadline_date) patch.deadline_date = p.deadline_date;
     if (p.deadline_time) patch.deadline_time = p.deadline_time;
@@ -299,6 +306,12 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
     </span>
   );
   const showDetails = useStore((s) => s.showDetails);
+  // Repeats: a small mark beside the date (the task shows once, on its current date).
+  const repeat = task.repeat && open && (
+    <span className="meta-repeat" title={describeRepeat(task.repeat, task.start_date ?? task.deadline_date, true)}>
+      <Icon name="repeat" size={11} />
+    </span>
+  );
   return (
     <span className="task-meta">
       {!dotList && listEl}
@@ -316,6 +329,7 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
       {task.start_date && (
         <span className={`meta-date ${open && task.start_date < today ? "is-overdue" : ""}`}>
           {formatDateTime(task.start_date, task.start_time, today)}
+          {repeat}
         </span>
       )}
       {task.deadline_date && (
@@ -325,6 +339,7 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
         >
           <Icon name="deadline" size={11} />
           {formatDateTime(task.deadline_date, task.deadline_time, today)}
+          {!task.start_date && repeat}
           {open && <em>{deadlineCountdown(task.deadline_date, today)}</em>}
         </span>
       )}

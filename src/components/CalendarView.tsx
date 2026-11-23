@@ -15,7 +15,8 @@ import {
   todayKey,
 } from "../lib/dates";
 import { plainText } from "../lib/rich";
-import { entriesForDay, hiddenLists, tasksForView, type DayEntry } from "../lib/views";
+import { entriesForDay, hiddenLists, tasksForView, withRepeats, type DayEntry } from "../lib/views";
+import { describeRepeat } from "../lib/repeat";
 import type { Task } from "../shared/schema";
 import { anchorOf, useStore, type Anchor } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
@@ -218,57 +219,76 @@ function EdgeHandles({ task, start = true, end = true }: { task: Task; start?: b
   );
 }
 
+/** The mark on an entry of a repeating task (its later occurrences in the calendar are projections of it). */
+function RepeatMark({ task }: { task: Task }) {
+  if (!task.repeat || task.status !== 0) return null;
+  return (
+    <span className="cal-repeat" title={describeRepeat(task.repeat, task.start_date ?? task.deadline_date, true)}>
+      <Icon name="repeat" size={10} />
+    </span>
+  );
+}
+
 function Chip({ entry, timed, children }: { entry: DayEntry; timed?: boolean; children?: React.ReactNode }) {
   const lists = useStore((s) => s.lists);
-  const isSelected = useStore((s) => s.selectedId === entry.task.id);
-  const select = useStore((s) => s.select);
   const { task, kind } = entry;
-  const onMenu = useTaskMenu(task.id);
+  // A projected occurrence opens (and gets the menu of) the real task, and does not move.
+  const ghost = task.ghostOf;
+  const real = ghost ?? task.id;
+  const isSelected = useStore((s) => !ghost && s.selectedId === task.id);
+  const select = useStore((s) => s.select);
+  const onMenu = useTaskMenu(real);
   const color = lists.find((l) => l.id === task.list_id)?.color ?? "var(--faint)";
   const time = timeOf(entry);
   return (
     <div
-      className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""}`}
-      data-id={task.id}
+      className={`cal-chip ${kind === "deadline" ? "is-deadline" : time && !timed ? "is-timed" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""} ${ghost ? "is-ghost" : ""}`}
+      data-id={ghost ? undefined : task.id}
+      data-ghost={ghost}
       style={{ ["--c" as string]: color }}
       title={`${kind === "deadline" ? "Deadline: " : ""}${plainText(task.title)}`}
       onClick={(e) => {
         e.stopPropagation();
-        select(task.id, anchorOf(e.currentTarget));
+        select(real, anchorOf(e.currentTarget));
       }}
       onContextMenu={onMenu}
-      {...dragProps(task.id, kind)}
+      {...(ghost ? {} : dragProps(task.id, kind))}
     >
       {timed ? (
         <span className="cal-chip-line">
           {kind === "deadline" && <Icon name="deadline" size={11} />}
           <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+          <RepeatMark task={task} />
         </span>
       ) : (
         <>
           {kind === "deadline" && <Icon name="deadline" size={11} />}
           <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
+          <RepeatMark task={task} />
         </>
       )}
       {children}
       {time && !timed && <span className="cal-chip-time">{time}</span>}
-      {kind === "planned" && !time && !timed && <EdgeHandles task={task} />}
+      {kind === "planned" && !time && !timed && !ghost && <EdgeHandles task={task} />}
     </div>
   );
 }
 
 function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: number; c1: number; lane: number; top: number; from: string; to: string; n: number }) {
   const lists = useStore((s) => s.lists);
-  const isSelected = useStore((s) => s.selectedId === task.id);
+  const ghost = task.ghostOf;
+  const real = ghost ?? task.id;
+  const isSelected = useStore((s) => !ghost && s.selectedId === task.id);
   const select = useStore((s) => s.select);
-  const onMenu = useTaskMenu(task.id);
+  const onMenu = useTaskMenu(real);
   const color = lists.find((l) => l.id === task.list_id)?.color ?? "var(--faint)";
   const left = task.start_date! < from;
   const right = task.end_date! > to;
   return (
     <div
-      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""}`}
-      data-id={task.id}
+      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""} ${ghost ? "is-ghost" : ""}`}
+      data-id={ghost ? undefined : task.id}
+      data-ghost={ghost}
       style={{
         ["--c" as string]: color,
         // Inset like the day's own chips (the cell's padding), so bars and chips start in line.
@@ -279,13 +299,14 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
       title={plainText(task.title)}
       onClick={(e) => {
         e.stopPropagation();
-        select(task.id, anchorOf(e.currentTarget));
+        select(real, anchorOf(e.currentTarget));
       }}
       onContextMenu={onMenu}
-      {...dragProps(task.id, "planned")}
+      {...(ghost ? {} : dragProps(task.id, "planned"))}
     >
       <span className="cal-chip-title">{plainText(task.title) || "Untitled"}</span>
-      <EdgeHandles task={task} start={!left} end={!right} />
+      <RepeatMark task={task} />
+      {!ghost && <EdgeHandles task={task} start={!left} end={!right} />}
     </div>
   );
 }
@@ -367,8 +388,10 @@ function WeekRow({
 }) {
   const days = useMemo(() => Array.from({ length: n }, (_, i) => addDays(start, i)), [start, n]);
   const end = days[n - 1];
+  // With the later occurrences of repeating tasks in these days.
+  const all = useMemo(() => withRepeats(tasks, start, end), [tasks, start, end]);
   const { spans, lanesAt } = useMemo(() => {
-    const list = tasks
+    const list = all
       .filter((t) => isSpan(t) && t.start_date! <= end && t.end_date! >= start)
       .sort((a, b) => (a.start_date! < b.start_date! ? -1 : a.start_date! > b.start_date! ? 1 : a.end_date! > b.end_date! ? -1 : a.id < b.id ? -1 : 1));
     const laneEnds: number[] = [];
@@ -383,10 +406,10 @@ function WeekRow({
       return { task, c0, c1, lane };
     });
     return { spans, lanesAt };
-  }, [tasks, start, end, n]);
+  }, [all, start, end, n]);
   const entriesByDay = useMemo(
-    () => days.map((d) => entriesForDay(tasks, d).filter((e) => !(e.kind === "planned" && isSpan(e.task)) && (month || !timeOf(e)))),
-    [tasks, days, month],
+    () => days.map((d) => entriesForDay(all, d).filter((e) => !(e.kind === "planned" && isSpan(e.task)) && (month || !timeOf(e)))),
+    [all, days, month],
   );
   // Rows that do not fit: bars in the last row stay only where nothing on their
   // days overflows; the rest of the overflow is counted in the "+N" row.
@@ -556,7 +579,7 @@ function TimedEvent({ p, resizeEnd, onResizeStart }: { p: Placed; resizeEnd: num
           {planned && (p.entry.task.end_time || resizeEnd !== null) ? ` – ${toTime(Math.min(end, 24 * 60 - 1))}` : ""}
         </span>
       </Chip>
-      {planned && <span className="week-resize" title="Drag to change the duration" onPointerDown={(e) => onResizeStart(e, p)} />}
+      {planned && !p.entry.task.ghostOf && <span className="week-resize" title="Drag to change the duration" onPointerDown={(e) => onResizeStart(e, p)} />}
     </div>
   );
 }
@@ -711,8 +734,12 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
   const colW = (paneW || 700) / n;
   const tracks = useRef<(HTMLDivElement | null)[]>([]);
   const wrap = useStore((s) => s.calWrap);
+  // The hour grid with the later occurrences of repeating tasks (the all-day row adds its own).
+  const first = days[0];
+  const last = days[n + 1];
+  const shown = useMemo(() => withRepeats(tasks, first, last), [tasks, first, last]);
   // Days with an open deadline get a frame in the header, whatever the deadline's time.
-  const deadlineDays = useMemo(() => new Set(tasks.filter((t) => t.status === 0 && t.deadline_date).map((t) => t.deadline_date!)), [tasks]);
+  const deadlineDays = useMemo(() => new Set(shown.filter((t) => t.status === 0 && t.deadline_date).map((t) => t.deadline_date!)), [shown]);
   const { range, handlers } = useDayRange();
   const glide = useGlide(colW, onShift, (px) => {
     for (const t of tracks.current) if (t) t.style.transform = `translateX(${-colW - px}px)`;
@@ -765,7 +792,7 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
           <div className="week-pane" ref={paneRef}>
             <div {...track(2, { height: "100%" })}>
               {days.map((d) => (
-                <HourColumn key={d} day={d} entries={entriesForDay(tasks, d).filter((e) => timeOf(e) && !(e.kind === "planned" && isSpan(e.task)))} />
+                <HourColumn key={d} day={d} entries={entriesForDay(shown, d).filter((e) => timeOf(e) && !(e.kind === "planned" && isSpan(e.task)))} />
               ))}
             </div>
           </div>
@@ -1010,7 +1037,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(t.clientX - s0.x)) closeDay();
   };
 
-  const dayEntries = focus ? entriesForDay(tasks, focus) : [];
+  const dayEntries = focus ? entriesForDay(withRepeats(tasks, focus, focus), focus) : [];
   const dayTasks = [...new Map(dayEntries.map((e) => [e.task.id, e.task])).values()].filter((t) => !t.parent_id);
   const [fy, fm, fd] = (focus ?? today).split("-").map(Number);
 
@@ -1057,7 +1084,7 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
                   </header>
                   <div className="m-day-list">
                     {dayTasks.length ? (
-                      dayTasks.map((t) => <TaskRow key={t.id} task={t} showList />)
+                      dayTasks.map((t) => (t.ghostOf ? <GhostRow key={t.id} task={t} /> : <TaskRow key={t.id} task={t} showList />))
                     ) : (
                       <p className="m-day-empty">Nothing on this day. Hold a day to add a task to it, or hold and move across days for a longer one.</p>
                     )}
@@ -1069,6 +1096,20 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
         })}
       </div>
     </div>
+  );
+}
+
+/** A later occurrence of a repeating task in the phone's day list: it opens the task, which sits on its current date. */
+function GhostRow({ task }: { task: Task }) {
+  const select = useStore((s) => s.select);
+  const real = useStore((s) => s.tasks.find((t) => t.id === task.ghostOf));
+  if (!real) return null;
+  return (
+    <button type="button" className="ghost-row" onClick={() => select(real.id)}>
+      <Icon name="repeat" size={14} />
+      <span className="ghost-title">{plainText(task.title) || "Untitled"}</span>
+      <span className="ghost-meta">{describeRepeat(real.repeat, real.start_date ?? real.deadline_date)}</span>
+    </button>
   );
 }
 
@@ -1253,7 +1294,7 @@ function CalendarViewImpl() {
           <header>
             {MONTHS_LONG[+expanded.day.slice(5, 7) - 1]} {+expanded.day.slice(8)}
           </header>
-          {entriesForDay(visible, expanded.day).map((e) => (
+          {entriesForDay(withRepeats(visible, expanded.day, expanded.day), expanded.day).map((e) => (
             <Chip key={`${e.task.id}:${e.kind}`} entry={e} />
           ))}
         </FloatingPanel>

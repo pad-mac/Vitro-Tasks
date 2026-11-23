@@ -119,6 +119,8 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
             date={start}
             time={task.start_time}
             range={span}
+            repeat={task.parent_id ? undefined : task.repeat}
+            onRepeat={task.parent_id ? undefined : (r) => void update(id, { repeat: r })}
             onChange={(d, t) =>
               void update(id, {
                 start_date: d,

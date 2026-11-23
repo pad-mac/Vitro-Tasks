@@ -17,6 +17,8 @@ import {
 import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
 import { moveInOrder, orderKey, parseRanks, positionsFor, ranksFor } from "./lib/order";
 import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
+import { advance } from "./lib/repeat";
+import { addDays, diffDays, todayKey } from "./lib/dates";
 import {
   SMART_DEFAULTS,
   listVisibility,
@@ -28,6 +30,26 @@ import {
   type VisibilityKey,
 } from "./lib/views";
 import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./shared/schema";
+
+/**
+ * What the undo button takes back: tasks that were completed, and for
+ * repeating ones the task as it was before it moved on, plus the copy that
+ * keeps the done occurrence.
+ */
+export interface Undo {
+  ids: string[];
+  restore?: Task[];
+  remove?: string[];
+}
+
+/** A repeating task done (or won't do) once: the copy that keeps this occurrence and where the task moves on to. */
+interface RepeatStep {
+  task: Task;
+  kids: Task[];
+  copy: Task;
+  kidCopies: Task[];
+  next: Partial<Task>;
+}
 
 /** How long a just-completed task stays (struck through) before it goes. */
 const LINGER_MS = 900;
@@ -71,6 +93,8 @@ export interface SyncState {
   status: "off" | "idle" | "syncing" | "error";
   message?: string;
   last?: number;
+  /** The server is too old to keep repeat rules. */
+  outdated?: boolean;
 }
 
 /** Screen rectangle a floating panel attaches to. */
@@ -143,7 +167,7 @@ interface State {
   /** Tasks just completed: still shown (struck through) for a moment, then gone. */
   lingering: Record<string, true>;
   /** The last completion, to take back from the undo button (until the view changes). */
-  undo: { ids: string[] } | null;
+  undo: Undo | null;
   /** Tasks whose subtasks are folded away in lists and on the board (kept on this device). */
   folded: Record<string, true>;
   /** Select mode: the selected task ids (null: not selecting). */
@@ -280,6 +304,8 @@ export interface ImportResult {
   /** Rows that were already there (and not older). */
   skipped: number;
   notes?: { repeating: number; tags: string[]; reminders: number };
+  /** Open tasks imported before repeats existed that got their repeat rule now. */
+  repeats?: number;
 }
 
 let db: Db;
@@ -420,13 +446,55 @@ export const useStore = create<State>((set, get) => {
     return listMap.get(listId)!;
   }
 
+  /**
+   * The step a repeating task takes when it is done (1) or skipped (2): a copy
+   * with this occurrence's dates and that status (its subtasks with it), and
+   * the task's dates moved by the same number of days to the next occurrence.
+   * Null when it does not repeat or its series is over (it is then done as usual).
+   */
+  function repeatStep(cur: Task, status: 1 | 2, at: number): RepeatStep | null {
+    const base = cur.start_date ?? cur.deadline_date;
+    if (!cur.repeat || !base || cur.parent_id) return null;
+    const next = advance(cur.repeat, base, todayKey());
+    if (!next) return null;
+    const delta = diffDays(base, next.date);
+    const shift = (d: string | null) => (d ? addDays(d, delta) : null);
+    const kids = get().tasks.filter((t) => t.parent_id === cur.id);
+    const copy: Task = { ...cur, id: uid(), status, completed_at: at, repeat: null };
+    const kidCopies = kids.map((k) => ({
+      ...k,
+      id: uid(),
+      parent_id: copy.id,
+      ...(k.status === 0 && status === 1 ? { status: 1, completed_at: at } : {}),
+    }));
+    return {
+      task: cur,
+      kids,
+      copy,
+      kidCopies,
+      next: { start_date: shift(cur.start_date), end_date: shift(cur.end_date), deadline_date: shift(cur.deadline_date), repeat: next.repeat },
+    };
+  }
+
+  /** Shows the whole step at once (no frame with both the copy and the unmoved task), then saves it. */
+  async function applyRepeatStep(step: RepeatStep) {
+    const moved: Task = { ...step.task, ...step.next };
+    // The next occurrence starts with its checklist open again.
+    const reopened = step.kids.filter((k) => k.status !== 0).map((k) => ({ ...k, status: 0, completed_at: null }));
+    const rows = [step.copy, ...step.kidCopies, moved, ...reopened];
+    let tasks = get().tasks;
+    for (const r of rows) tasks = replace(tasks, r);
+    set({ tasks });
+    for (const r of rows) stamp(r, (await save("tasks", r)).updated_at);
+  }
+
   /** One server's round trip, with its own state. */
   async function syncServer(server: SyncServer): Promise<number> {
     const mark = (st: SyncState) => set({ serverSync: { ...get().serverSync, [server.id]: st } });
     mark({ ...get().serverSync[server.id], status: "syncing", message: undefined });
     try {
       const r = await syncOnce(db, server);
-      mark({ status: "idle", last: Date.now() });
+      mark({ status: "idle", last: Date.now(), outdated: r.outdated });
       return r.pulled;
     } catch (e) {
       mark({ status: "error", message: e instanceof Error ? e.message : String(e), last: get().serverSync[server.id]?.last });
@@ -548,7 +616,17 @@ export const useStore = create<State>((set, get) => {
     async importTickTick(text, includeCompleted) {
       const r = readTickTick(text, { lists: get().lists }, { includeCompleted, colors: LIST_COLORS });
       const res = await writeImport({ lists: r.lists as unknown as Row[], sections: r.sections as unknown as Row[], tasks: r.tasks as unknown as Row[] }, "missing");
-      return { ...res, notes: r.notes };
+      // Tasks from an earlier import of the same backup get the repeat rules that did not carry over then.
+      let repeats = 0;
+      const here = new Map(get().tasks.map((t) => [t.id, t]));
+      for (const t of r.tasks) {
+        const l = here.get(t.id);
+        if (t.repeat && l && l.status === 0 && !l.repeat) {
+          await get().updateTask(l.id, { repeat: t.repeat });
+          repeats++;
+        }
+      }
+      return { ...res, notes: r.notes, repeats };
     },
 
     async reload() {
@@ -593,6 +671,12 @@ export const useStore = create<State>((set, get) => {
       for (const id of u.ids) {
         const t = get().tasks.find((x) => x.id === id);
         if (t && t.status !== 0) await get().updateTask(id, { status: 0, completed_at: null });
+      }
+      // Repeating tasks: back to the occurrence they were on, without the done copy.
+      for (const id of u.remove ?? []) await get().deleteTask(id);
+      for (const was of u.restore ?? []) {
+        const { id, updated_at: _u, origin: _o, ...fields } = was;
+        if (get().tasks.some((t) => t.id === id)) await get().updateTask(id, fields);
       }
     },
     toggleFold(id) {
@@ -746,6 +830,11 @@ export const useStore = create<State>((set, get) => {
       }
     },
     async setWontDo(id) {
+      const cur = get().tasks.find((t) => t.id === id);
+      if (!cur) return;
+      // A repeating task skips this occurrence: a won't-do copy keeps it, the task moves on.
+      const step = cur.status === 0 ? repeatStep(cur, 2, Date.now()) : null;
+      if (step) return applyRepeatStep(step);
       await get().updateTask(id, { status: 2, completed_at: Date.now() });
     },
     async setTheme(theme) {
@@ -785,8 +874,9 @@ export const useStore = create<State>((set, get) => {
         created_at: now,
         updated_at: now,
         deleted: 0,
+        repeat: null,
         ...patch,
-      };
+      } as Task;
       const saved = await save("tasks", task);
       set({ tasks: [...get().tasks, saved] });
       return saved;
@@ -814,8 +904,9 @@ export const useStore = create<State>((set, get) => {
         created_at: now,
         updated_at: now,
         deleted: 0,
+        repeat: null,
         ...patch,
-      };
+      } as Task;
       set({ tasks: [...get().tasks, task] });
       // Only the timestamp comes back: the line may already have been written in.
       void save("tasks", task).then((saved) => stamp(task, saved.updated_at));
@@ -867,19 +958,29 @@ export const useStore = create<State>((set, get) => {
       const tasks = get().tasks;
       const open = ids.filter((id) => tasks.some((t) => t.id === id && t.status === 0));
       if (!open.length) return;
+      const at = Date.now();
+      // A repeating task moves on to its next date; a done copy keeps this occurrence.
+      const steps = open.map((id) => repeatStep(tasks.find((t) => t.id === id)!, 1, at)).filter((x): x is RepeatStep => !!x);
+      const moving = new Set(steps.map((x) => x.task.id));
+      const plain = open.filter((id) => !moving.has(id));
       // Open subtasks are done with their parent.
-      const all = [...new Set(open.flatMap((id) => [id, ...tasks.filter((t) => t.parent_id === id && t.status === 0).map((t) => t.id)]))];
+      const all = [...new Set(plain.flatMap((id) => [id, ...tasks.filter((t) => t.parent_id === id && t.status === 0).map((t) => t.id)]))];
+      const copies = steps.flatMap((x) => [x.copy.id, ...x.kidCopies.map((k) => k.id)]);
       haptic("success");
       if (!opts.quiet) {
         // Struck through where they are for a moment, then gone; the undo button stays until the view changes.
-        set({ lingering: { ...get().lingering, ...Object.fromEntries(all.map((x) => [x, true as const])) }, undo: { ids: all } });
+        const shown = [...all, ...copies];
+        set({
+          lingering: { ...get().lingering, ...Object.fromEntries(shown.map((x) => [x, true as const])) },
+          undo: { ids: all, restore: steps.flatMap((x) => [x.task, ...x.kids]), remove: steps.map((x) => x.copy.id) },
+        });
         setTimeout(() => {
           const l = { ...get().lingering };
-          for (const x of all) delete l[x];
+          for (const x of shown) delete l[x];
           set({ lingering: l });
         }, LINGER_MS);
       }
-      const at = Date.now();
+      for (const step of steps) await applyRepeatStep(step);
       for (const x of all) await get().updateTask(x, { status: 1, completed_at: at });
     },
 
