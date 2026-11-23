@@ -1411,8 +1411,14 @@ html.pin-h .app { height: var(--app-h); flex: none; }
 .btn.is-danger { color: var(--red); }
 .btn.is-danger:hover { border-color: var(--red); }
 
-/* ---------- Desktop: the lists in the sidebar quietly subdued (as in his TickTick) ---------- */
-html:not(.is-mobile) .sidebar { opacity: 0.7; filter: brightness(0.9); }
+/* ---------- Desktop: the sidebar's grey text quietly subdued (as in his TickTick); list colours stay full ---------- */
+/* Fixed mixes of the theme's own greys with its background, set once (no filter over the colours). */
+:root {
+  --side-text: color-mix(in oklab, var(--text) 66%, var(--bg));
+  --side-muted: color-mix(in oklab, var(--muted) 78%, var(--bg));
+  --side-faint: color-mix(in oklab, var(--faint) 82%, var(--bg));
+}
+html:not(.is-mobile) .sidebar { --text: var(--side-text); --muted: var(--side-muted); --faint: var(--side-faint); }
 
 /* ---------- Right-click menu: the phone's rules — even padding all round, square cells, one highlight radius (8 + 6 = 14) ---------- */
 .floating:has(> .menu.cm) { border-radius: 14px; }

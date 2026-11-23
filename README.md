@@ -53,7 +53,7 @@ Example: `Draft chapter wed ^30.11. !high #research` · `Team call every 2 weeks
 
 All of them can be changed under Settings → Shortcuts. Single-key shortcuts do nothing while you are typing.
 
-Selected things take the plain colours of the theme (no highlight colour): a picked date gets an empty ring, switches are a thin outline with a dot.
+Selected things take the plain colours of the theme (no highlight colour): a picked date gets an empty ring, switches are a thin outline with a dot. On the desktop the sidebar's text is a quieter grey than the page's; list colours and marks there stay at full strength.
 
 ### Importing from TickTick
 
