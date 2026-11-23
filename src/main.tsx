@@ -27,11 +27,34 @@ if (isMobile) document.documentElement.classList.add("is-mobile");
 if (hasNative()) document.documentElement.classList.add("is-native");
 
 // The on-screen keyboard: how much of the window it covers, for sheets that sit on top of it.
+// `kb-up`: the keyboard is up, whether the web view was shortened above it
+// (the iOS app) or the keyboard lies over it (--kb): sheets on top of it drop
+// their home-indicator padding, so the row above the keyboard is evenly padded.
 if (isMobile && window.visualViewport) {
   const vv = window.visualViewport;
-  const onResize = () => document.documentElement.style.setProperty("--kb", `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`);
+  const onResize = () => {
+    const kb = Math.max(0, innerHeight - vv.height - vv.offsetTop);
+    const root = document.documentElement;
+    root.style.setProperty("--kb", `${kb}px`);
+    root.classList.toggle("kb-up", kb > 60 || innerHeight < screen.height - 120);
+  };
   vv.addEventListener("resize", onResize);
   vv.addEventListener("scroll", onResize);
+  window.addEventListener("resize", onResize);
+  document.addEventListener("visibilitychange", () => setTimeout(onResize, 50));
+  onResize();
+}
+
+// Leaving the app while writing: iOS takes the keyboard away but leaves the
+// field focused, and coming back the editor sat there stuck (bar down, no
+// keyboard, a tap on the field did nothing). The writing ends instead; a tap
+// starts it again. Text is kept (every field saves on blur).
+if (isMobile) {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "hidden") return;
+    const a = document.activeElement as HTMLElement | null;
+    if (a?.matches("input, textarea, [contenteditable='true']")) a.blur();
+  });
 }
 
 // iOS: if the web view is ever left short without a keyboard (the keyboard

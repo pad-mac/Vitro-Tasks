@@ -26,22 +26,19 @@ import { Flag, Icon, usePresence } from "./ui";
 export function MobileBar({
   settingsOpen,
   hidden,
-  onSettings,
   onCloseSettings,
   onAdd,
 }: {
   settingsOpen: boolean;
   hidden: boolean;
-  onSettings: () => void;
   onCloseSettings: () => void;
   onAdd: () => void;
 }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const lastTaskView = useStore((s) => s.lastTaskView);
-  const syncError = useStore((s) => s.sync.status === "error");
   const inCalendar = view.kind === "calendar";
-  const active = settingsOpen ? "settings" : inCalendar ? "calendar" : "tasks";
+  const active = inCalendar ? "calendar" : "tasks";
   const tabs = {
     tasks: () => {
       holdMenu.close();
@@ -52,10 +49,6 @@ export function MobileBar({
       holdMenu.close();
       onCloseSettings();
       setView({ kind: "calendar" });
-    },
-    settings: () => {
-      holdMenu.close();
-      onSettings();
     },
   };
   const tabsRef = useRef(tabs);
@@ -68,37 +61,34 @@ export function MobileBar({
       }),
     [],
   );
-  useEffect(() => postNative({ type: "bar", visible: !hidden, active, badge: syncError }), [hidden, active, syncError]);
+  // Settings (opened from the sidebar) show only a round back button, bottom left: no tabs, no +.
+  useEffect(() => postNative({ type: "bar", visible: !hidden, active, back: settingsOpen }), [hidden, active, settingsOpen]);
   const press = (down: boolean) => () => postNative({ type: "press", down });
+  const pressProps = { onTouchStart: press(true), onTouchEnd: press(false), onTouchCancel: press(false) };
   return (
-    <nav className={`m-bar ${hidden ? "is-hidden" : ""}`} aria-hidden={hidden}>
-      <div className="m-tabs">
-        <button type="button" className={active === "tasks" ? "is-active" : ""} onClick={tabs.tasks}>
-          <Icon name="tasks" size={21} />
-          <span>Tasks</span>
+    <nav className={`m-bar ${hidden ? "is-hidden" : ""} ${settingsOpen ? "is-back" : ""}`} aria-hidden={hidden}>
+      {settingsOpen ? (
+        <button type="button" className="m-back" aria-label="Back" onClick={onCloseSettings} {...pressProps}>
+          <Icon name="chevron" size={22} />
         </button>
-        <button type="button" className={active === "calendar" ? "is-active" : ""} onClick={tabs.calendar}>
-          <Icon name="calendar" size={21} />
-          <span>Calendar</span>
-        </button>
-        <button type="button" className={active === "settings" ? "is-active" : ""} onClick={tabs.settings}>
-          <Icon name="settings" size={21} />
-          <span>Settings</span>
-          {syncError && <i className="m-badge" />}
-        </button>
-      </div>
-      {/* Focus has to happen inside the tap itself, or iOS keeps the keyboard closed. */}
-      <button
-        type="button"
-        className="m-add pearl"
-        aria-label="Add task"
-        onClick={onAdd}
-        onTouchStart={press(true)}
-        onTouchEnd={press(false)}
-        onTouchCancel={press(false)}
-      >
-        <Icon name="plus" size={24} />
-      </button>
+      ) : (
+        <>
+          <div className="m-tabs">
+            <button type="button" className={active === "tasks" ? "is-active" : ""} onClick={tabs.tasks}>
+              <Icon name="tasks" size={21} />
+              <span>Tasks</span>
+            </button>
+            <button type="button" className={active === "calendar" ? "is-active" : ""} onClick={tabs.calendar}>
+              <Icon name="calendar" size={21} />
+              <span>Calendar</span>
+            </button>
+          </div>
+          {/* Focus has to happen inside the tap itself, or iOS keeps the keyboard closed. */}
+          <button type="button" className="m-add pearl" aria-label="Add task" onClick={onAdd} {...pressProps}>
+            <Icon name="plus" size={24} />
+          </button>
+        </>
+      )}
     </nav>
   );
 }
@@ -667,8 +657,13 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
   const hover = () => {
     if (!last) return;
     const under = document.elementFromPoint(last.x, last.y)?.closest("[data-drop-group]") ?? null;
-    // Gaps between groups keep the last group, so its line does not blink.
-    if (under) group = under;
+    // Gaps between groups keep the last group, so its line does not blink; another
+    // group takes over only once the finger is clearly inside it (no flicker on the border).
+    if (under && under !== group) {
+      const r = under.getBoundingClientRect();
+      const depth = Math.min(last.y - r.top, r.bottom - last.y, last.x - r.left, r.right - last.x);
+      if (!group?.isConnected || depth > 14) group = under;
+    }
     if (group) send("vitro:touchover", group);
   };
   const barTop = document.querySelector(".m-bar:not(.is-hidden) .m-tabs")?.getBoundingClientRect().top ?? innerHeight;
@@ -676,7 +671,7 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
   const tick = () => {
     if (last) {
       const at = document.elementFromPoint(last.x, last.y);
-      const scroller = at?.closest<HTMLElement>(".list-view, .column-body, .m-day-list, .detail-sec");
+      const scroller = at?.closest<HTMLElement>(".list-view, .column-body, .m-day-list, .detail-body");
       const sc = scroller?.getBoundingClientRect();
       if (scroller && sc) {
         const bottom = Math.min(sc.bottom, barTop - 8);
@@ -770,18 +765,28 @@ export function useSwipe(onPage: (dir: number) => void, vertical: boolean) {
 export function useEdgeSwipe() {
   useEffect(() => {
     if (!isMobile) return;
-    let start: { x: number; y: number; open: boolean } | null = null;
+    // Also in the calendar. A finger that rests first (holding a day to drag a range) is no swipe.
+    let start: { x: number; y: number; t: number; moved: boolean; open: boolean } | null = null;
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       const st = useStore.getState();
-      if (e.touches.length !== 1 || st.view.kind === "calendar" || st.selectedId) return;
-      if (st.drawerOpen || t.clientX < 24) start = { x: t.clientX, y: t.clientY, open: st.drawerOpen };
+      if (e.touches.length !== 1 || st.selectedId || holdMenu.isOpen()) return;
+      if (st.drawerOpen || t.clientX < 24) start = { x: t.clientX, y: t.clientY, t: Date.now(), moved: false, open: st.drawerOpen };
     };
     const onMove = (e: TouchEvent) => {
       if (!start) return;
       const t = e.touches[0];
       const dx = t.clientX - start.x;
       const dy = t.clientY - start.y;
+      if (!start.moved) {
+        // Moving only after resting is a hold (a day range, a task): not the sidebar.
+        if (Date.now() - start.t > 260) {
+          start = null;
+          return;
+        }
+        if (Math.hypot(dx, dy) < 6) return;
+        start.moved = true;
+      }
       if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx)) {
         start = null;
         return;
@@ -820,6 +825,11 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
   const [shown, closing] = usePresence(task, 220);
   const [full, setFull] = useState(false);
   const [typing, setTyping] = useState(false);
+  // Half open and not writing, the editor is a preview from its top (the title is in the scrolling body).
+  useEffect(() => {
+    const body = ref.current?.querySelector<HTMLElement>(".detail-body");
+    if (body && !full && !typing) body.scrollTop = 0;
+  }, [full, typing]);
   const ref = useRef<HTMLDivElement>(null);
   const gesture = useRef<{
     y: number;
@@ -909,7 +919,7 @@ export function MobileTaskSheet({ task }: { task: Task | null }) {
     }
     // A part that scrolls (a long description, many subtasks) keeps its moves, except a pull down from its top.
     // (Half open, a part only scrolls while being written in; otherwise it is a cut preview the sheet is pulled by.)
-    const sec = target.closest<HTMLElement>(".detail-sec");
+    const sec = target.closest<HTMLElement>(".detail-body");
     const scroller = sec && sec.scrollHeight > sec.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sec).overflowY) ? sec : null;
     gesture.current = { x: t.clientX, y: t.clientY, lastY: t.clientY, lastT: Date.now(), v: 0, active: false, scroller };
   };

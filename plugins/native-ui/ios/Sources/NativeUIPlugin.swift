@@ -110,8 +110,11 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       webview.backgroundColor = bg
       webview.scrollView.backgroundColor = bg
     }
+    // Behind the web view (what the keyboard's rounded corners show while the
+    // web view ends above it): the colour at the bottom of the page, as the page reports it.
     if let color = backdrop ?? background {
       webview.superview?.backgroundColor = color
+      webview.window?.backgroundColor = color
     }
   }
 
@@ -180,19 +183,22 @@ public func initPlugin() -> Plugin {
 
 // MARK: - Glass tab bar
 
-/// Tasks, Calendar and Settings in one glass capsule, and a round + next to
+/// Tasks and Calendar in one glass capsule (Settings is in the sidebar), and a round + next to
 /// it. Covers the whole screen but only takes touches on the capsule; the +
 /// only draws, so its tap reaches the page below (the page has to focus its
 /// text field inside the touch, or iOS keeps the keyboard closed).
 final class GlassBar: UIView {
   var onTab: ((String) -> Void)?
 
-  private let ids = ["tasks", "calendar", "settings"]
+  private let ids = ["tasks", "calendar"]
   private let tabs: UIVisualEffectView
   private let add: UIVisualEffectView
   private let addIcon = UIImageView()
+  // On pages outside the tabs (settings): only a round back button, bottom left.
+  private let back: UIVisualEffectView
+  private let backIcon = UIImageView()
+  private var backMode = false
   private let pill = UIView()
-  private let badge = UIView()
   private var items: [TabItem] = []
   private var slots: [CGRect] = []
   private var active = 0
@@ -204,11 +210,13 @@ final class GlassBar: UIView {
   override init(frame: CGRect) {
     tabs = UIVisualEffectView(effect: GlassBar.glass(interactive: true))
     add = UIVisualEffectView(effect: GlassBar.glass(interactive: false))
+    back = UIVisualEffectView(effect: GlassBar.glass(interactive: false))
     super.init(frame: frame)
     backgroundColor = .clear
     alpha = 0
     addSubview(tabs)
     addSubview(add)
+    addSubview(back)
 
     pill.isUserInteractionEnabled = false
     pill.backgroundColor = UIColor { traits in
@@ -217,7 +225,7 @@ final class GlassBar: UIView {
     pill.layer.cornerCurve = .continuous
     tabs.contentView.addSubview(pill)
 
-    let specs: [(String, String)] = [("checklist", "Tasks"), ("calendar", "Calendar"), ("gearshape", "Settings")]
+    let specs: [(String, String)] = [("checklist", "Tasks"), ("calendar", "Calendar")]
     for (index, spec) in specs.enumerated() {
       let item = TabItem(symbol: spec.0, title: spec.1)
       item.tag = index
@@ -227,18 +235,19 @@ final class GlassBar: UIView {
     }
     items[0].setActive(true)
 
-    // Sync trouble: a small red dot on Settings.
-    badge.backgroundColor = .systemRed
-    badge.layer.cornerRadius = 3.5
-    badge.isHidden = true
-    badge.isUserInteractionEnabled = false
-    items[2].addSubview(badge)
-
     addIcon.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 21, weight: .semibold))
     addIcon.tintColor = .label
     addIcon.contentMode = .center
     add.contentView.addSubview(addIcon)
     add.isUserInteractionEnabled = false
+
+    // Like the +, the back button only draws; its tap reaches the page's own button below.
+    backIcon.image = UIImage(systemName: "chevron.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold))
+    backIcon.tintColor = .label
+    backIcon.contentMode = .center
+    back.contentView.addSubview(backIcon)
+    back.isUserInteractionEnabled = false
+    back.alpha = 0
 
     let center = NotificationCenter.default
     center.addObserver(self, selector: #selector(keyboardShows), name: UIResponder.keyboardWillShowNotification, object: nil)
@@ -281,9 +290,12 @@ final class GlassBar: UIView {
     let addX = bounds.width - 16 - h
     setFrame(add, CGRect(x: addX, y: y, width: h, height: h))
     setFrame(tabs, CGRect(x: 16, y: y, width: max(0, addX - 10 - 16), height: h))
+    setFrame(back, CGRect(x: 16, y: y, width: h, height: h))
     GlassBar.round(add, h / 2)
     GlassBar.round(tabs, h / 2)
+    GlassBar.round(back, h / 2)
     addIcon.frame = CGRect(x: 0, y: 0, width: h, height: h)
+    backIcon.frame = CGRect(x: 0, y: 0, width: h, height: h)
 
     let width = (tabs.bounds.width - 8) / CGFloat(max(1, items.count))
     slots = items.indices.map { CGRect(x: 4 + CGFloat($0) * width, y: 4, width: width, height: h - 8) }
@@ -291,7 +303,6 @@ final class GlassBar: UIView {
       item.bounds = CGRect(origin: .zero, size: slots[index].size)
       item.center = CGPoint(x: slots[index].midX, y: slots[index].midY)
     }
-    badge.frame = CGRect(x: width / 2 + 7, y: 6, width: 7, height: 7)
     pill.layer.cornerRadius = (h - 8) / 2
     if active < slots.count { pill.frame = slots[active] }
   }
@@ -335,12 +346,20 @@ final class GlassBar: UIView {
     }
   }
 
-  /// From the page: { visible, active: "tasks" | "calendar" | "settings", badge }.
+  /// From the page: { visible, active: "tasks" | "calendar", back }. With `back` (settings)
+  /// only the round back button shows, in place of the tabs and the +.
   func update(_ body: [String: Any]) {
     if let name = body["active"] as? String, let index = ids.firstIndex(of: name) {
       setActive(index, animated: alpha > 0.5)
     }
-    if let error = body["badge"] as? Bool { badge.isHidden = !error }
+    if let b = body["back"] as? Bool, b != backMode {
+      backMode = b
+      UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+        self.tabs.alpha = b ? 0 : 1
+        self.add.alpha = b ? 0 : 1
+        self.back.alpha = b ? 1 : 0
+      }
+    }
     if let visible = body["visible"] as? Bool { wanted = visible }
     refresh()
   }
@@ -357,16 +376,18 @@ final class GlassBar: UIView {
       self.alpha = target
       self.tabs.transform = shift
       self.add.transform = shift
+      self.back.transform = shift
     }
   }
 
-  /// The page reports touches on its + (the tap itself happens there).
+  /// The page reports touches on its + or back button (the tap itself happens there).
   func press(_ down: Bool) {
+    let button = backMode ? back : add
     UIView.animate(
       withDuration: down ? 0.12 : 0.36, delay: 0, usingSpringWithDamping: down ? 1 : 0.55,
       initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction]
     ) {
-      self.add.transform = down ? CGAffineTransform(scaleX: 0.9, y: 0.9) : .identity
+      button.transform = down ? CGAffineTransform(scaleX: 0.9, y: 0.9) : .identity
     }
   }
 

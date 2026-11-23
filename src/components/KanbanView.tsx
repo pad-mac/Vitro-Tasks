@@ -11,12 +11,13 @@ function CardSub({ task, parent }: { task: Task; parent: Task }) {
   const select = useStore((s) => s.select);
   const toggle = useStore((s) => s.toggleTask);
   const selecting = useStore((s) => s.selecting);
+  const open = useStore((s) => s.selectedId === task.id);
   const picked = !!selecting?.includes(task.id);
   const leaving = useLeaving(task, parent);
   const showDetails = useStore((s) => s.showDetails);
   return (
     <div
-      className={`card-sub ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""}`}
+      className={`card-sub ${task.status ? "is-done" : ""} ${leaving ? "is-leaving" : ""} ${picked ? "is-picked" : ""} ${open && !selecting ? "is-selected" : ""}`}
       data-sub={task.id}
       onClick={(e) => {
         e.stopPropagation();

@@ -262,6 +262,18 @@ export function usePresence<T>(value: T | null, ms = 140): [T | null, boolean] {
  * page (so scrolling containers cannot clip it), opens below the trigger or
  * above it when there is no room, and closes on outside press or Escape.
  */
+let probe: HTMLElement | null = null;
+/** The screen's safe-area insets (status bar, home indicator) in pixels. */
+export function safeInsets(): { top: number; bottom: number } {
+  if (!probe) {
+    probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)";
+    document.body.appendChild(probe);
+  }
+  const cs = getComputedStyle(probe);
+  return { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0 };
+}
+
 export function Popover({
   trigger,
   children,
@@ -291,12 +303,16 @@ export function Popover({
     const h = el.offsetHeight;
     const gap = 6;
     const m = 8;
+    // Never under the status bar or the home indicator.
+    const safe = safeInsets();
+    const mt = Math.max(m, safe.top + 6);
+    const mb = Math.max(m, safe.bottom);
     const below = t.bottom + gap;
     const above = t.top - gap - h;
-    const fitsBelow = below + h <= innerHeight - m;
-    const fitsAbove = above >= m;
+    const fitsBelow = below + h <= innerHeight - mb;
+    const fitsAbove = above >= mt;
     let top = prefer === "above" ? (fitsAbove || !fitsBelow ? above : below) : fitsBelow || !fitsAbove ? below : above;
-    top = Math.max(m, Math.min(innerHeight - h - m, top));
+    top = Math.max(mt, Math.min(innerHeight - h - mb, top));
     let left = align === "right" ? t.right - w : t.left;
     left = Math.max(m, Math.min(innerWidth - w - m, left));
     setPos((p) => (p && p.left === left && p.top === top ? p : { left, top }));

@@ -6,6 +6,8 @@
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --r: 8px;
   --r-lg: 12px;
+  /* Every rectangular button highlight on the phone: concentric with the 20px menus around them (20 − 8 padding). */
+  --r-hl: 12px;
   --fast: 120ms cubic-bezier(0.2, 0, 0, 1);
 
   --chrome: #dcdcdc;
@@ -550,11 +552,9 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .dl-label { padding: 10px 12px 0; color: var(--signal); }
 .detail-popup .detail-head { height: 50px; }
 .arrow { color: var(--faint); margin: 0 -4px; }
-.detail-body { flex: 1; overflow: hidden; padding: 16px 20px 10px; display: flex; flex-direction: column; gap: 10px; min-height: 90px; }
-/* Title, description, subtasks: the title never gives way; the two parts below it share the rest (useSplit). */
+/* Title, description, subtasks: one column that scrolls as a whole (useEditorScroll). */
+.detail-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px 10px; display: flex; flex-direction: column; gap: 10px; min-height: 90px; }
 .detail-body > * { flex: none; }
-.detail-sec { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.detail-sep { display: block; height: 1px; background: var(--line-soft); }
 .crumb { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12.5px; }
 .crumb:hover { color: var(--text); }
 .detail-title { width: 100%; font-size: 20px; font-weight: 700; line-height: 1.3; resize: none; overflow: hidden; letter-spacing: -0.015em; }
@@ -819,9 +819,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 /* Long press lifts the item; a drag carries a copy of it. */
 .is-mobile .is-lifted { transform: scale(0.985); background: var(--active); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), background 180ms; }
 /* Glass shared by the held task and its menu: light, see-through, blurred. */
-:root { --glass: rgba(255, 255, 255, 0.5); --glass-line: rgba(0, 0, 0, 0.07); }
-:root[data-theme="dark"] { --glass: rgba(98, 98, 104, 0.4); --glass-line: rgba(255, 255, 255, 0.1); }
-.floating-copy { position: fixed; z-index: 310; margin: 0; background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(2); backdrop-filter: blur(16px) saturate(2); border: 0.5px solid var(--glass-line); border-radius: 14px; will-change: transform; transition: transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 220ms, opacity 160ms; }
+:root { --glass: rgba(255, 255, 255, 0.5); --glass-line: rgba(0, 0, 0, 0.07); --hm-bg: rgba(246, 246, 246, 0.9); }
+:root[data-theme="dark"] { --glass: rgba(98, 98, 104, 0.4); --glass-line: rgba(255, 255, 255, 0.1); --hm-bg: rgba(58, 58, 62, 0.92); }
+/* Lifted and dragged tasks: solid, no see-through. */
+.floating-copy { position: fixed; z-index: 310; margin: 0; background: var(--float); border: 0.5px solid var(--line); border-radius: 14px; will-change: transform; transition: transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 220ms, opacity 160ms; }
 .drag-ghost { pointer-events: none; transition: none; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2); }
 .drag-ghost.is-catching { transition: transform 140ms cubic-bezier(0.2, 0.9, 0.25, 1); }
 .drag-ghost.is-landing { transition: transform 180ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 180ms, opacity 160ms; box-shadow: none; }
@@ -833,9 +834,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 :root[data-theme="dark"] .hold-scrim { background: rgba(0, 0, 0, 0.45); }
 .hold-menu {
   position: fixed; z-index: 320; overflow-y: auto; overscroll-behavior: contain;
-  padding: 6px 0; border-radius: 20px; font-family: Inter, system-ui, sans-serif;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(16px) saturate(2); backdrop-filter: blur(16px) saturate(2);
+  /* One padding all round (8px); the cells inside are concentric with the menu: radius 20 − 8 = 12 (--r-hl). */
+  padding: 8px 0; border-radius: 20px; font-family: Inter, system-ui, sans-serif;
+  background: var(--hm-bg);
+  -webkit-backdrop-filter: blur(8px) saturate(1.4); backdrop-filter: blur(8px) saturate(1.4);
   border: 0.5px solid var(--glass-line);
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.08);
   animation: hold-menu-in 190ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
@@ -849,11 +851,12 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 @keyframes hold-out { to { opacity: 0; } }
 @keyframes hold-menu-in { from { opacity: 0; transform: scale(0.94); } }
 @keyframes hold-menu-out { to { opacity: 0; transform: scale(0.96); } }
-.hm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 2px 10px; }
-.hm-cell { height: 46px; display: grid; place-items: center; border-radius: 12px; color: var(--text); }
+.hm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 8px; }
+.hm-row + .hm-row { margin-top: 4px; }
+.hm-cell { height: 46px; display: grid; place-items: center; border-radius: var(--r-hl); color: var(--text); }
 .hm-cell .icon:not(.flag-icon) { color: var(--text); }
 .hm-cell.is-active { background: color-mix(in oklab, var(--text) 8%, transparent); }
-.hm-sep { height: 0.5px; margin: 5px 16px; background: color-mix(in oklab, var(--text) 16%, transparent); }
+.hm-sep { height: 0.5px; margin: 6px 16px; background: color-mix(in oklab, var(--text) 16%, transparent); }
 .hm-item { width: 100%; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: var(--text); font-size: 15.5px; letter-spacing: -0.01em; text-align: left; }
 .hm-item > .icon { stroke-width: 1.3; }
 .hm-item > .icon:first-child { flex: none; color: var(--text); }
@@ -862,7 +865,8 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .hm-item > .icon:last-child:not(:first-child) { color: var(--muted); }
 .hm-item.is-danger, .hm-item.is-danger > .icon:first-child { color: var(--red); }
 .hm-cell.is-hot, .hm-item.is-hot { background: color-mix(in oklab, var(--text) 13%, transparent); }
-.hm-item.is-hot { border-radius: 0; }
+.hm-item.is-hot { border-radius: var(--r-hl); }
+.hm-item { width: calc(100% - 16px); margin: 0 8px; padding: 0 10px; }
 /* The pickers that open from it (date, deadline, move) share its glass. */
 .is-mobile .context-menu {
   background: var(--glass);
@@ -990,7 +994,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 
 /* A task opens in a sheet; pulled up it fills the screen. */
 .m-task-scrim { z-index: 88; }
-.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 46%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: max(6px, calc(env(safe-area-inset-bottom, 0px) - 12px)); transition: transform 280ms cubic-bezier(0.2, 0.9, 0.25, 1); animation: sheet-in 280ms cubic-bezier(0.2, 0.9, 0.25, 1); will-change: transform; }
+.m-task-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; height: 46%; display: flex; flex-direction: column; background: var(--float); border-top: 0.5px solid var(--line); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.16); padding-bottom: max(4px, calc(env(safe-area-inset-bottom, 0px) - 24px)); transition: transform 280ms cubic-bezier(0.2, 0.9, 0.25, 1); animation: sheet-in 280ms cubic-bezier(0.2, 0.9, 0.25, 1); will-change: transform; }
 /* The sheet goes on below its edge, so it never shows a gap while it glides or is pulled up. */
 .m-task-sheet::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--float); pointer-events: none; }
 /* Typing: the keyboard takes the lower half, so the sheet takes more of what is left. */
@@ -1000,11 +1004,11 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet.is-closing { transform: translateY(100%); transition: transform 200ms cubic-bezier(0.3, 0, 0.7, 0.4); }
 .m-task-sheet .detail { flex: 1; min-height: 0; width: auto; border: 0; position: static; animation: none; background: transparent; }
 .m-task-sheet:not(.is-full) .pane-back { display: none; }
-.m-grabber { flex: none; height: 22px; display: grid; place-items: center; }
+.m-grabber { position: relative; flex: none; height: 22px; display: grid; place-items: center; }
 
 /* The editor in the sheet keeps its layout; on the phone it follows one gutter,
    every control is at least 40px, and the text is a step larger. */
-.m-task-sheet .detail-head { height: 52px; gap: 4px; padding: 0 var(--m-g); border-bottom: 0; }
+.m-task-sheet .detail-head { height: 44px; gap: 4px; padding: 0 var(--m-g); border-bottom: 0; }
 .m-task-sheet .detail-head .check, .m-task-sheet .subtask .check { position: relative; width: 20px; height: 20px; border-width: 1.75px; border-radius: 6px; }
 .m-task-sheet .check::before { content: ""; position: absolute; inset: -12px; }
 .m-task-sheet .check .icon { width: 13px; height: 13px; }
@@ -1015,7 +1019,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .detail-head .date-trigger .icon { width: 17px; height: 17px; }
 .m-task-sheet .detail-head .arrow { margin: 0 -2px; }
 /* Second row: back, list, then deadline, priority and more. Same margin on both sides. */
-.m-task-sheet .detail-bar { flex: none; height: 58px; display: flex; align-items: center; gap: 8px; padding: 0 var(--m-g); border-top: 0.5px solid var(--line-soft); }
+.m-task-sheet .detail-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 13px var(--m-g) 9px; border-top: 0.5px solid var(--line-soft); }
 .m-task-sheet .detail-bar > .push { flex: 1; }
 .m-task-sheet .dl-trigger { height: 36px; padding: 0 13px; gap: 7px; border-radius: 18px; font-size: 15px; }
 .m-task-sheet .dl-trigger .icon { width: 16px; height: 16px; }
@@ -1039,23 +1043,24 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-task-sheet .detail-bar .dl-trigger em, .m-task-sheet .detail-bar .dl-trigger .dl-sep { display: none; }
 .m-task-sheet .detail-bar > .pane-back { flex: none; }
 .m-task-sheet .foot-trigger .icon { width: 17px; height: 17px; }
-.m-task-sheet .detail-body { padding: 0 var(--m-g) 8px; gap: 6px; }
-/* Half open: a preview; what does not fit fades out (scrolls once you write in it). */
-.m-task-sheet:not(.is-full) .detail-sec:not(:focus-within) { overflow: hidden; }
-.m-task-sheet:not(.is-full) .detail-sec.is-cut:not(:focus-within) { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); }
+.m-task-sheet .detail-body { padding: 0 var(--m-g) 10px; gap: 2px; }
+/* Half open: a preview; what does not fit fades out (it scrolls once you write in it). */
+.m-task-sheet:not(.is-full) .detail-body:not(:focus-within) { overflow: hidden; }
+.m-task-sheet:not(.is-full) .detail-body.is-cut:not(:focus-within) { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
 .m-task-sheet .crumb { height: 32px; font-size: 14px; color: var(--muted); }
-.m-task-sheet .detail-title { padding: 6px 0 4px; font-size: 22px; line-height: 1.3; letter-spacing: -0.02em; }
-.m-task-sheet .detail-notes { min-height: 52px; padding: 2px 0; font-size: 16px; line-height: 1.5; }
+/* As in TickTick: a compact column; description and subtasks share one text size. */
+.m-task-sheet .detail-title { padding: 0 0 2px; font-size: 22px; line-height: 1.3; letter-spacing: -0.02em; }
+.m-task-sheet .detail-notes { min-height: 22px; padding: 2px 0 6px; font-size: 15px; line-height: 22px; }
 .m-task-sheet .subtasks { margin: 0 calc(-1 * var(--m-g)); gap: 0; }
-.m-task-sheet .detail-sep { height: 1px; background: var(--line); }
-.m-task-sheet .subtask { min-height: 48px; padding: 0 10px 0 var(--m-g); gap: 14px; border-radius: 0; }
-.m-task-sheet .subtask { padding-right: var(--m-g); gap: 14px; }
-.m-task-sheet .subtask-plus { width: 20px; height: 20px; }
-.m-task-sheet .subtask-plus .icon { width: 16px; height: 16px; }
-.m-task-sheet .subtask-add input { height: 48px; font-size: 16px; }
-.m-task-sheet .subtask-main { min-height: 48px; }
-.m-task-sheet .subtask-title { height: 26px; line-height: 26px; font-size: 16px; }
-.m-task-sheet .subtask-notes { font-size: 14px; line-height: 18px; padding-bottom: 9px; margin-top: -2px; }
+.m-task-sheet .subtask { min-height: 40px; padding: 0 var(--m-g); gap: 12px; border-radius: 0; }
+.m-task-sheet .subtask .check { width: 18px; height: 18px; border-radius: 5px; }
+.m-task-sheet .subtask .check .icon { width: 12px; height: 12px; }
+.m-task-sheet .subtask-plus { width: 18px; height: 18px; }
+.m-task-sheet .subtask-plus .icon { width: 15px; height: 15px; }
+.m-task-sheet .subtask-add input { height: 40px; font-size: 15px; }
+.m-task-sheet .subtask-main { min-height: 40px; }
+.m-task-sheet .subtask-title { height: 22px; line-height: 22px; font-size: 15px; }
+.m-task-sheet .subtask-notes { font-size: 13px; line-height: 17px; padding-bottom: 7px; margin-top: -1px; }
 .m-task-sheet .sub-open { width: 30px; height: 30px; margin-right: -8px; }
 .m-task-sheet .sub-open::before { inset: -9px -6px; }
 .m-task-sheet .sub-open .icon { width: 14px; height: 14px; }
@@ -1068,24 +1073,35 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .pop-panel .menu { padding: 6px; min-width: 214px; }
 .is-mobile .pop-panel .menu-item { min-height: 44px; padding: 0 12px; gap: 12px; border-radius: 10px; font-size: 16px; }
 .is-mobile .pop-panel .menu-item > .icon, .is-mobile .pop-panel .menu-item > .flag-icon { width: 17px; height: 17px; }
-.is-mobile .date-pop { width: min(344px, calc(100vw - 24px)); padding: 14px; }
-.is-mobile .date-pop .quick-picks { gap: 8px; margin-bottom: 12px; }
-.is-mobile .date-pop .quick-picks .chip-btn { height: 38px; padding: 0; border-radius: 10px; font-size: 15px; }
-.is-mobile .date-pop .mini-cal-head { height: 40px; margin-bottom: 4px; }
-.is-mobile .date-pop .mini-cal-title { font-size: 16px; }
-.is-mobile .date-pop .mini-cal-head .icon-btn { width: 40px; height: 40px; border-radius: 50%; }
-.is-mobile .date-pop .mini-cal-grid { gap: 2px 0; }
-.is-mobile .date-pop .mini-cal-dow { font-size: 12px; padding: 4px 0; }
-.is-mobile .date-pop .mini-cal-day { width: 40px; height: 40px; font-size: 16px; }
-.is-mobile .date-pop-foot { margin-top: 12px; padding-top: 12px; }
-.is-mobile .date-pop .time-trigger { height: 38px; padding: 0 14px; border-radius: 19px; font-size: 15px; }
-.is-mobile .date-pop .text-btn { height: 38px; padding: 0 10px; font-size: 15px; }
+/* Compact: the whole month fits above or below the field that opened it. */
+.is-mobile .date-pop { width: min(318px, calc(100vw - 24px)); padding: 8px 8px 10px; }
+.is-mobile .date-pop .quick-picks { gap: 6px; margin-bottom: 8px; }
+.is-mobile .date-pop .quick-picks .chip-btn { height: 34px; padding: 0; border-radius: 10px; font-size: 14px; }
+.is-mobile .date-pop .mini-cal-head { height: 34px; margin-bottom: 2px; }
+.is-mobile .date-pop .mini-cal-title { font-size: 15px; }
+.is-mobile .date-pop .mini-cal-head .icon-btn { width: 34px; height: 34px; border-radius: 50%; }
+.is-mobile .date-pop .mini-cal-grid { gap: 1px 0; }
+.is-mobile .date-pop .mini-cal-dow { font-size: 11.5px; padding: 2px 0; }
+.is-mobile .date-pop .mini-cal-day { width: 36px; height: 36px; font-size: 15px; }
+.is-mobile .date-pop-foot { margin-top: 8px; padding-top: 8px; }
+.is-mobile .date-pop .time-trigger { height: 34px; padding: 0 13px; border-radius: 17px; font-size: 14px; }
+.is-mobile .date-pop .text-btn { height: 34px; padding: 0 10px; font-size: 14px; }
 .is-mobile .time-cols.is-below { margin-top: 10px; }
 .is-mobile .time-col { max-height: 210px; }
 .is-mobile .time-cell { height: 40px; border-radius: 10px; font-size: 15px; }
 .m-grabber i { width: 38px; height: 5px; border-radius: 3px; background: color-mix(in oklab, var(--text) 22%, transparent); }
-.m-task-sheet.is-full .m-grabber { height: 10px; }
+/* The editor's grabber: a thin line close to the top edge, so the task box sits snug in the sheet's rounded corner.
+   Its touch area reaches down a little further than it draws. */
+.m-task-sheet .m-grabber { height: 10px; align-items: end; }
+.m-task-sheet .m-grabber i { width: 34px; height: 3px; border-radius: 1.5px; }
+.m-task-sheet .m-grabber::before { content: ""; position: absolute; left: 25%; right: 25%; top: 0; height: 22px; }
+.m-task-sheet.is-full .m-grabber { height: 6px; }
 .m-task-sheet.is-full .m-grabber i { opacity: 0; }
+/* Keyboard up: sheets sit right on it, without the home indicator's room; the row above it is evenly padded. */
+.kb-up .m-sheet, .kb-up .m-task-sheet { padding-bottom: 0; }
+.kb-up .m-task-sheet .detail-bar { padding-top: 9px; padding-bottom: 9px; }
+/* Under the quick add (when the keyboard lies over the page): its colour goes on below it. */
+.m-sheet::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: inherit; pointer-events: none; }
 @keyframes sheet-in { from { transform: translateY(100%); } }
 
 /* ---------- Phone calendar ---------- */
@@ -1197,12 +1213,66 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .task-row > .sel-circle { margin-top: 0; }
 
 /* A held subtask's copy floats outside the editor: it keeps the editor's row. */
-.is-mobile .floating-copy.subtask { min-height: 48px; padding: 0 var(--m-g); gap: 14px; }
-.is-mobile .floating-copy.subtask .check { width: 20px; height: 20px; border-width: 1.75px; border-radius: 6px; }
-.is-mobile .floating-copy.subtask .check .icon { width: 13px; height: 13px; }
-.is-mobile .floating-copy.subtask .subtask-main { min-height: 48px; }
-.is-mobile .floating-copy.subtask .subtask-title { height: 26px; line-height: 26px; font-size: 16px; }
-.is-mobile .floating-copy.subtask .subtask-notes { font-size: 14px; line-height: 18px; padding-bottom: 9px; margin-top: -2px; }
+.is-mobile .floating-copy.subtask { min-height: 40px; padding: 0 var(--m-g); gap: 12px; }
+.is-mobile .floating-copy.subtask .check { width: 18px; height: 18px; border-width: 1.75px; border-radius: 5px; }
+.is-mobile .floating-copy.subtask .check .icon { width: 12px; height: 12px; }
+.is-mobile .floating-copy.subtask .subtask-main { min-height: 40px; }
+.is-mobile .floating-copy.subtask .subtask-title { height: 22px; line-height: 22px; font-size: 15px; }
+.is-mobile .floating-copy.subtask .subtask-notes { font-size: 13px; line-height: 17px; padding-bottom: 7px; margin-top: -1px; }
 .is-mobile .floating-copy.subtask .sub-open { width: 30px; height: 30px; margin-right: -8px; }
 .is-mobile .floating-copy.subtask .sub-open .icon { width: 14px; height: 14px; }
 .m-task-sheet .detail-bar > .pop:has(.foot-trigger.is-quiet) { flex-shrink: 4; }
+
+/* ---------- Settings: in the sidebar; their page has only a round back button ---------- */
+.sidebar-wrap.is-drawer { flex-direction: column; }
+.sidebar-wrap.is-drawer > .sidebar { min-height: 0; }
+.sidebar-foot { flex: none; padding: 6px 10px 10px; border-top: 0.5px solid var(--line-soft); }
+.sidebar-settings .icon { flex: none; color: var(--muted); }
+.sidebar-settings .m-badge { position: static; margin-left: auto; }
+.m-back { pointer-events: auto; flex: none; width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; color: var(--text); background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid var(--glass-line); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14); transition: transform 160ms; }
+.m-back:active { transform: scale(0.92); }
+.m-back .icon { display: block; transform: scaleX(-1); }
+.m-bar.is-hidden .m-back { pointer-events: none; }
+/* In the app the glass is drawn natively; the page's button takes the tap. */
+.is-native .m-back { opacity: 0; }
+.is-mobile .modal [aria-label="Close"] { display: none; }
+
+/* ---------- Phone calendar: Today, dragged ranges ---------- */
+/* The stepper's box no longer cuts the round Today button. */
+.is-mobile .calendar .stepper { height: auto; overflow: visible; padding: 0; }
+.is-mobile .calendar .stepper-today { display: inline-grid; place-items: center; transition: background var(--fast), transform 140ms; }
+.is-mobile .calendar .stepper-today:active, .is-mobile .calendar .stepper-today.is-pressed { background: var(--active); transform: scale(0.95); }
+/* A dragged range of days: one bar per week row, round only at its ends; the numbers join into a bar too. */
+.is-mobile .cal-cell.is-sel { border-radius: 0; }
+.is-mobile .cal-cell.is-sel.sel-l { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+.is-mobile .cal-cell.is-sel.sel-r { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+.is-mobile .cal-cell.is-sel::before { content: ""; position: absolute; top: 4px; height: 24px; left: 0; right: 0; background: var(--ink); pointer-events: none; }
+.is-mobile .cal-cell.is-sel.sel-l::before { left: 50%; }
+.is-mobile .cal-cell.is-sel.sel-r::before { right: 50%; }
+.is-mobile .cal-cell.is-sel .cal-daynum { z-index: 1; }
+
+/* ---------- One highlight radius (--r-hl) for every rectangular button on the phone ----------
+   Menus and pickers: 20px corners, 8px padding all round, rows and cells inset with 12px corners. */
+.m-float { padding: 8px 0; border-radius: 20px; background: var(--hm-bg); -webkit-backdrop-filter: blur(8px) saturate(1.4); backdrop-filter: blur(8px) saturate(1.4); }
+.m-float-row, .m-float .p-list-row { width: calc(100% - 16px); margin: 0 8px; padding: 0 10px; border-radius: var(--r-hl); }
+.is-mobile .pop-panel { border-radius: 20px; }
+.is-mobile .pop-panel .menu { padding: 8px; }
+.is-mobile .pop-panel .menu-item { border-radius: var(--r-hl); }
+.is-mobile .date-pop .quick-picks .chip-btn, .is-mobile .time-cell, .is-mobile .nav-row, .m-tool, .m-task-sheet .detail-head .date-trigger.is-ghost, .is-mobile .icon-btn-lg { border-radius: var(--r-hl); }
+.is-mobile .date-pop .mini-cal-head { padding-left: 8px; }
+
+/* ---------- Cards: no empty meta row (the title sits in the middle of a card that has nothing else) ---------- */
+.card-foot:not(:has(.task-meta > *)) { display: none; }
+/* An open picker darkens its icon; the priority flag (grey while unset) does too. */
+.m-tool.is-open .flag-icon:not(.fp1, .fp2, .fp3), .m-task-sheet .detail-bar .pop-trigger.is-open .flag-icon:not(.fp1, .fp2, .fp3) { color: var(--text); }
+.m-task-sheet .detail-bar .pop-trigger.is-open .icon-btn { color: var(--text); background: var(--active); }
+
+/* ---------- Press feedback (phone): grey the moment a finger rests on it ---------- */
+.is-mobile :is(.task-row, .card-sub, .m-task-sheet .subtask, .nav-row, .group-head, .tl-item, .card).is-pressed { background: var(--active); }
+.is-mobile .task-row.is-pressed .task-main { border-bottom-color: transparent; }
+.is-mobile .cal-chip.is-pressed { box-shadow: inset 0 0 0 40px color-mix(in oklab, var(--text) 10%, transparent); }
+.is-mobile :is(.menu-item, .hm-item, .hm-cell, .m-float-row, .p-list-row, .m-tool).is-pressed { background: color-mix(in oklab, var(--text) 10%, transparent); }
+.is-mobile .stepper-today.is-pressed { background: var(--active); transform: scale(0.95); }
+/* A card's subtask whose editor is open. */
+.card-sub.is-selected { background: var(--active); }
+.is-mobile .card-sub, .is-mobile .group-head, .is-mobile .m-task-sheet .subtask { transition: background var(--fast); }
