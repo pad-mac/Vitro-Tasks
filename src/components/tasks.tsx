@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "re
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { subtasksOf } from "../lib/views";
+import { haptic, isMobile } from "../lib/platform";
 import type { Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
@@ -63,7 +64,8 @@ export function insertionAt(
   const mids = rects.map((r) => r.top + r.height / 2);
   let index = mids.findIndex((m) => clientY < m);
   if (index === -1) index = items.length;
-  const STICK = 6;
+  // Hysteresis: the line only moves on once the finger is clearly past the middle (no flicker on the edge).
+  const STICK = isMobile ? 12 : 6;
   if (prev !== undefined && prev <= items.length) {
     if (index > prev && clientY < mids[index - 1] + STICK) index--;
     else if (index < prev && clientY > mids[index] - STICK) index++;
@@ -77,9 +79,35 @@ export function insertionAt(
     const r = empty?.getBoundingClientRect();
     y = r ? (empty!.matches(".group-head, .column-head") ? r.bottom + 4 : r.top) - top : 6;
   } else if (index === 0) y = rects[0].top - top - 1;
-  else if (index < rects.length) y = (rects[index - 1].bottom + rects[index].top) / 2 - top;
-  else y = rects[rects.length - 1].bottom - top + 1;
+  else if (index < rects.length) y = (blockBottom(items[index - 1], selector) + rects[index].top) / 2 - top;
+  else y = blockBottom(items[items.length - 1], selector) - top + 1;
   return { index, before, y };
+}
+
+/**
+ * Where a task's block ends: its row and the subtask rows shown under it
+ * (siblings in a list), so a line between two tasks is never drawn across
+ * the first one's subtasks.
+ */
+function blockBottom(el: HTMLElement, selector: string): number {
+  let bottom = el.getBoundingClientRect().bottom;
+  for (let n = el.nextElementSibling; n && !n.matches(selector) && n.matches(".task-row"); n = n.nextElementSibling) {
+    const r = n.getBoundingClientRect();
+    if (r.height) bottom = r.bottom;
+  }
+  return bottom;
+}
+
+// A small tick each time the line moves to a new place (touch drags), never
+// faster than the finger can mean it, so a line that hesitates does not buzz.
+const lineTick = { key: "", t: 0 };
+function tickLine(key: string, shown: boolean) {
+  if (!isMobile || key === lineTick.key) return;
+  lineTick.key = key;
+  const now = performance.now();
+  if (!shown || now - lineTick.t < 120) return;
+  lineTick.t = now;
+  haptic("selection");
 }
 
 /** Touch drags (phone) send these to the group under the finger. */
@@ -103,6 +131,7 @@ export function useReorderTarget(groupKey: string, selector: string, onDrop: (ta
     if (!ref.current) return;
     const cur = useStore.getState().dropHint;
     const { index, before, y: lineY } = insertionAt(ref.current, y, id, selector, cur?.group === groupKey ? cur.index : undefined);
+    tickLine(`${groupKey}:${lineY === null ? "home" : index}`, lineY !== null);
     setHint({ group: groupKey, before, index, y: lineY });
   };
   const dropAt = (id: string, y: number) => {
@@ -110,6 +139,7 @@ export function useReorderTarget(groupKey: string, selector: string, onDrop: (ta
     // Lands where the line was shown.
     const cur = useStore.getState().dropHint;
     const index = cur?.group === groupKey ? cur.index : insertionAt(ref.current, y, id, selector).index;
+    lineTick.key = "";
     setHint(null);
     dropRef.current(id, index);
   };

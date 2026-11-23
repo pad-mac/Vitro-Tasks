@@ -4,9 +4,10 @@ import { ContextMenu } from "./components/ContextMenu";
 import { HoldMenu } from "./components/HoldMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
-import { postNative } from "./lib/native";
 import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
 import { SelectBar, SelectHead, UndoButton } from "./components/Select";
+import { watchBackdrop } from "./lib/backdrop";
+import { watchPress } from "./lib/press";
 import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
@@ -381,14 +382,18 @@ export function App() {
   const selecting = useStore((s) => s.selecting);
   const composer = useStore((s) => s.composer);
   const typing = useTyping();
-  // iOS: while a sheet is open, the colour behind the web view is the sheet's,
-  // so the keyboard's rounded corners show the sheet, not the screen behind.
+  // iOS: the colour behind the web view is whatever sits at the bottom of the
+  // page (a sheet, the quick add, the page), so the keyboard's rounded corners match it.
   const theme = useStore((s) => s.theme);
   const sheetOpen = addOpen || !!selected || !!composer;
+  const backdrop = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (!isMobile) return;
-    const css = getComputedStyle(document.documentElement);
-    postNative({ type: "backdrop", color: sheetOpen ? css.getPropertyValue("--float").trim() : null });
+    if (!isMobile || backdrop.current) return;
+    backdrop.current = watchBackdrop();
+    watchPress();
+  }, []);
+  useEffect(() => {
+    backdrop.current?.();
   }, [sheetOpen, theme]);
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
@@ -486,10 +491,20 @@ export function App() {
           <UndoButton />
         </main>
         {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
-        {taskLayer && narrow && drawerOpen && (
+        {(taskLayer || isMobile) && narrow && drawerOpen && (
           <>
             <div className="drawer-scrim" onMouseDown={() => setDrawerOpen(false)} />
-            <Sidebar drawer />
+            <Sidebar
+              drawer
+              onSettings={
+                isMobile
+                  ? () => {
+                      setDrawerOpen(false);
+                      setSettingsOpen(true);
+                    }
+                  : undefined
+              }
+            />
           </>
         )}
       </div>
@@ -502,7 +517,6 @@ export function App() {
           <MobileBar
             settingsOpen={settingsOpen}
             hidden={drawerOpen || addOpen || !!selected || !!menu || !!composer || typing || !!selecting}
-            onSettings={() => setSettingsOpen(!settingsOpen)}
             onCloseSettings={() => setSettingsOpen(false)}
             onAdd={() => openAdd(null)}
           />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SubtaskList, useEditorLayout } from "./EditorParts";
+import { SubtaskList, useEditorScroll } from "./EditorParts";
 import { formatDateTime, todayKey } from "../lib/dates";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
@@ -184,9 +184,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
   const title = useDraft(task.title, task.id, (v) => void update(task.id, { title: v }));
   const notes = useDraft(task.notes, task.id, (v) => void update(task.id, { notes: v }));
   const bodyRef = useRef<HTMLDivElement>(null);
-  const notesRef = useRef<HTMLDivElement>(null);
-  const subsRef = useRef<HTMLElement>(null);
-  useEditorLayout(bodyRef, notesRef, subsRef);
+  useEditorScroll(bodyRef);
 
   const listSections = sections.filter((s) => s.list_id === task.list_id).sort((a, b) => a.position - b.position);
   const section = listSections.find((s) => s.id === task.section_id);
@@ -315,16 +313,8 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
           </button>
         )}
         <RichField draft={title} className="detail-title" rows={1} placeholder="What would you like to do?" singleLine />
-        <div className="detail-sec detail-notes-sec" ref={notesRef}>
-          <RichField draft={notes} className="detail-notes" rows={2} placeholder="Description" />
-        </div>
-
-        {!task.parent_id && (
-          <>
-            <i className="detail-sep" />
-            <SubtaskList parent={task} subs={subs} sectionRef={subsRef} onOpen={(id) => select(id, anchor)} />
-          </>
-        )}
+        <RichField draft={notes} className="detail-notes" rows={1} placeholder="Description" />
+        {!task.parent_id && <SubtaskList parent={task} subs={subs} onOpen={(id) => select(id, anchor)} />}
       </div>
 
       {variant === "sheet" && (

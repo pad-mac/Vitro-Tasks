@@ -20,7 +20,7 @@ import { anchorOf, useStore, type Anchor } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
 import { useSwipe } from "./Mobile";
 import { TaskRow } from "./tasks";
-import { isMobile } from "../lib/platform";
+import { haptic, isMobile } from "../lib/platform";
 import { FloatingPanel, Icon, MenuItem, Popover } from "./ui";
 
 const HOUR_H = 48;
@@ -251,7 +251,8 @@ function DayCell({
   capacity: number;
   month: boolean;
   outside: boolean;
-  selected: boolean;
+  /** In a dragged range: false, or its end classes ("sel-l", "sel-r"). */
+  selected: string | false;
   onExpand: (day: string, anchor: Anchor) => void;
 }) {
   const today = todayKey();
@@ -263,7 +264,7 @@ function DayCell({
   return (
     <div
       data-day={day}
-      className={`cal-cell ${outside ? "is-out" : ""} ${isWeekend(day) ? "is-weekend" : ""} ${drop.over ? "is-drop" : ""} ${selected ? "is-sel" : ""}`}
+      className={`cal-cell ${outside ? "is-out" : ""} ${isWeekend(day) ? "is-weekend" : ""} ${drop.over ? "is-drop" : ""} ${selected ? `is-sel ${selected}` : ""}`}
       style={{ paddingTop: (month ? 30 : 4) + lanes * CHIP_H }}
       {...drop.props}
     >
@@ -343,6 +344,8 @@ function WeekRow({
     }
     return { visible, shownLanes, hiddenSpans };
   }, [spans, lanesAt, entriesByDay, capacity, n]);
+  // A dragged range of days: one bar per week row, rounded only at its ends.
+  const sel = (i: number) => i >= 0 && i < days.length && !!range && days[i] >= range[0] && days[i] <= range[1];
   return (
     <div className={`cal-week ${month ? "" : "is-allday"}`} style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
       {days.map((d, i) => (
@@ -355,7 +358,7 @@ function WeekRow({
           capacity={capacity}
           month={month}
           outside={!!titleMonth && d.slice(0, 7) !== titleMonth}
-          selected={!!range && d >= range[0] && d <= range[1]}
+          selected={sel(i) ? `${sel(i - 1) ? "" : "sel-l"} ${sel(i + 1) ? "" : "sel-r"}` : false}
           onExpand={onExpand}
         />
       ))}
@@ -1091,6 +1094,7 @@ export function CalendarView() {
               type="button"
               className="stepper-today"
               onClick={() => {
+                if (isMobile) haptic("light");
                 goToday();
                 setTodaySignal((n) => n + 1);
               }}

@@ -146,7 +146,8 @@ function Resizer() {
   );
 }
 
-export function Sidebar({ drawer = false }: { drawer?: boolean }) {
+export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSettings?: () => void }) {
+  const syncError = useStore((s) => s.sync.status === "error");
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
@@ -199,6 +200,16 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         )}
       </div>
     </nav>
+    {/* The phone: settings are at the bottom of the sidebar (not in the tab bar). */}
+    {onSettings && (
+      <div className="sidebar-foot">
+        <button type="button" className="nav-row sidebar-settings" onClick={onSettings}>
+          <Icon name="settings" size={17} />
+          <span className="nav-name">Settings</span>
+          {syncError && <i className="m-badge" title="Sync needs attention" />}
+        </button>
+      </div>
+    )}
     {!drawer && <Resizer />}
     </div>
   );

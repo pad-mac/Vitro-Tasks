@@ -1,121 +1,69 @@
-// The task editor's lower half: how the description and the subtasks share
-// the room, how the line being written stays in view, and the subtask list
-// itself (edited in place, reordered by dragging). Everything about the
-// editor's layout and scrolling is here, in one place.
+// The task editor's body: title, description and subtasks flow in one
+// scrolling column (as in TickTick), the line being written stays in view,
+// and the subtask list itself (edited in place, reordered by holding).
+// Everything about the editor's layout and scrolling is here, in one place.
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { isMobile } from "../lib/platform";
+import { flushSync } from "react-dom";
 import { subtaskPositions } from "../lib/order";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
 import { useReorderTarget } from "./tasks";
 import { Check, Icon, Rich } from "./ui";
 
-/** How much of the other part stays visible while one is being written in (phone). */
-const PEEK = 56;
+/** Room kept below the line being written (the next line peeks out). */
+const MARGIN = 14;
 
-/** Scrolls `el`'s part (a `.detail-sec`) so that `el` is fully in view. */
-export function keepInView(el: Element | null, margin = 8) {
-  const sec = el?.closest<HTMLElement>(".detail-sec");
-  if (!el || !sec) return;
+/** Scrolls the editor's body so that `el` (a subtask's line, the add line, a field) is in view. */
+export function keepInView(el: Element | null, margin = MARGIN) {
+  const box = el?.closest<HTMLElement>(".detail-body");
+  if (!el || !box) return;
   const row = (el.closest(".subtask") ?? el) as HTMLElement;
   const r = row.getBoundingClientRect();
-  const s = sec.getBoundingClientRect();
-  // A field taller than its part (a long description): the caret is the browser's business.
-  if (r.height > s.height - 2 * margin) return;
-  if (r.bottom > s.bottom - margin) sec.scrollTop += r.bottom - s.bottom + margin;
-  else if (r.top < s.top + margin) sec.scrollTop -= s.top + margin - r.top;
+  const b = box.getBoundingClientRect();
+  if (r.height > b.height - 2 * margin) {
+    // A field taller than the view (a long description): with the caret at the
+    // end its last line is the one being written; elsewhere the browser follows the caret.
+    const f = el as HTMLTextAreaElement;
+    const atEnd = typeof f.selectionStart === "number" && f.selectionStart === f.value?.length;
+    if (atEnd && r.bottom > b.bottom - margin) box.scrollTop += r.bottom - b.bottom + margin;
+    return;
+  }
+  if (r.bottom > b.bottom - margin) box.scrollTop += r.bottom - b.bottom + margin;
+  else if (r.top < b.top + margin) box.scrollTop -= b.top + margin - r.top;
 }
 
 /**
- * The description (`a`) and the subtasks (`b`) share the room below the
- * title: each may take up to half of it, and whatever one does not need, the
- * other may use. Each scrolls on its own once it is cut (`is-cut`).
- *
- * On the phone, the part being written in gets the room (the other keeps a
- * peek), so the keyboard never covers what is being typed; the line with the
- * caret is kept in view. The containers around the parts never scroll
- * (WebKit scrolls even `overflow: hidden` boxes to show a focused field,
- * which pushed the whole editor up and left it there).
+ * The body scrolls as one; whatever is being written stays in view while the
+ * keyboard comes up, lines are added or the description grows. `is-cut` marks
+ * a body with more than it shows (the half-open sheet fades it out).
+ * The boxes around the body never scroll: WebKit scrolls even
+ * `overflow: hidden` boxes to show a focused field, which pushed the whole
+ * editor up and left it there.
  */
-export function useEditorLayout(body: RefObject<HTMLElement | null>, a: RefObject<HTMLElement | null>, b: RefObject<HTMLElement | null>) {
-  const ro = useRef<ResizeObserver | null>(null);
-  const watched = useRef(new Set<Element>());
-  const focus = useRef<"a" | "b" | null>(null);
-  const fit = useRef(() => {});
-  fit.current = () => {
-    const B = body.current;
-    const A = a.current;
-    if (!B || !A) return;
-    const S = b.current;
-    const parts = S ? [A, S] : [A];
-    // Watch what can grow: the body and the contents of both parts. Only new
-    // elements are added (observing again would report again, every frame).
-    // Before the observer exists (the first layout pass) nothing counts as watched.
-    const ob = ro.current;
-    if (ob) {
-      const now = new Set<Element>([B, ...parts.flatMap((el) => [...el.children, ...[...el.children].flatMap((c) => [...c.children])])]);
-      for (const el of watched.current) if (!now.has(el)) ob.unobserve(el);
-      for (const el of now) if (!watched.current.has(el)) ob.observe(el);
-      watched.current = now;
-    }
-    // Measured as they are: scrollHeight is a part's full content even while
-    // it is cut, so nothing is reset (which would throw away its scroll).
-    const cs = getComputedStyle(B);
-    const gap = parseFloat(cs.rowGap) || 0;
-    const kids = [...B.children].filter((el) => (el as HTMLElement).offsetParent !== null || el === A);
-    let fixed = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + gap * Math.max(0, kids.length - 1);
-    for (const el of kids) if (el !== A && el !== S) fixed += (el as HTMLElement).offsetHeight;
-    const avail = B.clientHeight - fixed;
-    const ha = A.scrollHeight;
-    const hb = S?.scrollHeight ?? 0;
-    let ma = Infinity;
-    let mb = Infinity;
-    if (ha + hb > avail + 1) {
-      const half = avail / 2;
-      const f = isMobile ? focus.current : null;
-      if (!S) ma = avail;
-      else if (f === "b") {
-        ma = Math.min(ha, PEEK);
-        mb = avail - ma;
-      } else if (f === "a") {
-        mb = Math.min(hb, PEEK);
-        ma = avail - mb;
-      } else if (ha <= half) mb = avail - ha;
-      else if (hb <= half) ma = avail - hb;
-      else ma = mb = half;
-    }
-    const set = (el: HTMLElement, h: number, max: number) => {
-      const cut = h > max + 1;
-      const value = cut ? `${Math.max(0, Math.floor(max))}px` : "";
-      if (el.style.maxHeight !== value) el.style.maxHeight = value;
-      el.classList.toggle("is-cut", cut);
-    };
-    set(A, ha, ma);
-    if (S) set(S, hb, mb);
-    keepInView(document.activeElement && B.contains(document.activeElement) ? document.activeElement : null);
-  };
+export function useEditorScroll(body: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const B = body.current;
+    if (!B) return;
     let frame = 0;
-    const later = () => {
+    const follow = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => fit.current());
+      frame = requestAnimationFrame(() => {
+        B.classList.toggle("is-cut", B.scrollHeight > B.clientHeight + 1);
+        const a = document.activeElement;
+        if (a && B.contains(a)) keepInView(a);
+      });
     };
-    ro.current = new ResizeObserver(later);
-    fit.current();
-    // Which part is being written in.
-    const where = () => {
-      const el = document.activeElement;
-      const next = el && a.current?.contains(el) ? "a" : el && b.current?.contains(el) ? "b" : null;
-      if (next !== focus.current) {
-        focus.current = next;
-        later();
-      }
+    // The body (the keyboard, the sheet's height) and each of its parts (rows added, a longer description).
+    const ro = new ResizeObserver(follow);
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(B);
+      for (const el of B.children) ro.observe(el);
     };
-    const onIn = () => where();
-    const onOut = () => setTimeout(where, 0);
-    // The boxes around the parts stay where they are.
-    const boxes = [B, B?.closest<HTMLElement>(".detail"), B?.closest<HTMLElement>(".m-task-sheet")].filter((x): x is HTMLElement => !!x);
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(B, { childList: true });
+    const boxes = [B.closest<HTMLElement>(".detail"), B.closest<HTMLElement>(".m-task-sheet")].filter((x): x is HTMLElement => !!x);
     const pin = (e: Event) => {
       const t = e.target as HTMLElement;
       if (boxes.includes(t) && (t.scrollTop || t.scrollLeft)) {
@@ -123,23 +71,19 @@ export function useEditorLayout(body: RefObject<HTMLElement | null>, a: RefObjec
         t.scrollLeft = 0;
       }
     };
-    // Typing (a new subtask line, a growing description): keep the caret's line in view.
-    const onInput = () => requestAnimationFrame(() => keepInView(document.activeElement));
-    B?.addEventListener("focusin", onIn);
-    B?.addEventListener("focusout", onOut);
-    B?.addEventListener("input", onInput);
+    B.addEventListener("focusin", follow);
+    B.addEventListener("input", follow);
     for (const x of boxes) x.addEventListener("scroll", pin, true);
+    follow();
     return () => {
       cancelAnimationFrame(frame);
-      ro.current?.disconnect();
-      watched.current.clear();
-      B?.removeEventListener("focusin", onIn);
-      B?.removeEventListener("focusout", onOut);
-      B?.removeEventListener("input", onInput);
+      ro.disconnect();
+      mo.disconnect();
+      B.removeEventListener("focusin", follow);
+      B.removeEventListener("input", follow);
       for (const x of boxes) x.removeEventListener("scroll", pin, true);
     };
-  }, []);
-  useLayoutEffect(() => fit.current());
+  }, [body]);
 }
 
 /** The first line of a description, for previews. */
@@ -200,7 +144,7 @@ function SubtaskRow({
           if (editing) return;
           // The description preview opens the subtask; anywhere else on the line edits its title.
           if ((e.target as HTMLElement).closest(".subtask-notes")) onOpen();
-          else onEdit();
+          else flushSync(onEdit); // the field mounts and takes the focus inside this tap (iOS opens the keyboard only then)
         }}
       >
         {editing ? (
@@ -263,7 +207,7 @@ function SubtaskRow({
  * The subtasks of `parent` with the line to add more. Rows reorder by
  * dragging (mouse, or holding in the phone's full-screen editor).
  */
-export function SubtaskList({ parent, subs, sectionRef, onOpen }: { parent: Task; subs: Task[]; sectionRef: RefObject<HTMLElement | null>; onOpen: (id: string) => void }) {
+export function SubtaskList({ parent, subs, onOpen }: { parent: Task; subs: Task[]; onOpen: (id: string) => void }) {
   const addTask = useStore((s) => s.addTask);
   const update = useStore((s) => s.updateTask);
   const details = useStore((s) => s.showDetails);
@@ -291,7 +235,7 @@ export function SubtaskList({ parent, subs, sectionRef, onOpen }: { parent: Task
     requestAnimationFrame(() => keepInView(addRef.current));
   };
   return (
-    <section className="subtasks detail-sec" ref={sectionRef}>
+    <section className="subtasks">
       <section className={`subtask-items ${reorder.over ? "is-drop" : ""}`} {...reorder.props}>
         {subs.map((s, i) => (
           <SubtaskRow
@@ -306,7 +250,7 @@ export function SubtaskList({ parent, subs, sectionRef, onOpen }: { parent: Task
             onRemoved={() => {
               // The caret goes on at the end of the line above (or to the add line).
               const prev = subs[i - 1] ?? subs[i + 1];
-              if (prev) setEditing(prev.id);
+              if (prev) flushSync(() => setEditing(prev.id));
               else focusAdd();
             }}
           />

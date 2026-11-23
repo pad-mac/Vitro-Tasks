@@ -70,7 +70,8 @@ export function taskRect(id: string): DOMRect | null {
 export function floatingCopy(source: HTMLElement): HTMLElement {
   const r = source.getBoundingClientRect();
   const copy = source.cloneNode(true) as HTMLElement;
-  copy.classList.remove("is-selected", "is-lifted", "is-dragging");
+  copy.classList.remove("is-selected", "is-lifted", "is-dragging", "is-pressed");
+  copy.querySelectorAll(".is-pressed").forEach((el) => el.classList.remove("is-pressed"));
   copy.removeAttribute("data-id");
   copy.classList.add("floating-copy");
   Object.assign(copy.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
@@ -107,7 +108,7 @@ export const holdMenu = {
     if (!hold || hold.closing || hold.shown) return;
     hold.shown = true;
     hold.lift.style.setProperty("--shift", `${hold.shift}px`);
-    haptic("light");
+    // No second tick: the lift already gave one (the same single tick as for any other task).
     changed();
   },
   heldId: () => (hold && !hold.closing ? hold.id : null),
@@ -256,7 +257,7 @@ export function HoldMenu() {
     if (!h || !el || h.closing) return;
     const r = h.rect;
     const { top, bottom } = bounds();
-    const width = Math.min(217, innerWidth - 2 * EDGE);
+    const width = Math.min(212, innerWidth - 2 * EDGE);
     el.style.width = `${width}px`;
     el.style.left = `${Math.round((innerWidth - width) / 2)}px`;
     el.style.maxHeight = "";
