@@ -47,12 +47,18 @@ struct ListProvider: AppIntentTimelineProvider {
   }
 
   private func entry(_ configuration: ListConfig, _ date: Date, _ context: Context) -> ListEntry {
+    ListEntry.make(Store.snapshot(), view: configuration.list?.id ?? "today", date: date, done: Store.pendingDone(), fit: fit(context))
+  }
+}
+
+extension ListEntry {
+  /// The rows to draw on `date`: ticked ones (not yet taken over) left out,
+  /// Today / Next 7 Days as they are on that day (the snapshot may be from yesterday).
+  static func make(_ snap: Snapshot?, view id: String, date: Date, done: Set<String>, fit: Int) -> ListEntry {
     let day = Day.key(date)
-    guard let snap = Store.snapshot(), let view = snap.views.first(where: { $0.id == (configuration.list?.id ?? "today") }) ?? snap.views.first else {
-      return ListEntry(date: date, view: nil, rows: [], count: 0, day: day, fit: fit(context), missing: true)
+    guard let snap = snap, let view = snap.views.first(where: { $0.id == id }) ?? snap.views.first else {
+      return ListEntry(date: date, view: nil, rows: [], count: 0, day: day, fit: fit, missing: true)
     }
-    let done = Store.pendingDone()
-    // Today / Next 7 Days: what belongs there on the day drawn (the snapshot may be from yesterday).
     let limit = view.filter == "today" ? day : view.filter == "next7" ? Day.add(day, 6) : nil
     var kept = Set<String>()
     var rows: [Row] = []
@@ -70,7 +76,7 @@ struct ListProvider: AppIntentTimelineProvider {
     }
     let ticked = view.rows.filter { $0.parent == nil && done.contains($0.id) }.count
     let count = limit != nil && day != snap.today ? kept.count : max(0, view.count - ticked)
-    return ListEntry(date: date, view: view, rows: rows, count: count, day: day, fit: fit(context))
+    return ListEntry(date: date, view: view, rows: rows, count: count, day: day, fit: fit)
   }
 }
 

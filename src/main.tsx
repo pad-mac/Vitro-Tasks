@@ -10,7 +10,7 @@ import { refreshBackdrop } from "./lib/backdrop";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 import { useStore } from "./store";
-import { startWidgetBridge } from "./lib/widgetBridge";
+import { openLink, startWidgetBridge, widgetSnapshot } from "./lib/widgetBridge";
 
 const isQuickAdd = windowLabel() === "quickadd";
 if (isMobile) document.documentElement.classList.add("is-mobile");
@@ -122,6 +122,8 @@ void useStore
       useStore.setState({ undo: null });
       // For the scripted checks of the preview.
       (window as unknown as { __store: typeof useStore }).__store = useStore;
+      (window as unknown as { __openLink: typeof openLink }).__openLink = openLink;
+      (window as unknown as { __widgetSnapshot: typeof widgetSnapshot }).__widgetSnapshot = widgetSnapshot;
     }
     // iOS: the home screen widgets' snapshot, their ticks and their links.
     void startWidgetBridge();

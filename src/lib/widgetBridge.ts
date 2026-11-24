@@ -13,13 +13,18 @@ const WAIT_MS = 1500;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let written = "";
 
+/** What the widgets would show now (`at` left at 0). */
+export function widgetSnapshot() {
+  const s = useStore.getState();
+  return buildSnapshot(s, (v) => computePrefs(v, s.lists, s.settings), undefined, 0);
+}
+
 /** Writes the snapshot now (if it changed), for the widgets to redraw from. */
 function flush() {
   clearTimeout(timer);
   timer = undefined;
-  const s = useStore.getState();
-  if (!s.ready) return;
-  const snap = buildSnapshot(s, (v) => computePrefs(v, s.lists, s.settings), undefined, 0);
+  if (!useStore.getState().ready) return;
+  const snap = widgetSnapshot();
   const same = JSON.stringify(snap);
   if (same === written) return;
   written = same;
@@ -50,8 +55,9 @@ export function openLink(raw: string) {
   const what = u.host || u.pathname.replace(/^\/+/, "");
   const q = u.searchParams;
   const s = useStore.getState();
-  // Whatever was open gives way (settings close through the same event as the back swipe).
-  window.dispatchEvent(new CustomEvent("vitro:back"));
+  // Whatever was open gives way: settings and the quick add (App), menus, the drawer.
+  const link = (add: boolean) => window.dispatchEvent(new CustomEvent("vitro:link", { detail: { add } }));
+  if (what !== "add") link(false);
   s.setDrawerOpen(false);
   s.openMenu(null);
   s.closeComposer();
@@ -63,7 +69,7 @@ export function openLink(raw: string) {
       s.select(null);
       // A link is not a tap: the native side lets this one focus raise the keyboard.
       postNative({ type: "allowFocus" });
-      setTimeout(() => window.dispatchEvent(new CustomEvent("vitro:quickadd")), 60);
+      setTimeout(() => link(true), 60);
       break;
     }
     case "list": {

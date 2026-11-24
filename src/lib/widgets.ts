@@ -67,7 +67,7 @@ export interface WidgetSnapshot {
   v: 1;
   at: number;
   today: string;
-  /** Calendar days included (Monday a week back to six weeks on). */
+  /** Calendar days included: last week to four weeks ahead (as far as the week widget pages). */
   from: string;
   to: string;
   views: WidgetView[];
@@ -141,9 +141,9 @@ export function buildSnapshot(src: Source, prefsOf: (view: ViewRef) => ViewPrefs
     ...orderedLists(src.lists).map((l) => ({ id: l.id, name: l.name, kind: "list" as const, color: l.color || null, depth: l.depth, ...rowsFor({ kind: "list", id: l.id }, false) })),
   ];
 
-  // Calendar: the week before this one to five weeks after it, for the week widget's arrows.
+  // Calendar: last week to four weeks ahead, as far as the week widget's arrows go.
   const from = addDays(startOfWeek(today), -7);
-  const to = addDays(startOfWeek(today), 7 * 6 - 1);
+  const to = addDays(startOfWeek(today), 7 * 5 - 1);
   const colorOf = new Map(src.lists.map((l) => [l.id, l.color || null]));
   const shown = withRepeats(tasksForView({ kind: "calendar" }, data, false, today), from, to);
   const days: Record<string, WidgetEntry[]> = {};

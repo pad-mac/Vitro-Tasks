@@ -2,7 +2,6 @@
 // the ticks they hand back, days and colours.
 
 import SwiftUI
-import UIKit
 import WidgetKit
 
 // MARK: - Snapshot
