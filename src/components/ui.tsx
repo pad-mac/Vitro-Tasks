@@ -896,8 +896,13 @@ export function FloatingPanel({
       if (left < gap) left = Math.max(gap, Math.min(innerWidth - w - gap, anchor.x));
       top = anchor.y - 12;
     }
+    // Never under the status bar (or a notch) or the home indicator.
+    const safe = safeInsets();
+    const minTop = Math.max(gap, safe.top + 6);
+    const maxBottom = innerHeight - Math.max(gap, safe.bottom);
+    if (placement === "below" && top + h > maxBottom) top = anchor.y - h;
     left = Math.max(gap, Math.min(innerWidth - w - gap, left));
-    top = Math.max(gap, Math.min(innerHeight - h - gap, top));
+    top = Math.max(minTop, Math.min(maxBottom - h, top));
     setPos((p) => (p && p.left === left && p.top === top ? p : { left, top }));
   };
   useLayoutEffect(place);

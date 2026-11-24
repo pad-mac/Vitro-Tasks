@@ -871,6 +871,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .kanban { padding-bottom: 0; }
 .is-mobile .timeline { padding-bottom: var(--bar-h); }
 .is-mobile .column-body { padding-bottom: var(--bar-h); }
+/* The edge swipe's own strip over the board's left edge (the board then never pans from there). */
+.kanban-wrap { position: relative; flex: 1; display: flex; min-width: 0; min-height: 0; }
+.edge-catch { position: absolute; left: 0; top: 0; bottom: 0; z-index: 5; width: 18px; touch-action: none; }
 .is-mobile .detail-pane { padding-bottom: env(safe-area-inset-bottom, 0px); }
 /* The view's title starts where the tasks' titles do. */
 .is-mobile .view-head > .icon-btn-lg + h1 { margin-left: -5px; }
@@ -1157,20 +1160,21 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .pop-panel .menu-item { min-height: 44px; padding: 0 12px; gap: 12px; border-radius: 10px; font-size: 16px; }
 .is-mobile .pop-panel .menu-item > .icon, .is-mobile .pop-panel .menu-item > .flag-icon { width: 17px; height: 17px; }
 /* Compact: the whole month fits above or below the field that opened it. */
-.is-mobile .date-pop { width: min(318px, calc(100vw - 24px)); padding: 8px 8px 10px; }
-.is-mobile .date-pop .quick-picks { gap: 5px; margin-bottom: 8px; }
-.is-mobile .date-pop .quick-picks .chip-btn { height: 34px; padding: 0 6px; border-radius: 10px; font-size: 14px; }
-.is-mobile .date-pop .mini-cal-head { height: 34px; margin-bottom: 2px; }
-.is-mobile .date-pop .mini-cal-title { font-size: 15px; }
-.is-mobile .date-pop .mini-cal-head .icon-btn { width: 34px; height: 34px; border-radius: 50%; }
-.is-mobile .date-pop .mini-cal-grid { gap: 1px 0; }
-.is-mobile .date-pop .mini-cal-dow { font-size: 11.5px; padding: 2px 0; }
-.is-mobile .date-pop .mini-cal-day { width: 36px; height: 36px; font-size: 15px; }
-.is-mobile .date-pop-foot { margin-top: 8px; padding-top: 8px; }
-.is-mobile .date-pop .foot-pill { height: 34px; border-radius: 17px; font-size: 14px; }
+/* Phone date picker: compact (a third less tall than a full-size calendar), and never under the status bar. */
+.is-mobile .date-pop { width: min(300px, calc(100vw - 24px)); padding: 8px 8px 8px; }
+.is-mobile .date-pop .quick-picks { gap: 5px; margin-bottom: 6px; }
+.is-mobile .date-pop .quick-picks .chip-btn { height: 30px; padding: 0 6px; border-radius: 10px; font-size: 13.5px; }
+.is-mobile .date-pop .mini-cal-head { height: 30px; margin-bottom: 0; }
+.is-mobile .date-pop .mini-cal-title { font-size: 14.5px; }
+.is-mobile .date-pop .mini-cal-head .icon-btn { width: 30px; height: 30px; border-radius: 50%; }
+.is-mobile .date-pop .mini-cal-grid { gap: 0; }
+.is-mobile .date-pop .mini-cal-dow { font-size: 11px; padding: 1px 0 2px; }
+.is-mobile .date-pop .mini-cal-day { width: 32px; height: 32px; font-size: 14.5px; }
+.is-mobile .date-pop-foot { margin-top: 6px; padding-top: 6px; }
+.is-mobile .date-pop .foot-pill { height: 30px; border-radius: 15px; font-size: 13.5px; }
 .is-mobile .date-pop .foot-pill > .time-trigger, .is-mobile .date-pop .foot-pill > .repeat-trigger { padding: 0 12px; }
 .is-mobile .date-pop .foot-pill:not(.is-empty) > :first-child { padding-right: 4px; }
-.is-mobile .date-pop .pill-x { width: 24px; height: 24px; margin-right: 5px; }
+.is-mobile .date-pop .pill-x { width: 22px; height: 22px; margin-right: 4px; }
 .is-mobile .rp-pop.is-below { margin-top: 10px; }
 .is-mobile .rp-menu .menu-item { min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 16px; }
 .is-mobile .rp-detail { font-size: 14px; }
@@ -1187,7 +1191,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .rp-grid button { height: 36px; font-size: 14px; }
 .is-mobile .rp-summary { font-size: 14px; }
 .is-mobile .rp-actions .btn { height: 40px; padding: 0 18px; font-size: 15px; }
-.is-mobile .date-pop .text-btn { height: 34px; padding: 0 10px; font-size: 14px; }
+.is-mobile .date-pop .text-btn { height: 30px; padding: 0 10px; font-size: 13.5px; }
 .is-mobile .time-cols.is-below { margin-top: 10px; }
 .is-mobile .time-col { max-height: 210px; }
 .is-mobile .time-cell { height: 40px; border-radius: 10px; font-size: 15px; }

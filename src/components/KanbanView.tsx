@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { isMobile } from "../lib/platform";
 import { defaultsForView, subgroupTasks, subtasksOf, type Group, type Subgroup, type ViewRef } from "../lib/views";
 import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
@@ -182,7 +183,7 @@ function Column({ group, view, sort, sectioned }: { group: Group; view: ViewRef;
 export function KanbanView({ view, groups, sectioned, sort }: { view: ViewRef; groups: Group[]; sectioned: boolean; sort: SortBy }) {
   const addSection = useStore((s) => s.addSection);
   const [adding, setAdding] = useState(false);
-  return (
+  const board = (
     <div className="kanban">
       {groups.map((g) => (
         <Column key={g.key} group={g} view={view} sort={sort} sectioned={sectioned} />
@@ -206,5 +207,34 @@ export function KanbanView({ view, groups, sectioned, sort }: { view: ViewRef; g
         </section>
       )}
     </div>
+  );
+  // Phone: the edge strip sits beside the board (not in it), so a swipe from the edge never pans the board.
+  return isMobile ? (
+    <div className="kanban-wrap">
+      {board}
+      <EdgeCatch />
+    </div>
+  ) : (
+    board
+  );
+}
+
+/**
+ * Phone: a thin strip over the board's left edge. A swipe in from the edge
+ * starts on it instead of on the board, so the board does not scroll sideways
+ * (nor along while the lists open); the edge swipe opens them. A tap on it
+ * goes on to what lies under it.
+ */
+function EdgeCatch() {
+  return (
+    <div
+      className="edge-catch"
+      aria-hidden="true"
+      onClick={(e) => {
+        const strip = e.currentTarget;
+        const under = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== strip && !strip.contains(el));
+        under?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }));
+      }}
+    />
   );
 }
