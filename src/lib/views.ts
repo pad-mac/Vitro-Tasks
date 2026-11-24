@@ -35,6 +35,23 @@ export const SMART_DEFAULTS: Record<SmartId, ViewPrefs> = {
   completed: { view_mode: "list", group_by: "none", sort_by: "date" },
 };
 
+/** View mode, grouping and sorting for a view: stored on the list, or in settings for smart views. */
+export function computePrefs(view: ViewRef, lists: List[], settings: Record<string, string>): ViewPrefs {
+  if (view.kind === "list") {
+    const l = lists.find((x) => x.id === view.id);
+    if (l) return { view_mode: l.view_mode, group_by: l.group_by, sort_by: l.sort_by };
+  }
+  const id: SmartId = view.kind === "smart" ? view.id : "all";
+  const base = SMART_DEFAULTS[id];
+  try {
+    const raw = settings[`view:${id}`];
+    return raw ? { ...base, ...(JSON.parse(raw) as Partial<ViewPrefs>) } : base;
+  } catch {
+    return base;
+  }
+}
+
+
 export const PRIORITY_LABELS = ["None", "Low", "Medium", "High"];
 
 export interface Data {

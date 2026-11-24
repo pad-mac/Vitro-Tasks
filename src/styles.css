@@ -258,11 +258,15 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cm-subhead:hover { background: var(--hover); color: var(--text); }
 .cm-subhead-row { display: flex; align-items: center; gap: 6px; padding-right: 4px; }
 .cm-subhead-row .cm-subhead { flex: 1; min-width: 0; }
-.seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 8px; background: var(--hover); }
-.seg button { height: 24px; padding: 0 11px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted); transition: background var(--fast), color var(--fast), box-shadow var(--fast); }
-.seg button:hover:not(:disabled) { color: var(--text); }
-.seg button.is-active { background: var(--raised); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--line); }
+/* A switch in the pickers' own terms: outlined like their chips, the chosen side ringed in ink like the chosen day. */
+.seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.seg button { flex: 1 1 0; height: 22px; padding: 0 11px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted); transition: background var(--fast), color var(--fast), box-shadow var(--fast); }
+.seg button:hover:not(:disabled):not(.is-active) { color: var(--text); background: var(--hover); }
+.seg button.is-active { color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--ink); }
 .seg button:disabled { opacity: 0.4; cursor: default; }
+/* Beside a sub page's title (the date's Start / End): the switch takes the rest of the row. */
+.cm-subhead-row:has(.seg) .cm-subhead { flex: none; }
+.cm-subhead-row .seg { flex: 1; }
 .cm-picker { min-width: 0; padding-bottom: 0; }
 .cm-picker .date-pop { padding: 6px 6px 10px; }
 .cm-deadline, .hm-deadline { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -619,6 +623,12 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .foot-pill:not(.is-empty) > :first-child { padding-right: 3px; }
 .foot-pill .icon { flex: none; color: var(--muted); }
 .foot-pill.is-repeat { flex: 0 1 auto; }
+/* The pills fill the row, as the quick picks above do; Clear keeps its size at the end. */
+.date-pop-foot .foot-pill { flex-grow: 1; }
+.date-pop-foot .foot-pill > .time-trigger, .date-pop-foot .foot-pill > .repeat-trigger { flex: 1; justify-content: center; }
+.date-pop-foot .foot-pill.is-clear { flex: none; padding: 0 12px; color: var(--muted); white-space: nowrap; }
+.foot-pill.is-clear:hover:not(:disabled) { color: var(--text); }
+.foot-pill.is-clear:disabled { opacity: 0.4; cursor: default; border-color: var(--line); }
 .pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pill-x { display: grid; place-items: center; flex: none; width: 18px; height: 18px; margin-right: 5px; border-radius: 50%; color: var(--muted); transition: background var(--fast), color var(--fast); }
 .pill-x:hover { background: var(--active); color: var(--text); }
@@ -1185,6 +1195,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .date-pop .foot-pill > .time-trigger, .is-mobile .date-pop .foot-pill > .repeat-trigger { padding: 0 12px; }
 .is-mobile .date-pop .foot-pill:not(.is-empty) > :first-child { padding-right: 4px; }
 .is-mobile .date-pop .pill-x { width: 22px; height: 22px; margin-right: 4px; }
+.is-mobile .date-pop-foot .foot-pill.is-clear { padding: 0 14px; }
+/* As tall as the chips (30px), corners to match. */
+.is-mobile .seg { border-radius: var(--r-hl); }
+.is-mobile .seg button { height: 24px; border-radius: calc(var(--r-hl) - 3px); font-size: 14px; }
 .is-mobile .rp-pop.is-below { margin-top: 10px; }
 .is-mobile .rp-menu .menu-item { min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 16px; }
 .is-mobile .rp-detail { font-size: 14px; }

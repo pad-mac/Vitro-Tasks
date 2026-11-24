@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { openDb, type Db } from "./db/driver";
-import { assignOrigin, getMeta, loadAll, migrate, purgeOrigin, put, remove, setMeta, uid } from "./db/repo";
+import { adoptRows, assignOrigin, getMeta, loadAll, migrate, purgeOrigin, put, remove, setMeta, uid, type AdoptedChange } from "./db/repo";
 import { getDefaultServer, getServers, hostName, resetServer, setDefaultServer, setServers, syncOnce, type SyncServer } from "./db/sync";
 import {
   announceChange,
@@ -17,11 +17,10 @@ import {
 import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
 import { moveInOrder, orderKey, parseRanks, positionsFor, ranksFor } from "./lib/order";
 import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
-import { advance } from "./lib/repeat";
+import { repeatStep as makeRepeatStep, stepRows, type RepeatStep } from "./lib/complete";
 import { colorForNew, defaultPalette } from "./lib/palettes";
-import { addDays, diffDays, todayKey } from "./lib/dates";
 import {
-  SMART_DEFAULTS,
+  computePrefs,
   listVisibility,
   listWithDescendants,
   type Group,
@@ -31,6 +30,7 @@ import {
   type VisibilityKey,
 } from "./lib/views";
 import type { EntityName, List, Row, Section, Setting, SortBy, Task } from "./shared/schema";
+import type { WidgetState } from "./widget/core";
 
 /**
  * What the undo button takes back: tasks that were completed, and for
@@ -44,13 +44,6 @@ export interface Undo {
 }
 
 /** A repeating task done (or won't do) once: the copy that keeps this occurrence and where the task moves on to. */
-interface RepeatStep {
-  task: Task;
-  kids: Task[];
-  copy: Task;
-  kidCopies: Task[];
-  next: Partial<Task>;
-}
 
 /** How long a just-completed task stays (struck through) before it goes. */
 const LINGER_MS = 900;
@@ -284,23 +277,13 @@ interface State {
   /** A list (with its sublists, sections and tasks) moves to another server. */
   moveListToServer(listId: string, serverId: string, parentId?: string | null): Promise<void>;
   syncNow(): Promise<void>;
+  /** What the home screen widgets need to sync on their own (src/widget/core.ts): the data, and each server that is on with this device's position. */
+  widgetState(): Promise<WidgetState>;
+  /** Takes over rows changed in a widget (ticks), as they are. */
+  adoptWidgetChanges(changes: AdoptedChange[]): Promise<void>;
 }
 
-/** View mode, grouping and sorting for a view: stored on the list, or in settings for smart views. */
-export function computePrefs(view: ViewRef, lists: List[], settings: Record<string, string>): ViewPrefs {
-  if (view.kind === "list") {
-    const l = lists.find((x) => x.id === view.id);
-    if (l) return { view_mode: l.view_mode, group_by: l.group_by, sort_by: l.sort_by };
-  }
-  const id: SmartId = view.kind === "smart" ? view.id : "all";
-  const base = SMART_DEFAULTS[id];
-  try {
-    const raw = settings[`view:${id}`];
-    return raw ? { ...base, ...(JSON.parse(raw) as Partial<ViewPrefs>) } : base;
-  } catch {
-    return base;
-  }
-}
+export { computePrefs };
 
 export interface ImportResult {
   lists: number;
@@ -451,42 +434,14 @@ export const useStore = create<State>((set, get) => {
     return listMap.get(listId)!;
   }
 
-  /**
-   * The step a repeating task takes when it is done (1) or skipped (2): a copy
-   * with this occurrence's dates and that status (its subtasks with it), and
-   * the task's dates moved by the same number of days to the next occurrence.
-   * Null when it does not repeat or its series is over (it is then done as usual).
-   */
   function repeatStep(cur: Task, status: 1 | 2, at: number): RepeatStep | null {
-    const base = cur.start_date ?? cur.deadline_date;
-    if (!cur.repeat || !base || cur.parent_id) return null;
-    const next = advance(cur.repeat, base, todayKey());
-    if (!next) return null;
-    const delta = diffDays(base, next.date);
-    const shift = (d: string | null) => (d ? addDays(d, delta) : null);
-    const kids = get().tasks.filter((t) => t.parent_id === cur.id);
-    const copy: Task = { ...cur, id: uid(), status, completed_at: at, repeat: null };
-    const kidCopies = kids.map((k) => ({
-      ...k,
-      id: uid(),
-      parent_id: copy.id,
-      ...(k.status === 0 && status === 1 ? { status: 1, completed_at: at } : {}),
-    }));
-    return {
-      task: cur,
-      kids,
-      copy,
-      kidCopies,
-      next: { start_date: shift(cur.start_date), end_date: shift(cur.end_date), deadline_date: shift(cur.deadline_date), repeat: next.repeat },
-    };
+    return makeRepeatStep(cur, get().tasks.filter((t) => t.parent_id === cur.id), status, at, uid);
   }
 
   /** Shows the whole step at once (no frame with both the copy and the unmoved task), then saves it. */
   async function applyRepeatStep(step: RepeatStep) {
-    const moved: Task = { ...step.task, ...step.next };
     // The next occurrence starts with its checklist open again.
-    const reopened = step.kids.filter((k) => k.status !== 0).map((k) => ({ ...k, status: 0, completed_at: null }));
-    const rows = [step.copy, ...step.kidCopies, moved, ...reopened];
+    const rows = stepRows(step);
     let tasks = get().tasks;
     for (const r of rows) tasks = replace(tasks, r);
     set({ tasks });
@@ -1240,6 +1195,32 @@ export const useStore = create<State>((set, get) => {
         syncing = false;
         set({ sync: sumUp() });
       }
+    },
+
+    async widgetState() {
+      // Positions first: data read after them is at least as new (a widget then pulls a row twice, never misses one).
+      const on = get().servers.filter((x) => x.enabled);
+      const cursors = await Promise.all(on.map((x) => getMeta(db, `sync_cursor:${x.id}`)));
+      const { lists, sections, tasks, settings, serverSync } = get();
+      const open = new Set(tasks.filter((t) => t.status === 0 && !t.parent_id).map((t) => t.id));
+      return {
+        v: 1,
+        at: Date.now(),
+        synced: on.length ? Math.min(...on.map((x) => serverSync[x.id]?.last ?? 0)) : 0,
+        servers: on.map((x, i) => ({ id: x.id, url: x.url, token: x.token, cursor: Number(cursors[i] ?? 0) || 0 })),
+        lists,
+        sections,
+        // Open tasks and all their subtasks (a repeating task's done copy takes its checklist along).
+        tasks: tasks.filter((t) => (t.parent_id ? open.has(t.parent_id) : t.status === 0)),
+        settings,
+      };
+    },
+
+    async adoptWidgetChanges(changes) {
+      if (!changes.length || !(await adoptRows(db, changes))) return;
+      await get().reload();
+      void announceChange();
+      scheduleSync(300);
     },
   };
 });

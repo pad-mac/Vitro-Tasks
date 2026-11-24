@@ -73,9 +73,20 @@ enum Store {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
   }
 
+  /** The app's own snapshot (the widgets draw from Live's, which adds what they pulled and ticked themselves). */
   static func snapshot() -> Snapshot? {
     guard let url = folder?.appendingPathComponent("widgets.json"), let data = try? Data(contentsOf: url) else { return nil }
     return try? JSONDecoder().decode(Snapshot.self, from: data)
+  }
+
+  static func read(_ name: String) -> String {
+    guard let url = folder?.appendingPathComponent(name), let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+    return text
+  }
+
+  static func write(_ name: String, _ text: String) {
+    guard let url = folder?.appendingPathComponent(name) else { return }
+    try? Data(text.utf8).write(to: url, options: .atomic)
   }
 
   private struct Action: Codable {
@@ -89,12 +100,13 @@ enum Store {
     return (try? JSONDecoder().decode([Action].self, from: data)) ?? []
   }
 
-  /// Ticked here, not yet taken over by the app: hidden until it has.
+  /// Ticked before the app first wrote its data for the widgets (or by version 0.12.0): hidden until the app takes them over.
   static func pendingDone() -> Set<String> {
     Set(actions().filter { $0.kind == "complete" }.map(\.id))
   }
 
-  static func complete(_ id: String) {
+  /// Without the app's data a tick can only wait for the app (it completes the task when it comes forward).
+  static func completeLater(_ id: String) {
     guard let url = folder?.appendingPathComponent("actions.json") else { return }
     var all = actions()
     guard !all.contains(where: { $0.kind == "complete" && $0.id == id }) else { return }
@@ -245,6 +257,7 @@ struct OpenAppView: View {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
     }
+    .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
@@ -280,6 +293,9 @@ enum Links {
 
   static func add(list: String) -> URL { make("add", [("list", list)]) }
   static func list(_ id: String) -> URL { make("list", [("id", id)]) }
-  static func task(_ id: String) -> URL { make("task", [("id", id)]) }
+  /// Opens the task inside the list or view it was tapped in, or in the calendar at its day.
+  static func task(_ id: String, view: String? = nil, day: String? = nil) -> URL {
+    make("task", [("id", id)] + (view.map { [("view", $0)] } ?? []) + (day.map { [("day", $0)] } ?? []))
+  }
   static func calendar(day: String) -> URL { make("calendar", [("day", day)]) }
 }

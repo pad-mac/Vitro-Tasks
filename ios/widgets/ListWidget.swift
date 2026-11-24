@@ -5,9 +5,12 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-private let rowHeight: CGFloat = 23
+// Own margins, snug in the corners: the + sits as far from the top as from the side.
+private let inset: CGFloat = 12
+private let bottomInset: CGFloat = 8
+private let rowHeight: CGFloat = 21.5
 private let headerHeight: CGFloat = 24
-private let headerGap: CGFloat = 7
+private let headerGap: CGFloat = 5
 
 struct ListEntry: TimelineEntry {
   let date: Date
@@ -32,22 +35,28 @@ struct ListProvider: AppIntentTimelineProvider {
   }
 
   func snapshot(for configuration: ListConfig, in context: Context) async -> ListEntry {
-    Store.snapshot() == nil && context.isPreview ? placeholder(in: context) : entry(configuration, Date(), context)
+    let snap = await Live.shared.snapshot()
+    return snap == nil && context.isPreview ? placeholder(in: context) : entry(snap, configuration, Date(), context)
   }
 
   func timeline(for configuration: ListConfig, in context: Context) async -> Timeline<ListEntry> {
+    // What changed on the servers since (iOS decides how often this runs; about every half hour asked for).
+    await Live.shared.refresh()
+    let snap = await Live.shared.snapshot()
     let now = Date()
     // Dates read "Today", "Tomorrow", overdue in red: drawn again at midnight.
     let midnight = Day.nextMidnight(after: now)
-    return Timeline(entries: [entry(configuration, now, context), entry(configuration, midnight, context)], policy: .after(midnight))
+    return Timeline(
+      entries: [entry(snap, configuration, now, context), entry(snap, configuration, midnight, context)],
+      policy: .after(min(midnight, now.addingTimeInterval(30 * 60))))
   }
 
   private func fit(_ context: Context) -> Int {
-    max(2, Int((context.displaySize.height - 32 - headerHeight - headerGap) / rowHeight))
+    max(2, Int((context.displaySize.height - inset - headerHeight - headerGap - bottomInset) / rowHeight))
   }
 
-  private func entry(_ configuration: ListConfig, _ date: Date, _ context: Context) -> ListEntry {
-    ListEntry.make(Store.snapshot(), view: configuration.list?.id ?? "today", date: date, done: Store.pendingDone(), fit: fit(context))
+  private func entry(_ snap: Snapshot?, _ configuration: ListConfig, _ date: Date, _ context: Context) -> ListEntry {
+    ListEntry.make(snap, view: configuration.list?.id ?? "today", date: date, done: Store.pendingDone(), fit: fit(context))
   }
 }
 
@@ -103,11 +112,14 @@ struct ListWidgetView: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         ForEach(entry.rows.prefix(entry.fit)) { row in
-          RowView(row: row, day: entry.day, scheme: scheme)
+          RowView(row: row, view: view.id, day: entry.day, scheme: scheme)
         }
         Spacer(minLength: 0)
       }
     }
+    .padding(.top, inset)
+    .padding(.horizontal, inset)
+    .padding(.bottom, bottomInset)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .widgetURL(Links.list(view.id))
   }
@@ -140,6 +152,8 @@ struct ListWidgetView: View {
 
 private struct RowView: View {
   let row: Row
+  /// The list or view it is shown in (the task opens there).
+  let view: String
   let day: String
   let scheme: ColorScheme
 
@@ -157,7 +171,7 @@ private struct RowView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Complete")
-      TapLink(Links.task(row.id)) {
+      TapLink(Links.task(row.id, view: view)) {
         HStack(spacing: 6) {
           Text(row.title)
             .font(.system(size: 13.5))
@@ -187,5 +201,6 @@ struct ListWidget: Widget {
     .configurationDisplayName("List")
     .description("A list's open tasks: tick them off, or add one.")
     .supportedFamilies([.systemMedium, .systemLarge])
+    .contentMarginsDisabled()
   }
 }

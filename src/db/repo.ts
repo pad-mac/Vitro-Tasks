@@ -160,3 +160,34 @@ export async function applyRemote(db: Db, changes: ChangeSet, origin = ""): Prom
   }
   return applied;
 }
+
+/** A row changed in a home screen widget (src/widget/core.ts). */
+export interface AdoptedChange {
+  entity: EntityName;
+  row: Row;
+  origin: string;
+  /** The widget sent it to its server already (the next sync brings nothing new then). */
+  pushed: boolean;
+}
+
+/**
+ * Takes over rows changed in a widget as they are, version and all: only
+ * where newer than the local row, so a row that also comes from the server
+ * lands once. What the widget could not send goes up with the next sync.
+ */
+export async function adoptRows(db: Db, changes: AdoptedChange[]): Promise<number> {
+  let adopted = 0;
+  for (const c of changes) {
+    if (!ENTITY_NAMES.includes(c.entity) || typeof c.row?.id !== "string") continue;
+    const local = await db.all<{ updated_at: number }>(`SELECT updated_at FROM ${c.entity} WHERE id = $1`, [c.row.id]);
+    if (local.length && local[0].updated_at >= Number(c.row.updated_at)) continue;
+    const { sql, cols } = upsertSql(c.entity, ["dirty", "origin"], ["origin"]);
+    const full = withDefaults(c.entity, c.row);
+    await db.exec(
+      sql,
+      cols.map((col) => (col === "dirty" ? (c.pushed ? 0 : 1) : col === "origin" ? c.origin : ((full[col] ?? null) as Param))),
+    );
+    adopted++;
+  }
+  return adopted;
+}
