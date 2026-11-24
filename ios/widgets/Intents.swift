@@ -21,21 +21,21 @@ struct ListChoice: AppEntity {
 
 struct ListChoiceQuery: EntityQuery {
   func entities(for identifiers: [String]) async throws -> [ListChoice] {
-    let all = Self.all()
+    let all = await Self.all()
     return identifiers.map { id in all.first(where: { $0.id == id }) ?? ListChoice(id: id, name: "List") }
   }
 
   func suggestedEntities() async throws -> [ListChoice] {
-    Self.all()
+    await Self.all()
   }
 
   func defaultResult() async -> ListChoice? {
-    Self.all().first
+    await Self.all().first
   }
 
   /// Today, Next 7 Days, All, Inbox, Deadlines, then the lists in sidebar order.
-  static func all() -> [ListChoice] {
-    guard let snap = Store.snapshot(), !snap.views.isEmpty else { return [ListChoice(id: "today", name: "Today")] }
+  static func all() async -> [ListChoice] {
+    guard let snap = await Live.shared.snapshot(), !snap.views.isEmpty else { return [ListChoice(id: "today", name: "Today")] }
     return snap.views.map { ListChoice(id: $0.id, name: String(repeating: "    ", count: $0.depth) + $0.name) }
   }
 }
@@ -89,7 +89,8 @@ struct CompleteTask: AppIntent {
   }
 
   func perform() async throws -> some IntentResult {
-    Store.complete(id)
+    // Done here and sent to the task's server right away (the app takes it over when it comes forward).
+    await Live.shared.complete(id)
     return .result()
   }
 }

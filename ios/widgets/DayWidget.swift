@@ -19,15 +19,17 @@ struct DayProvider: AppIntentTimelineProvider {
   }
 
   func snapshot(for configuration: DayConfig, in context: Context) async -> ScheduleEntry {
-    ScheduleEntry(date: Date(), snap: Store.snapshot(), layout: configuration.layout, done: Store.pendingDone())
+    ScheduleEntry(date: Date(), snap: await Live.shared.snapshot(), layout: configuration.layout, done: Store.pendingDone())
   }
 
   func timeline(for configuration: DayConfig, in context: Context) async -> Timeline<ScheduleEntry> {
-    let snap = Store.snapshot()
+    await Live.shared.refresh()
+    let snap = await Live.shared.snapshot()
     let done = Store.pendingDone()
     let now = Date()
     let midnight = Day.nextMidnight(after: now)
-    let horizon = now.addingTimeInterval(6 * 3600)
+    // Half an hour of entries, then a new timeline (with what changed on the servers meanwhile).
+    let horizon = now.addingTimeInterval(30 * 60)
     // The now line moves on every quarter of an hour; at midnight the days move on.
     let quarter: TimeInterval = 15 * 60
     var dates = [now]
@@ -93,16 +95,17 @@ struct DayWidgetView: View {
     return VStack(alignment: .leading, spacing: 8) {
       if split {
         DayHeader(day: today)
-        AllDayRow(entries: entries(snap, today).filter { !$0.timed }, room: 3, scheme: scheme)
+        AllDayRow(day: today, entries: entries(snap, today).filter { !$0.timed }, room: 3, scheme: scheme)
       }
       HStack(alignment: .top, spacing: 12) {
         ForEach(columns) { column in
           VStack(alignment: .leading, spacing: 6) {
             if !split {
               DayHeader(day: column.day)
-              AllDayRow(entries: entries(snap, column.day).filter { !$0.timed }, room: 1, scheme: scheme)
+              AllDayRow(day: column.day, entries: entries(snap, column.day).filter { !$0.timed }, room: 1, scheme: scheme)
             }
             HourColumn(
+              day: column.day,
               entries: entries(snap, column.day).filter(\.timed),
               from: column.from, to: column.to,
               now: column.day == today ? Day.minutes(entry.date) : nil,
@@ -140,6 +143,7 @@ private struct DayHeader: View {
 
 /// All-day entries on one line: as many as there is room for, then "+N".
 private struct AllDayRow: View {
+  let day: String
   let entries: [Entry]
   let room: Int
   let scheme: ColorScheme
@@ -148,7 +152,7 @@ private struct AllDayRow: View {
     if !entries.isEmpty {
       HStack(spacing: 4) {
         ForEach(entries.prefix(room)) { e in
-          TapLink(Links.task(e.task)) {
+          TapLink(Links.task(e.task, day: day)) {
             Chip(entry: e, scheme: scheme, size: 11, height: 19)
           }
         }
@@ -211,6 +215,7 @@ private func clock(_ minutes: Int) -> String {
 }
 
 private struct HourColumn: View {
+  let day: String
   let entries: [Entry]
   let from: Int
   let to: Int
@@ -247,7 +252,7 @@ private struct HourColumn: View {
           let y = CGFloat(p.start - from * 60) / 60 * hourH
           let h = max(14, CGFloat(p.end - p.start) / 60 * hourH - 1.5)
           let w = width / CGFloat(p.cols)
-          TapLink(Links.task(p.entry.task)) {
+          TapLink(Links.task(p.entry.task, day: day)) {
             Block(entry: p.entry, height: h, scheme: scheme)
           }
           .frame(width: max(0, w - 2), height: h)

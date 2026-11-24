@@ -1,11 +1,13 @@
 // The app's side of the iOS widgets: keeps their snapshot current, takes over
 // what was ticked in them, and opens what was tapped in them (vitrotasks://
 // links, which iOS hands to the app and Rust passes on as "vitro:opened").
-import { computePrefs, useStore } from "../store";
+import { useStore } from "../store";
+import { computePrefs } from "./views";
 import { hasNative, onNative, postNative } from "./native";
 import { isTauri } from "./platform";
 import type { SmartId, ViewRef } from "./views";
 import { buildSnapshot } from "./widgets";
+import type { AdoptedChange } from "../db/repo";
 
 const SMART_IDS: SmartId[] = ["all", "today", "next7", "inbox", "deadlines", "completed"];
 const WAIT_MS = 1500;
@@ -19,22 +21,27 @@ export function widgetSnapshot() {
   return buildSnapshot(s, (v) => computePrefs(v, s.lists, s.settings), undefined, 0);
 }
 
-/** Writes the snapshot now (if it changed), for the widgets to redraw from. */
-function flush() {
+/**
+ * Writes what the widgets draw from (if it changed): the snapshot, and the
+ * data with the servers, from which they draw and sync on their own while the
+ * app is closed (src/widget/core.ts).
+ */
+async function flush() {
   clearTimeout(timer);
   timer = undefined;
   if (!useStore.getState().ready) return;
+  const state = await useStore.getState().widgetState();
   const snap = widgetSnapshot();
-  const same = JSON.stringify(snap);
+  const same = JSON.stringify([snap, { ...state, at: 0 }]);
   if (same === written) return;
   written = same;
-  snap.at = Date.now();
-  postNative({ type: "widgets", json: JSON.stringify(snap) });
+  snap.at = state.at;
+  postNative({ type: "widgets", json: JSON.stringify(snap), state: JSON.stringify(state) });
 }
 
 const later = () => {
   clearTimeout(timer);
-  timer = setTimeout(flush, WAIT_MS);
+  timer = setTimeout(() => void flush(), WAIT_MS);
 };
 
 function viewFor(id: string | null): ViewRef | null {
@@ -79,8 +86,16 @@ export function openLink(raw: string) {
       break;
     }
     case "task": {
+      // Opened where it was tapped: in that list or view (list widget), or in the calendar at that day (day widget).
       const id = (q.get("id") ?? "").split("~")[0];
-      if (s.tasks.some((t) => t.id === id)) s.select(id);
+      const view = viewFor(q.get("view"));
+      const day = q.get("day");
+      if (view) s.setView(view);
+      else if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        s.setView({ kind: "calendar" });
+        s.goCalDay(day);
+      }
+      if (useStore.getState().tasks.some((t) => t.id === id)) useStore.getState().select(id);
       break;
     }
     case "calendar": {
@@ -99,12 +114,21 @@ export async function startWidgetBridge() {
   useStore.subscribe((s, prev) => {
     if (s.tasks !== prev.tasks || s.lists !== prev.lists || s.sections !== prev.sections || s.settings !== prev.settings) later();
   });
-  // Ticked in a widget: done here too, then a fresh snapshot right away.
+  // Changed in a widget: the rows it wrote, taken over as they are (it may have
+  // sent them to the server already: they land once either way). Ticks of
+  // version 0.12.0 come as plain ids. Then the widgets get the app's data at once.
   onNative("widgetActions", (payload) => {
+    const changes = Array.isArray(payload.changes) ? (payload.changes as AdoptedChange[]) : [];
     const actions = Array.isArray(payload.actions) ? (payload.actions as { kind?: string; id?: string }[]) : [];
     const ids = actions.filter((a) => a.kind === "complete" && typeof a.id === "string").map((a) => a.id!);
-    const done = ids.length ? useStore.getState().completeTasks(ids, { silent: true }) : Promise.resolve();
-    void done.finally(flush);
+    void (async () => {
+      try {
+        await useStore.getState().adoptWidgetChanges(changes);
+        if (ids.length) await useStore.getState().completeTasks(ids, { silent: true });
+      } finally {
+        await flush();
+      }
+    })();
   });
   // The native side greets the page again after a reload: ask once more then.
   onNative("ready", () => postNative({ type: "widgetsTake" }));
@@ -112,9 +136,9 @@ export async function startWidgetBridge() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") postNative({ type: "widgetsTake" });
     // Leaving the app: the widgets get the latest at once.
-    else flush();
+    else void flush();
   });
-  flush();
+  void flush();
 
   if (!isTauri()) return;
   const { listen } = await import("@tauri-apps/api/event");

@@ -621,7 +621,7 @@ export function DatePickerPanel({
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
-  /** The last quick pick, which takes the date away. */
+  /** The last pill in the footer, which takes the date away. */
   clearLabel?: string;
   /** Called after a day was picked or the value cleared. */
   onDone: () => void;
@@ -665,19 +665,6 @@ export function DatePickerPanel({
             {label}
           </button>
         ))}
-        <button
-          type="button"
-          className="chip-btn"
-          disabled={!date}
-          onClick={() => {
-            onChange(null, null);
-            // No date, no series.
-            if (repeat) onRepeat?.(null);
-            onDone();
-          }}
-        >
-          {clearLabel}
-        </button>
       </div>
       <MiniCalendar value={date} onPick={pick} min={min} range={range} />
       <div className="date-pop-foot">
@@ -705,6 +692,19 @@ export function DatePickerPanel({
             )}
           </span>
         )}
+        <button
+          type="button"
+          className="foot-pill is-clear"
+          disabled={!date}
+          onClick={() => {
+            onChange(null, null);
+            // No date, no series.
+            if (repeat) onRepeat?.(null);
+            onDone();
+          }}
+        >
+          {clearLabel}
+        </button>
       </div>
       {open?.what === "time" && <TimeColumns side={open.side} time={time} onPick={(t) => onChange(date ?? min ?? today, t)} />}
       {open?.what === "repeat" && <RepeatPanel side={open.side} value={repeat ?? null} base={date ?? today} onChange={setRepeat} onClose={() => setOpen(null)} />}

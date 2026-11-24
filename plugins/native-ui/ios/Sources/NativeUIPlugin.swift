@@ -96,9 +96,10 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     case "fit":
       if !keyboardUp { resize(0) }
     case "widgets":
-      if let json = body["json"] as? String { WidgetStore.write(json) }
+      if let json = body["json"] as? String { WidgetStore.write(json, state: body["state"] as? String) }
     case "widgetsTake":
-      emit("widgetActions", ["actions": WidgetStore.takeActions()])
+      let taken = WidgetStore.take()
+      emit("widgetActions", ["actions": taken.actions, "changes": taken.changes])
     case "allowFocus":
       focusGate.allow()
     default:
@@ -196,8 +197,9 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
 // MARK: - Widgets
 
 /// What the home screen widgets (ios/widgets) share with the app: the page's
-/// snapshot of what they show, and the checkboxes ticked in them. Both live in
-/// the app group of the app and its widgets. SideStore signs the app with its
+/// snapshot of what they show and its data (from which they draw and sync on
+/// their own while the app is closed), and what was ticked in them. All of it
+/// lives in the app group of the app and its widgets. SideStore signs the app with its
 /// own team and renames the group ("group.app.vitro.tasks.<TEAM>"), so its
 /// real name comes from the provisioning profile.
 enum WidgetStore {
@@ -223,22 +225,26 @@ enum WidgetStore {
 
   private static let queue = DispatchQueue(label: "app.vitro.tasks.widgets", qos: .utility)
 
-  static func write(_ json: String) {
+  static func write(_ json: String, state: String?) {
     queue.async {
       guard let folder = folder else { return }
       try? Data(json.utf8).write(to: folder.appendingPathComponent("widgets.json"), options: .atomic)
+      if let state = state { try? Data(state.utf8).write(to: folder.appendingPathComponent("state.json"), options: .atomic) }
       #if canImport(WidgetKit)
         if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
       #endif
     }
   }
 
-  /// The widgets' ticks since the last time, handed to the page once.
-  static func takeActions() -> [[String: Any]] {
+  /// What was changed in the widgets since the last time (rows; plain ticks from version 0.12.0), handed to the page once.
+  static func take() -> (actions: [[String: Any]], changes: [[String: Any]]) {
     queue.sync {
-      guard let url = folder?.appendingPathComponent("actions.json"), let data = try? Data(contentsOf: url) else { return [] }
-      try? FileManager.default.removeItem(at: url)
-      return ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
+      func takeFile(_ name: String) -> [[String: Any]] {
+        guard let url = folder?.appendingPathComponent(name), let data = try? Data(contentsOf: url) else { return [] }
+        try? FileManager.default.removeItem(at: url)
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
+      }
+      return (takeFile("actions.json"), takeFile("changes.json"))
     }
   }
 }

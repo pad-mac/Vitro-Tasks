@@ -17,11 +17,12 @@ let now = Day.calendar.date(from: DateComponents(year: parts[0], month: parts[1]
 let medium = CGSize(width: 338, height: 158)
 let large = CGSize(width: 338, height: 354)
 
-@MainActor func render<V: View>(_ name: String, _ size: CGSize, _ view: V) {
+/// `margins`: the system's own content margins (widgets that set their own leave them out).
+@MainActor func render<V: View>(_ name: String, _ size: CGSize, margins: Bool = true, _ view: V) {
   for scheme in [ColorScheme.light, .dark] {
     let content =
       view
-      .padding(16)
+      .padding(margins ? 16 : 0)
       .frame(width: size.width, height: size.height)
       .background(Palette.background(scheme))
       .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
@@ -42,11 +43,12 @@ let large = CGSize(width: 338, height: 354)
 
 MainActor.assumeIsolated {
   let list = snap.views.first(where: { $0.kind == "list" })?.id ?? "all"
-  render("list-medium", medium, ListWidgetView(entry: ListEntry.make(snap, view: "today", date: now, done: [], fit: 4)))
-  render("list-large", large, ListWidgetView(entry: ListEntry.make(snap, view: list, date: now, done: [], fit: 12)))
+  // Rows and chips that fit, as the providers work them out from these sizes.
+  render("list-medium", medium, margins: false, ListWidgetView(entry: ListEntry.make(snap, view: "today", date: now, done: [], fit: 5)))
+  render("list-large", large, margins: false, ListWidgetView(entry: ListEntry.make(snap, view: list, date: now, done: [], fit: 14)))
   render("day-two", large, DayWidgetView(entry: ScheduleEntry(date: now, snap: snap, layout: .twoDays, done: [])))
   render("day-split", large, DayWidgetView(entry: ScheduleEntry(date: now, snap: snap, layout: .split, done: [])))
-  render("week-medium", medium, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 4)))
-  render("week-large", large, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 15)))
+  render("week-medium", medium, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 5)))
+  render("week-large", large, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 16)))
   print("rendered into \(out.path)")
 }

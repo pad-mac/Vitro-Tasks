@@ -1,11 +1,17 @@
 // The week at a glance: seven columns, each headed by its letter and date on
 // one line ("M 24", to save height), with the day's entries as chips. The
-// arrows page through the weeks; the month name goes back to this week.
+// columns reach out to the sides; the arrows sit in the top corners and page
+// through the weeks; the month name between them goes back to this week.
 
 import AppIntents
 import SwiftUI
 import WidgetKit
 
+// Own margins: the columns nearly to the edges, the arrows as far from the top as from the sides.
+private let topInset: CGFloat = 12
+private let sideInset: CGFloat = 6
+private let bottomInset: CGFloat = 8
+private let columnGap: CGFloat = 2
 private let titleHeight: CGFloat = 24
 private let dayHeight: CGFloat = 19
 private let chipHeight: CGFloat = 15
@@ -22,12 +28,12 @@ struct WeekEntry: TimelineEntry {
 
 struct WeekProvider: TimelineProvider {
   private func fit(_ context: Context) -> Int {
-    let room = context.displaySize.height - 32 - titleHeight - 6 - dayHeight - 4
+    let room = context.displaySize.height - topInset - titleHeight - 6 - dayHeight - 4 - bottomInset
     return max(2, Int((room + chipGap) / (chipHeight + chipGap)))
   }
 
-  private func entry(_ date: Date, _ context: Context) -> WeekEntry {
-    WeekEntry(date: date, snap: Store.snapshot(), shift: Store.weekShift(at: date), done: Store.pendingDone(), fit: fit(context))
+  private func entry(_ snap: Snapshot?, _ date: Date, _ context: Context) -> WeekEntry {
+    WeekEntry(date: date, snap: snap, shift: Store.weekShift(at: date), done: Store.pendingDone(), fit: fit(context))
   }
 
   func placeholder(in context: Context) -> WeekEntry {
@@ -35,17 +41,26 @@ struct WeekProvider: TimelineProvider {
   }
 
   func getSnapshot(in context: Context, completion: @escaping (WeekEntry) -> Void) {
-    completion(entry(Date(), context))
+    Task {
+      let snap = await Live.shared.snapshot()
+      completion(entry(snap, Date(), context))
+    }
   }
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
-    let now = Date()
-    let midnight = Day.nextMidnight(after: now)
-    // Paged away: back at this week after a while.
-    var dates = [now]
-    if let back = Store.weekShiftEnds, back < midnight { dates.append(back) }
-    dates.append(midnight)
-    completion(Timeline(entries: dates.map { entry($0, context) }, policy: .after(midnight)))
+    Task {
+      // What changed on the servers since (iOS decides how often this runs; about every half hour asked for).
+      await Live.shared.refresh()
+      let snap = await Live.shared.snapshot()
+      let now = Date()
+      let midnight = Day.nextMidnight(after: now)
+      let next = min(midnight, now.addingTimeInterval(30 * 60))
+      // Paged away: back at this week after a while.
+      var dates = [now]
+      if let back = Store.weekShiftEnds, back < next { dates.append(back) }
+      if midnight == next { dates.append(midnight) }
+      completion(Timeline(entries: dates.map { entry(snap, $0, context) }, policy: .after(next)))
+    }
   }
 }
 
@@ -69,7 +84,7 @@ struct WeekWidgetView: View {
     let title = Day.year(middle) == Day.year(today) ? month : "\(month) \(Day.year(middle))"
 
     return VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 2) {
+      ZStack {
         Button(intent: ShiftWeek(by: 0)) {
           Text(title)
             .font(.system(size: 15, weight: .semibold))
@@ -77,16 +92,14 @@ struct WeekWidgetView: View {
             .lineLimit(1)
         }
         .buttonStyle(.plain)
-        Spacer(minLength: 6)
-        // The right chevron's edge lines up with the columns' (its tap area reaches into the margin).
         HStack(spacing: 0) {
           Arrow(symbol: "chevron.left", by: -1)
+          Spacer(minLength: 0)
           Arrow(symbol: "chevron.right", by: 1)
         }
-        .padding(.trailing, -11)
       }
       .frame(height: titleHeight)
-      HStack(alignment: .top, spacing: 3) {
+      HStack(alignment: .top, spacing: columnGap) {
         ForEach(0..<7, id: \.self) { i in
           let day = Day.add(monday, i)
           TapLink(Links.calendar(day: day)) {
@@ -98,10 +111,14 @@ struct WeekWidgetView: View {
         }
       }
     }
+    .padding(.top, topInset)
+    .padding(.horizontal, sideInset)
+    .padding(.bottom, bottomInset)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
 
+/// A chevron in a top corner: its glyph as far from the side as the title row's middle is from the top.
 private struct Arrow: View {
   let symbol: String
   let by: Int
@@ -202,5 +219,6 @@ struct WeekWidget: Widget {
     .configurationDisplayName("Week")
     .description("The week's tasks and events, day by day.")
     .supportedFamilies([.systemMedium, .systemLarge])
+    .contentMarginsDisabled()
   }
 }
