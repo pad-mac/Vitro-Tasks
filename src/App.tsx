@@ -461,6 +461,12 @@ export function App() {
     window.addEventListener("vitro:back", back);
     return () => window.removeEventListener("vitro:back", back);
   }, []);
+  // A widget's +: the quick add for the view it shows (lib/widgetBridge).
+  useEffect(() => {
+    const add = () => openAdd(null);
+    window.addEventListener("vitro:quickadd", add);
+    return () => window.removeEventListener("vitro:quickadd", add);
+  }, [openAdd]);
   const pressWatched = useRef(false);
   useEffect(() => {
     if (!isMobile || pressWatched.current) return;

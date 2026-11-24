@@ -1,0 +1,16 @@
+// Vitro Tasks' home screen widgets. They read the snapshot the app writes into
+// the shared app group (src/lib/widgets.ts) and never touch the database: a
+// tick waits there until the app takes it over, every other tap opens the app
+// through a vitrotasks:// link.
+
+import SwiftUI
+import WidgetKit
+
+@main
+struct VitroWidgets: WidgetBundle {
+  var body: some Widget {
+    ListWidget()
+    DayWidget()
+    WeekWidget()
+  }
+}

@@ -28,6 +28,10 @@ jobs:
         with:
           workspaces: src-tauri
           key: ios
+      - name: Widgets compile on their own (fails fast)
+        run: |
+          xcrun --sdk iphoneos swiftc -typecheck -parse-as-library -swift-version 5 \
+            -target arm64-apple-ios17.0 ios/widgets/*.swift
       - run: npm ci
       - name: Tools
         run: |
@@ -35,6 +39,8 @@ jobs:
           which xcodegen || brew install xcodegen
       - name: Generate the Xcode project
         run: npx tauri ios init --ci
+      - name: Add the widget extension
+        run: node scripts/ios-widgets.mjs
       - name: App icon
         run: npx tauri icon src-tauri/icons/ios-icon.png
       - name: Build without signing
@@ -47,8 +53,27 @@ jobs:
             echo "::error::no .ipa was produced"; find src-tauri/gen/apple/build -maxdepth 3; exit 1
           fi
           cp "$ipa" out/VitroTasks.ipa
-          unzip -l out/VitroTasks.ipa | head -20
-          ls -la out
+      # The build is unsigned; an ad-hoc signature carries the app group for
+      # the app and its widgets, which SideStore reads to set the group up.
+      - name: Entitlements for the app group
+        working-directory: out
+        run: |
+          unzip -q VitroTasks.ipa
+          app=$(find Payload -maxdepth 1 -name "*.app" -print -quit)
+          appex="$app/PlugIns/VitroWidgets.appex"
+          if [ ! -d "$appex" ]; then
+            echo "::error::the widget extension is missing from the app"; ls -R "$app" | head -40; exit 1
+          fi
+          codesign --force --sign - --entitlements ../ios/widgets.entitlements "$appex"
+          codesign --force --sign - --entitlements ../ios/app.entitlements "$app"
+          codesign -d --entitlements - "$appex"
+          codesign -d --entitlements - "$app"
+          plutil -p "$appex/Info.plist"
+          rm VitroTasks.ipa
+          zip -qry VitroTasks.ipa Payload
+          rm -rf Payload
+          unzip -l VitroTasks.ipa | grep -E "\.appex/|Info.plist" | head -20
+          ls -la
       - uses: actions/upload-artifact@v4
         with:
           name: vitro-tasks-ios

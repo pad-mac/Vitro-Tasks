@@ -113,7 +113,7 @@ export type MenuTarget =
   | { kind: "window"; id: string; x: number; y: number };
 
 export type EditMode = "popup" | "pane";
-export type CalMode = "month" | "week" | "multiweek";
+export type CalMode = "month" | "week" | "multiweek" | "days";
 
 
 export const SIDEBAR_DEFAULT = 262;
@@ -176,12 +176,16 @@ interface State {
   calMode: CalMode;
   /** Rows shown in the multi-week calendar. */
   calWeeks: number;
+  /** Multi-day: how many days side by side (1–6). */
+  calDays: number;
   /** Week view: long titles wrap onto more lines (else one line that fades out). */
   calWrap: boolean;
   /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
   calMonthLike: "month" | "multiweek";
   /** Bumped to make the calendar jump to today. */
   calTodayTick: number;
+  /** A day the calendar should show (from a widget), with a counter so the same day can be asked for again. */
+  calJump: { day: string; tick: number } | null;
   /** This window shows only one view layer (opened from the title bar). */
   detached: "tasks" | "calendar" | null;
   version: string;
@@ -230,8 +234,11 @@ interface State {
   setShortcuts(s: Shortcuts): Promise<void>;
   setCalMode(m: CalMode): void;
   setCalWeeks(n: number): void;
+  setCalDays(n: number): void;
   setCalWrap(on: boolean): void;
   goCalToday(): void;
+  /** Shows a day in the calendar (a tap on a widget's day). */
+  goCalDay(day: string): void;
   editMode(view: ViewRef): EditMode;
   setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
   /** Which of All, Today, … the sidebar shows (Settings → Sidebar; synced). */
@@ -255,7 +262,7 @@ interface State {
   /** Completes (or reopens) a task. `quiet`: no lingering and no undo (the parent's editor shows it anyway). */
   toggleTask(id: string, opts?: { quiet?: boolean }): Promise<void>;
   /** Completes open tasks (and their open subtasks) as one step the undo button takes back. */
-  completeTasks(ids: string[], opts?: { quiet?: boolean }): Promise<void>;
+  completeTasks(ids: string[], opts?: { quiet?: boolean; silent?: boolean }): Promise<void>;
   deleteTask(id: string): Promise<void>;
 
   addList(name: string, parentId?: string | null): Promise<List>;
@@ -549,9 +556,11 @@ export const useStore = create<State>((set, get) => {
     shortcuts: parseShortcuts(null),
     calMode: "month",
     calWeeks: 4,
+    calDays: 3,
     calWrap: false,
     calMonthLike: "month",
     calTodayTick: 0,
+    calJump: null,
     detached: detachedLayer(),
     version: "",
     update: { status: "idle" },
@@ -576,9 +585,10 @@ export const useStore = create<State>((set, get) => {
         const shortcuts = parseShortcuts(await getMeta(db, "shortcuts"));
         const calMode = ((await getMeta(db, "cal_mode")) as CalMode | null) ?? "month";
         const calWeeks = Math.max(2, Math.min(6, Number(await getMeta(db, "cal_weeks")) || 4));
+        const calDays = Math.max(1, Math.min(6, Number(await getMeta(db, "cal_days")) || 3));
         const calMonthLike = (await getMeta(db, "cal_month_like")) === "multiweek" ? "multiweek" : "month";
         const calWrap = (await getMeta(db, "cal_wrap")) === "1";
-        set({ calWeeks, calMonthLike, calWrap });
+        set({ calWeeks, calDays, calMonthLike, calWrap });
         set({ theme, shortcut, servers, defaultServer, showDetails, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
@@ -752,7 +762,7 @@ export const useStore = create<State>((set, get) => {
     setCalMode(calMode) {
       set({ calMode });
       void setMeta(db, "cal_mode", calMode);
-      if (calMode !== "week") {
+      if (calMode === "month" || calMode === "multiweek") {
         set({ calMonthLike: calMode });
         void setMeta(db, "cal_month_like", calMode);
       }
@@ -766,8 +776,16 @@ export const useStore = create<State>((set, get) => {
       set({ calWeeks });
       void setMeta(db, "cal_weeks", String(calWeeks));
     },
+    setCalDays(n) {
+      const calDays = Math.max(1, Math.min(6, n));
+      set({ calDays });
+      void setMeta(db, "cal_days", String(calDays));
+    },
     goCalToday() {
       set({ calTodayTick: get().calTodayTick + 1 });
+    },
+    goCalDay(day) {
+      set({ calJump: { day, tick: (get().calJump?.tick ?? 0) + 1 } });
     },
     editMode(view) {
       const prefs = view.kind === "calendar" ? null : computePrefs(view, get().lists, get().settings);
@@ -968,8 +986,9 @@ export const useStore = create<State>((set, get) => {
       // Open subtasks are done with their parent.
       const all = [...new Set(plain.flatMap((id) => [id, ...tasks.filter((t) => t.parent_id === id && t.status === 0).map((t) => t.id)]))];
       const copies = steps.flatMap((x) => [x.copy.id, ...x.kidCopies.map((k) => k.id)]);
-      haptic("success");
-      if (!opts.quiet) {
+      // Silent: ticked in a widget, taken over as the app comes forward.
+      if (!opts.silent) haptic("success");
+      if (!opts.quiet && !opts.silent) {
         // Struck through where they are for a moment, then gone; the undo button stays until the view changes.
         const shown = [...all, ...copies];
         set({

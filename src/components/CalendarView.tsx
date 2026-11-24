@@ -744,8 +744,14 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
   const glide = useGlide(colW, onShift, (px) => {
     for (const t of tracks.current) if (t) t.style.transform = `translateX(${-colW - px}px)`;
   });
+  // From 07:00 (its label in view), or around now when now would be below what that shows.
   useEffect(() => {
-    scroller.current?.scrollTo({ top: 7 * HOUR_H });
+    const el = scroller.current;
+    if (!el) return;
+    const from = 7 * HOUR_H - 10;
+    const d = new Date();
+    const now = (d.getHours() + d.getMinutes() / 60) * HOUR_H;
+    el.scrollTo({ top: now > from + el.clientHeight - 1.5 * HOUR_H ? Math.max(0, now - el.clientHeight / 3) : from });
   }, []);
   // Sideways scrolling (trackpad, or Shift + wheel) moves the week smoothly, settling on a day.
   const onWheel = (e: WheelEvent) => {
@@ -834,6 +840,9 @@ function MonthView({ top, rows = 6, tasks, titleMonth, onShift, onExpand }: { to
 
 // ---------- Phone: one long, smoothly scrolling month ----------
 
+/** The last day jump (from a widget) the calendar has shown: a calendar opened later starts at today again. */
+let takenJump = 0;
+
 const SPAN_WEEKS = 26;
 
 /**
@@ -841,7 +850,20 @@ const SPAN_WEEKS = 26;
  * title follows the month in view. Tapping a day opens its list under that
  * week; holding a day adds a task there (see the touch gestures).
  */
-function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks: Task[]; todaySignal: number; onMonth: (month: string) => void }) {
+function PhoneMonth({
+  rows,
+  tasks,
+  todaySignal,
+  jump,
+  onMonth,
+}: {
+  rows: number;
+  tasks: Task[];
+  todaySignal: number;
+  /** A day to open (a tap on a widget's day). */
+  jump: { day: string; tick: number } | null;
+  onMonth: (month: string) => void;
+}) {
   const today = todayKey();
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
@@ -975,6 +997,20 @@ function PhoneMonth({ rows, tasks, todaySignal, onMonth }: { rows: number; tasks
     } else scrollToY(rowEl(week)!.offsetTop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todaySignal]);
+
+  // A day from a widget: its week to the top, the day open under it. (This runs
+  // before the calendar's own effect, which marks the jump as taken.)
+  useEffect(() => {
+    if (!jump || jump.tick <= takenJump) return;
+    const week = startOfWeek(jump.day);
+    if (!rowEl(week)) {
+      placed.current = false;
+      setAnchor(week);
+    }
+    // After the weeks around it are in place.
+    requestAnimationFrame(() => requestAnimationFrame(() => openDayRef.current(jump.day)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.tick]);
 
   const settle = useRef(0);
   const onScroll = () => {
@@ -1146,11 +1182,15 @@ function CalendarViewImpl() {
   const setMode = useStore((s) => s.setCalMode);
   const todayTick = useStore((s) => s.calTodayTick);
   const detached = useStore((s) => s.detached);
-  const [rootRef, width] = useElementWidth<HTMLDivElement>();
-  const n = width === 0 || width >= 640 ? 7 : width >= 430 ? 3 : 1;
-  // Month: Monday of the first visible row. Week: first visible day.
+  // Week: the seven days (on phones too, in narrow columns). Multi-day: 1–6 days side by side.
+  const calDays = useStore((s) => s.calDays);
+  const setCalDays = useStore((s) => s.setCalDays);
+  const n = mode === "days" ? calDays : 7;
+  // Month: Monday of the first visible row. Week: first visible day. Multi-day: its first day (today to start with).
   const [top, setTop] = useState(() => startOfWeek(startOfMonth(today)));
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
+  const [dayStart, setDayStart] = useState(today);
+  const start = mode === "days" ? dayStart : weekStart;
   // Multi-week: Monday of the first row; starts with the current week.
   const [mwTop, setMwTop] = useState(() => startOfWeek(today));
   const weeks = useStore((s) => s.calWeeks);
@@ -1175,32 +1215,45 @@ function CalendarViewImpl() {
   );
 
   // The month the grid mostly shows: the one its middle day falls in.
-  const titleKey = mode === "month" ? addDays(top, 20) : mode === "multiweek" ? addDays(mwTop, Math.floor((weeks * 7) / 2)) : addDays(weekStart, 3);
+  const titleKey = mode === "month" ? addDays(top, 20) : mode === "multiweek" ? addDays(mwTop, Math.floor((weeks * 7) / 2)) : addDays(start, Math.floor((n - 1) / 2));
   const titleMonth = titleKey.slice(0, 7);
   const [ty, tm] = titleKey.split("-").map(Number);
   const step = (dir: number) => {
     if (mode === "month") setTop(startOfWeek(addMonths(`${titleMonth}-01`, dir)));
     else if (mode === "multiweek") setMwTop(addDays(mwTop, dir * weeks * 7));
-    else setWeekStart(addDays(weekStart, dir * n));
+    else if (mode === "days") setDayStart(addDays(dayStart, dir * n));
+    else setWeekStart(addDays(weekStart, dir * 7));
   };
   const goToday = () => {
     setTop(startOfWeek(startOfMonth(today)));
     setMwTop(startOfWeek(today));
-    setWeekStart(n === 7 ? startOfWeek(today) : today);
+    setWeekStart(startOfWeek(today));
+    setDayStart(today);
   };
   useEffect(() => {
     if (todayTick) goToday();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayTick]);
+  // A day from a widget: every mode shows it (the phone's month opens it under its week).
+  const jump = useStore((s) => s.calJump);
+  useEffect(() => {
+    if (!jump || jump.tick <= takenJump) return;
+    takenJump = jump.tick;
+    setTop(startOfWeek(startOfMonth(jump.day)));
+    setMwTop(startOfWeek(jump.day));
+    setWeekStart(startOfWeek(jump.day));
+    setDayStart(jump.day);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.tick]);
   const onExpand = (day: string, anchor: Anchor) => setExpanded({ day, anchor });
-  // Phones scroll the month views; only the week view pages by swiping.
-  const phoneMonth = isMobile && mode !== "week";
+  // Phones scroll the month views; the week and multi-day views page by swiping.
+  const phoneMonth = isMobile && mode !== "week" && mode !== "days";
   const swipe = useSwipe(step, false);
   const [todaySignal, setTodaySignal] = useState(0);
   const [phoneTitle, setPhoneTitle] = useState(today.slice(0, 7));
 
   return (
-    <div className="calendar" ref={rootRef} {...(phoneMonth ? {} : swipe)}>
+    <div className="calendar" {...(phoneMonth ? {} : swipe)}>
       <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
         <h1 data-tauri-drag-region={detached ? true : undefined}>
           {phoneMonth
@@ -1217,7 +1270,7 @@ function CalendarViewImpl() {
             align="right"
             trigger={
               <span className="btn">
-                {mode === "month" ? "Month" : mode === "multiweek" ? `${weeks} Weeks` : "Week"}
+                {mode === "month" ? "Month" : mode === "multiweek" ? `${weeks} Weeks` : mode === "days" ? (calDays === 1 ? "Day" : `${calDays} Days`) : "Week"}
                 <span className="down">
                   <Icon name="chevron" size={12} />
                 </span>
@@ -1233,6 +1286,16 @@ function CalendarViewImpl() {
                   Month <kbd className="menu-kbd">{calMonthLike === "month" ? shortcuts.calMonth : ""}</kbd>
                 </MenuItem>
                 <div className="cm-sep" />
+                <div className={`menu-item multiweek-item ${mode === "days" ? "is-active" : ""}`}>
+                  <button type="button" className="menu-label mw-label" onClick={() => { setMode("days"); close(); }}>
+                    Multi-Day
+                  </button>
+                  <span className="mw-stepper">
+                    <button type="button" aria-label="Fewer days" disabled={calDays <= 1} onClick={() => { setCalDays(calDays - 1); setMode("days"); }}>−</button>
+                    <b>{calDays}</b>
+                    <button type="button" aria-label="More days" disabled={calDays >= 6} onClick={() => { setCalDays(calDays + 1); setMode("days"); }}>+</button>
+                  </span>
+                </div>
                 <div className={`menu-item multiweek-item ${mode === "multiweek" ? "is-active" : ""}`}>
                   <button type="button" className="menu-label mw-label" onClick={() => { setMode("multiweek"); close(); }}>
                     Multi-Week {calMonthLike === "multiweek" && <kbd className="menu-kbd">{shortcuts.calMonth}</kbd>}
@@ -1281,13 +1344,13 @@ function CalendarViewImpl() {
         </div>
       </header>
       {phoneMonth ? (
-        <PhoneMonth rows={mode === "month" ? 5 : weeks} tasks={visible} todaySignal={todaySignal + todayTick} onMonth={setPhoneTitle} />
+        <PhoneMonth rows={mode === "month" ? 5 : weeks} tasks={visible} todaySignal={todaySignal + todayTick} jump={jump} onMonth={setPhoneTitle} />
       ) : mode === "month" ? (
         <MonthView top={top} tasks={visible} titleMonth={titleMonth} onShift={(w) => setTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
       ) : mode === "multiweek" ? (
         <MonthView top={mwTop} rows={weeks} tasks={visible} titleMonth="" onShift={(w) => setMwTop((t) => addDays(t, w * 7))} onExpand={onExpand} />
       ) : (
-        <WeekView start={weekStart} n={n} tasks={visible} onShift={(d) => setWeekStart((s) => addDays(s, d))} onExpand={onExpand} />
+        <WeekView key={mode} start={start} n={n} tasks={visible} onShift={(d) => (mode === "days" ? setDayStart : setWeekStart)((s) => addDays(s, d))} onExpand={onExpand} />
       )}
       {expanded && (
         <FloatingPanel anchor={expanded.anchor} onClose={() => setExpanded(null)} className="day-sheet">

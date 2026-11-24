@@ -10,6 +10,7 @@ import { refreshBackdrop } from "./lib/backdrop";
 import { isMobile, isTauri, windowLabel } from "./lib/platform";
 
 import { useStore } from "./store";
+import { startWidgetBridge } from "./lib/widgetBridge";
 
 const isQuickAdd = windowLabel() === "quickadd";
 if (isMobile) document.documentElement.classList.add("is-mobile");
@@ -122,6 +123,8 @@ void useStore
       // For the scripted checks of the preview.
       (window as unknown as { __store: typeof useStore }).__store = useStore;
     }
+    // iOS: the home screen widgets' snapshot, their ticks and their links.
+    void startWidgetBridge();
     // Coming back to the app (phone unlocked, window shown again) pulls changes.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && windowLabel() === "main") void useStore.getState().syncNow();
