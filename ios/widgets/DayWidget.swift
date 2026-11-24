@@ -224,18 +224,20 @@ private struct HourColumn: View {
       // Every hour labelled while there is room, else every other.
       let step = hourH < 24 ? 2 : 1
       ZStack(alignment: .topLeading) {
-        ForEach(from..<to, id: \.self) { h in
+        // A line at every hour, the last one closing the column; labels on the lines, as in the app's week view.
+        ForEach(from...to, id: \.self) { h in
           let y = CGFloat(h - from) * hourH
           Rectangle()
             .fill(Palette.hairline(scheme))
             .frame(width: width, height: 0.5)
-            .offset(x: gutter, y: y)
+            .offset(x: gutter, y: min(y, geo.size.height - 0.5))
           if (h - from) % step == 0 {
-            Text(String(format: "%02d", h))
+            Text(String(format: "%02d", h % 24))
               .font(.system(size: 9, weight: .medium))
               .foregroundStyle(.tertiary)
               .monospacedDigit()
-              .offset(x: 0, y: y + 1)
+              .frame(height: 11)
+              .offset(x: 0, y: y - 5.5)
           }
         }
         ForEach(place(entries, from: from, to: to)) { p in
@@ -243,7 +245,7 @@ private struct HourColumn: View {
           let h = max(14, CGFloat(p.end - p.start) / 60 * hourH - 1.5)
           let w = width / CGFloat(p.cols)
           TapLink(Links.task(p.entry.task)) {
-            Block(entry: p.entry, start: p.start, end: p.end, height: h, scheme: scheme)
+            Block(entry: p.entry, height: h, scheme: scheme)
           }
           .frame(width: max(0, w - 2), height: h)
           .offset(x: gutter + CGFloat(p.col) * w, y: y + 0.5)
@@ -268,13 +270,14 @@ private struct HourColumn: View {
 /// An entry at a set time, as the week view draws it: a tinted block with the list colour's bar.
 private struct Block: View {
   let entry: Entry
-  let start: Int
-  let end: Int
   let height: CGFloat
   let scheme: ColorScheme
 
   var body: some View {
     let color = Palette.list(entry.color, scheme)
+    // Its own times, also where a column shows only part of it.
+    let start = entry.start ?? 0
+    let end = entry.end ?? start + 60
     let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
     HStack(spacing: 0) {
       Rectangle().fill(color).frame(width: 2.5)
