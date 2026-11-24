@@ -1,6 +1,6 @@
 [package]
 name = "vitro-tasks"
-version = "0.11.2"
+version = "0.11.3"
 description = "Vitro Tasks"
 edition = "2021"
 

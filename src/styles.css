@@ -878,6 +878,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .m-task-sheet .detail-pane { padding-bottom: 0; }
 .is-mobile .detail-head { height: 58px; }
 .is-mobile .sidebar-wrap.is-drawer { width: min(320px, 86vw) !important; padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* The drawer and its scrim reach up under the status bar (as the quick add's scrim does): the lists' colour runs
+   to the top edge on the left, the dimmed page on the right, and no undimmed band is left across the top. */
+.is-mobile .sidebar-wrap.is-drawer { top: calc(-1 * var(--top-gap)); padding-top: var(--top-gap); }
+.is-mobile .drawer-scrim { top: calc(-1 * var(--top-gap)); background: rgba(0, 0, 0, 0.2); }
 .is-mobile .menu-item { min-height: 40px; }
 .is-mobile .month-grid { touch-action: none; }
 .is-mobile .calendar .view-head { padding-left: 14px; }
