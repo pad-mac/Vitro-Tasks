@@ -2,7 +2,7 @@
 //   today / tomorrow / mon..sun / 24.12. / 2026-12-24 / in 3 days   -> planned date
 //   14:30                                                            -> planned time
 //   ^fri  ^24.12.  ^2026-12-24  (any date token with a ^ prefix)     -> hard deadline
-//   !1 !2 !3  or  !low !med !high                                    -> priority
+//   !1 !2 !3  or  !low !med !high  or  ! !! !!!  or  p1 p2 p3       -> priority (low … high)
 //   #listname                                                        -> list (prefix match)
 //   daily / weekly / every day / every other week / every 2 months /
 //   every mon and thu / every weekday / every 15th / every last fri  -> repeat
@@ -97,6 +97,16 @@ export function parseQuick(input: string, today = todayKey()): QuickParse {
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
 
+    // !1 !2 !3, !low !med !high, ! !! !!!, p1 p2 p3: low, medium, high.
+    if (/^!{1,3}$/.test(word)) {
+      out.priority = word.length;
+      continue;
+    }
+    const pn = /^p([1-3])$/i.exec(word);
+    if (pn) {
+      out.priority = +pn[1];
+      continue;
+    }
     if (word.startsWith("!") && word.length > 1) {
       const p = PRIORITY_WORDS[word.slice(1).toLowerCase()];
       if (p !== undefined) {

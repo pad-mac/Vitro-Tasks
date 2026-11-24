@@ -1,10 +1,9 @@
 // Touch pickers for the phone's add sheet (date with start and end, deadline,
-// priority, list), and the pull gesture for sheets.
+// priority), and the pull gesture for sheets.
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { addDays, todayKey } from "../lib/dates";
 import { haptic } from "../lib/platform";
-import { PRIORITY_LABELS, orderedLists } from "../lib/views";
-import { useStore } from "../store";
+import { PRIORITY_LABELS } from "../lib/views";
 import { describeRepeat } from "../lib/repeat";
 import { RepeatPanel, dateForRule } from "./RepeatPicker";
 import { Flag, Icon, MiniCalendar } from "./ui";
@@ -244,20 +243,3 @@ export function PriorityChoice({ value, onPick }: { value: number; onPick: (p: n
     </div>
   );
 }
-
-export function ListChoice({ value, onPick }: { value: string | null; onPick: (id: string | null) => void }) {
-  const lists = useStore((s) => s.lists);
-  const rows: { id: string | null; name: string; color?: string; depth: number }[] = [{ id: null, name: "Inbox", depth: 0 }, ...orderedLists(lists)];
-  return (
-    <div className="p-lists">
-      {rows.map((l) => (
-        <button type="button" key={l.id ?? "inbox"} className={`p-list-row ${l.id === value ? "is-on" : ""}`} style={{ paddingLeft: 14 + l.depth * 18 }} onClick={() => onPick(l.id)}>
-          {l.id ? <i className="dot" style={{ background: l.color }} /> : <Icon name="inbox" size={16} />}
-          <span>{l.name}</span>
-          {l.id === value && <Icon name="check" size={16} />}
-        </button>
-      ))}
-    </div>
-  );
-}
-

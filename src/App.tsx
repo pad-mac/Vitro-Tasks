@@ -468,10 +468,11 @@ export function App() {
     watchPress();
   }, []);
   // What the keyboard's corners show: known from what is open (no measuring); the app hears only of a change.
-  const sheetUp = addOpen || !!selected || !!composer;
+  // The quick add floats above the keyboard: the dimmed page shows around it (and at the keyboard's corners).
+  const sheetUp = !!selected || !!composer;
   useEffect(() => {
-    if (isMobile) setBackdrop(settingsOpen ? "modal" : sheetUp ? "sheet" : "page");
-  }, [settingsOpen, sheetUp, theme]);
+    if (isMobile) setBackdrop(settingsOpen ? "modal" : sheetUp ? "sheet" : addOpen ? "scrim" : "page");
+  }, [settingsOpen, sheetUp, addOpen, theme]);
 
   // Quick add's Ctrl+Enter: show the new task inside its list (or the Inbox).
   useEffect(() => {

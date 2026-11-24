@@ -8,14 +8,14 @@ import { setBackdropRising } from "../lib/backdrop";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
 import { isTyping } from "../lib/shortcuts";
-import { PRIORITY_LABELS, defaultsForView } from "../lib/views";
+import { PRIORITY_LABELS, defaultsForView, orderedLists } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
 import { formatDateTime, todayKey } from "../lib/dates";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
 import { useCreateTask, type TouchDragDetail } from "./tasks";
-import { DayPicker, ListChoice, SpanPicker, useSheetGesture, type PropValues } from "./PhonePickers";
+import { DayPicker, SpanPicker, useSheetGesture, type PropValues } from "./PhonePickers";
 import { TaskDetail } from "./TaskDetail";
 import { Flag, Icon, usePresence } from "./ui";
 
@@ -153,7 +153,8 @@ export function MobileAdd({
   const ref = useRef<HTMLDivElement>(null);
   // A picker button is being pressed: the line losing focus must not close the sheet.
   const keep = useRef(false);
-  const suggest = useListSuggest(value, setValue, inputRef as RefObject<HTMLInputElement>);
+  // "#" does not list matches under the line here: the list picker itself opens and filters as you type.
+  const suggest = useListSuggest(value, setValue, inputRef as RefObject<HTMLInputElement>, { lists: false });
   const parsed = parseQuick(value);
   const title = parsed.title;
   const typed = !!(parsed.start_date || parsed.deadline_date || parsed.priority || parsed.listQuery || parsed.repeat);
@@ -249,10 +250,33 @@ export function MobileAdd({
     keep.current = true;
     setTimeout(() => (keep.current = false), 350);
   };
+  // The list picker is open while a "#…" is being typed; it sits above the list button (placed when it opens).
+  const listOpen = open && suggest.listQuery !== null;
+  const listBtn = useRef<HTMLButtonElement>(null);
+  const [listAt, setListAt] = useState<{ left: number; bottom: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!listOpen) return setListAt(null);
+    // Above the whole bubble, so the line being typed in stays in view.
+    const r = listBtn.current?.getBoundingClientRect();
+    const top = ref.current?.getBoundingClientRect().top;
+    if (r && top !== undefined) setListAt({ left: r.left, bottom: innerHeight - top + 8 });
+  }, [listOpen]);
+  const q = suggest.listQuery ?? "";
+  const listRows: { id: string | null; name: string; color?: string; path?: string }[] = q
+    ? [...("inbox".startsWith(q) ? [{ id: null, name: "Inbox" }] : []), ...suggest.listMatches]
+    : [{ id: null, name: "Inbox" }, ...orderedLists(lists).map((l) => ({ id: l.id, name: l.name, color: l.color, depth: l.depth }))];
+  // The likeliest: the best match while filtering, else the list already chosen.
+  const likely = q ? listRows[0] : (listRows.find((r) => r.id === (base.list_id ?? null)) ?? listRows[0]);
+  const takeList = (id: string | null) => {
+    pick({ list_id: id, section_id: null });
+    suggest.dropListToken();
+    inputRef.current?.focus();
+  };
   const toolButton = (t: Tool, icon: ReactNode, label: string, set: boolean, extra = "") => (
     <button
       type="button"
-      className={`m-tool ${extra} ${tool === t || float?.kind === t ? "is-open" : ""} ${set ? "is-set" : ""}`}
+      className={`m-tool ${extra} ${tool === t || float?.kind === t || (t === "list" && listOpen) ? "is-open" : ""} ${set ? "is-set" : ""}`}
+      ref={t === "list" ? listBtn : undefined}
       aria-label={label}
       onPointerDown={(e) => {
         holdOpen();
@@ -261,11 +285,26 @@ export function MobileAdd({
       }}
       onMouseDown={(e) => (t === "priority" || t === "list") && e.preventDefault()}
       onClick={(e) => {
-        if (t === "priority" || t === "list") {
+        if (t === "list") {
+          // The picker is "#" in the line: typing after it filters the lists, Enter takes the likeliest.
+          setTool(null);
+          setFloat(null);
+          if (listOpen) {
+            suggest.dropListToken();
+          } else {
+            const next = `${value}${value && !/\s$/.test(value) ? " " : ""}#`;
+            setValue(next);
+            suggest.placeCaret(next.length);
+          }
+          inputRef.current?.focus();
+          return;
+        }
+        if (t === "priority") {
           if (float?.kind === t) return setFloat(null);
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const top = ref.current?.getBoundingClientRect().top ?? r.top;
           setTool(null);
-          setFloat({ kind: t, left: r.left, bottom: innerHeight - r.top + 8 });
+          setFloat({ kind: t, left: r.left, bottom: innerHeight - top + 8 });
           inputRef.current?.focus();
           return;
         }
@@ -318,6 +357,11 @@ export function MobileAdd({
               onFocus={() => setTool(null)}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
+                if (listOpen && e.key === "Enter") {
+                  e.preventDefault();
+                  if (likely) takeList(likely.id);
+                  return;
+                }
                 if (suggest.onKeyDown(e)) return;
                 if (e.key === "Enter") submit();
                 if (e.key === "Escape") close();
@@ -338,7 +382,8 @@ export function MobileAdd({
           {suggest.open ? (
             <SuggestList s={suggest} className="m-suggest" />
           ) : (
-            typed && (
+            typed &&
+            !listOpen && (
               <div className="m-add-foot">
                 <ParsedChips value={value} typedListOnly />
               </div>
@@ -389,32 +434,49 @@ export function MobileAdd({
             style={{ left: Math.max(12, Math.min(float.left - 8, innerWidth - 12 - 248)), bottom: float.bottom, maxHeight: Math.max(160, innerHeight - float.bottom - 56) }}
             {...keepFocus}
           >
-            {float.kind === "priority" ? (
-              [3, 2, 1, 0].map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  className={`m-float-row ${(base.priority ?? 0) === p ? "is-on" : ""}`}
-                  onClick={() => {
-                    pick({ priority: p });
-                    setFloat(null);
-                    backToTyping();
-                  }}
-                >
-                  <Flag priority={p} size={18} />
-                  <span>{p ? `${PRIORITY_LABELS[p]} Priority` : "No Priority"}</span>
-                  {(base.priority ?? 0) === p && <Icon name="check" size={16} />}
-                </button>
-              ))
-            ) : (
-              <ListChoice
-                value={base.list_id ?? null}
-                onPick={(id) => {
-                  pick({ list_id: id, section_id: null });
+            {[3, 2, 1, 0].map((p) => (
+              <button
+                type="button"
+                key={p}
+                className={`m-float-row ${(base.priority ?? 0) === p ? "is-on" : ""}`}
+                onClick={() => {
+                  pick({ priority: p });
                   setFloat(null);
                   backToTyping();
                 }}
-              />
+              >
+                <Flag priority={p} size={18} />
+                <span>{p ? `${PRIORITY_LABELS[p]} Priority` : "No Priority"}</span>
+                {(base.priority ?? 0) === p && <Icon name="check" size={16} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {listOpen && listAt && (
+        <>
+          <div className="m-float-catch" {...keepFocus} onClick={() => suggest.dropListToken()} />
+          <div
+            className="m-float m-float-lists"
+            style={{ left: Math.max(12, Math.min(listAt.left - 8, innerWidth - 12 - 248)), bottom: listAt.bottom, maxHeight: Math.max(160, innerHeight - listAt.bottom - 56) }}
+            {...keepFocus}
+          >
+            {listRows.length ? (
+              listRows.map((l) => (
+                <button
+                  type="button"
+                  key={l.id ?? "inbox"}
+                  className={`p-list-row ${l === likely ? "is-likely" : ""} ${l.id === (base.list_id ?? null) ? "is-on" : ""}`}
+                  style={!q && "depth" in l ? { paddingLeft: 10 + (l.depth as number) * 18 } : undefined}
+                  onClick={() => takeList(l.id)}
+                >
+                  {l.id ? <i className="dot" style={{ background: l.color }} /> : <Icon name="inbox" size={16} />}
+                  <span>{q && l.path ? l.path : l.name}</span>
+                  {l === likely && <span className="m-float-enter" aria-hidden="true">↵</span>}
+                </button>
+              ))
+            ) : (
+              <p className="m-float-empty">No list “{q}”</p>
             )}
           </div>
         </>

@@ -1,13 +1,13 @@
 // iOS: the colour behind the web view. While the keyboard is up the web view
 // is shortened to end above it, and the keyboard's rounded top corners show
 // what lies behind. That colour is never measured: the app knows what sits on
-// the keyboard (a sheet, the quick add on its way in over the dimmed page, the
+// the keyboard (a sheet, the dimmed page under the floating quick add, the
 // settings page, the page itself), and each of those has its declared colour.
 // It is set when that state changes, and the app only hears of a change.
 import { hasNative, postNative } from "./native";
 
-/** What sits at the bottom of the screen. */
-export type Backdrop = "page" | "sheet" | "modal";
+/** What sits at the bottom of the screen ("scrim": the page dimmed, under the floating quick add). */
+export type Backdrop = "page" | "sheet" | "modal" | "scrim";
 
 // The quick add's scrim (styles.css .m-scrim): black at 20% over the page.
 const SCRIM = 0.2;
@@ -42,7 +42,7 @@ export function backdropColor(kind: Backdrop, dimmed: boolean): string {
 function apply() {
   if (!hasNative()) return;
   // While the quick add rises, the keyboard slides in under the dimmed page (not yet the sheet).
-  const color = rising ? backdropColor("page", true) : backdropColor(base, false);
+  const color = rising || base === "scrim" ? backdropColor("page", true) : backdropColor(base, false);
   if (color === sent) return;
   sent = color;
   postNative({ type: "backdrop", color });

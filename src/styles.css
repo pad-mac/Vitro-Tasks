@@ -1019,7 +1019,6 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .p-top-btn.is-strong { color: var(--text); font-weight: 600; }
 .p-top-btn:disabled { opacity: 0.35; }
 .p-top-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 600; }
-.m-add-sheet .m-grabber { width: 100%; height: 22px; }
 
 /* Touch pickers */
 .m-add-picker .p-quick { display: flex; gap: 8px; margin-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
@@ -1205,6 +1204,30 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .kb-up .m-task-sheet .detail-bar { padding-top: 9px; padding-bottom: 9px; }
 /* Under the quick add (when the keyboard lies over the page): its colour goes on below it. */
 .m-sheet::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: inherit; pointer-events: none; }
+
+/* ---------- Quick add (phone): a closed bubble floating just above the keyboard ---------- */
+/* Its corners are the keyboard's (iOS 26: about 26pt, matched by eye). The send button sits concentric in the top
+   right corner (8 + 18 = 26); the line and the button row are as low as they can go. */
+.is-mobile { --kb-r: 26px; }
+.m-add-sheet { left: 8px; right: 8px; bottom: calc(var(--kb, 0px) + max(8px, env(safe-area-inset-bottom, 0px))); max-height: calc(100% - var(--top-gap) - 16px); padding: 0; border-radius: var(--kb-r); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 0.5px var(--line); transform: translateY(calc(100% + 64px)); }
+.kb-up .m-add-sheet { bottom: calc(var(--kb, 0px) + 8px); padding: 0; }
+.m-add-sheet::after { display: none; }
+.m-add-sheet > .p-sheet-top { position: absolute; z-index: 1; top: 0; left: 50%; translate: -50% 0; min-height: 0; padding: 0; }
+.m-add-sheet .m-grabber { width: 72px; height: 14px; place-items: start center; padding-top: 4px; }
+.m-add-sheet .m-grabber i { width: 34px; height: 3px; border-radius: 1.5px; }
+.m-add-sheet .p-scroll { padding: 8px 8px 8px 22px; }
+.m-add-sheet .m-add-row { gap: 8px; }
+.m-add-sheet .m-add-row input { height: 36px; }
+.m-add-sheet .m-send { width: 36px; height: 36px; }
+.m-add-sheet .m-tools { margin: 4px 0 0 -14px; }
+/* The first tool's icon lines up with the line's text; under the line, the same 22px on both sides. */
+.m-add-sheet .m-add-foot, .m-add-sheet .m-suggest, .m-add-sheet .m-add-picker { margin-right: 14px; }
+/* The list picker ("#" in the line): the likeliest list marked, Enter takes it. */
+.m-float-lists { padding: 6px; }
+.m-float-lists .p-list-row { border-radius: 12px; padding: 0 10px; }
+.m-float-lists .p-list-row.is-likely { background: color-mix(in oklab, var(--text) 9%, transparent); }
+.m-float .p-list-row .m-float-enter { flex: none; color: var(--muted); font-size: 15px; }
+.m-float-empty { margin: 0; padding: 12px 10px; color: var(--muted); font-size: 15px; }
 @keyframes sheet-in { from { transform: translateY(100%); } }
 
 /* ---------- Phone calendar ---------- */

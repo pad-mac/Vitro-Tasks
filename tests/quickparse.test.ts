@@ -145,3 +145,16 @@ describe("repeats in quick add", () => {
     expect(repeatSuggestions("Read every book", TODAY)).toBeNull();
   });
 });
+
+describe("priority shorthands", () => {
+  it("reads ! !! !!! and p1 p2 p3 as low, medium, high", () => {
+    expect(parseQuick("Call ! ", "2026-11-16")).toMatchObject({ title: "Call", priority: 1 });
+    expect(parseQuick("Call !!", "2026-11-16")).toMatchObject({ title: "Call", priority: 2 });
+    expect(parseQuick("Call !!! tomorrow", "2026-11-16")).toMatchObject({ title: "Call", priority: 3, start_date: "2026-11-17" });
+    expect(parseQuick("Call p1", "2026-11-16").priority).toBe(1);
+    expect(parseQuick("Call P2", "2026-11-16").priority).toBe(2);
+    expect(parseQuick("p3 Call", "2026-11-16")).toMatchObject({ title: "Call", priority: 3 });
+    expect(parseQuick("Wow!! great", "2026-11-16")).toMatchObject({ title: "Wow!! great", priority: 0 });
+    expect(parseQuick("Read p4 and p12", "2026-11-16")).toMatchObject({ title: "Read p4 and p12", priority: 0 });
+  });
+});

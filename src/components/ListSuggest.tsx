@@ -26,7 +26,13 @@ export type SuggestOption = ListOption | RepeatOption;
 /** The token typed into the field for a list: its name without spaces. */
 export const listToken = (name: string) => name.replace(/\s+/g, "");
 
-export function useListSuggest(value: string, setValue: (v: string) => void, input: RefObject<HTMLInputElement | null>) {
+/**
+ * `lists: false` (the phone's quick add): "#" does not list matches here; the
+ * caller shows its own list picker, filtered by `listQuery` (`listMatches`,
+ * the likeliest first) and takes the token out with `dropListToken`.
+ */
+export function useListSuggest(value: string, setValue: (v: string) => void, input: RefObject<HTMLInputElement | null>, opts: { lists?: boolean } = {}) {
+  const showLists = opts.lists ?? true;
   const lists = useStore((s) => s.lists);
   const [caret, setCaret] = useState(0);
   const [index, setIndex] = useState(0);
@@ -48,14 +54,33 @@ export function useListSuggest(value: string, setValue: (v: string) => void, inp
   const m = /(^|\s)#([^\s#]*)$/.exec(before);
   const query = m ? m[2].toLowerCase() : null;
   const repeats = useMemo(() => (query === null ? repeatSuggestions(before) : null), [query, before]);
-  const items = useMemo<SuggestOption[]>(() => {
-    if (query === null) return repeats ? repeats.items.map((x) => ({ kind: "repeat" as const, id: x.phrase, ...x })) : [];
+  const listMatches = useMemo<ListOption[]>(() => {
+    if (query === null) return [];
     const q = query.replace(/\s+/g, "");
     const key = (o: ListOption) => listToken(o.name).toLowerCase();
     const starts = options.filter((o) => key(o).startsWith(q));
     const contains = options.filter((o) => !key(o).startsWith(q) && (key(o).includes(q) || o.path.toLowerCase().includes(q)));
-    return [...starts, ...contains].slice(0, 7);
-  }, [options, query, repeats]);
+    return [...starts, ...contains];
+  }, [options, query]);
+  const items = useMemo<SuggestOption[]>(() => {
+    if (query === null) return repeats ? repeats.items.map((x) => ({ kind: "repeat" as const, id: x.phrase, ...x })) : [];
+    return showLists ? listMatches.slice(0, 7) : [];
+  }, [listMatches, query, repeats, showLists]);
+
+  /** The text without the "#…" being typed (and the caret where it was). */
+  const dropListToken = () => {
+    if (query === null) return;
+    const start = before.length - query.length - 1;
+    const rest = value.slice(before.length).replace(/^\S*/, "");
+    const head = value.slice(0, start).replace(/\s+$/, "");
+    const next = head && rest.trim() ? `${head} ${rest.trimStart()}` : `${head}${head ? " " : ""}${rest.trimStart()}`;
+    const pos = Math.min(next.length, head.length + (head ? 1 : 0));
+    setValue(next);
+    requestAnimationFrame(() => {
+      input.current?.setSelectionRange(pos, pos);
+      setCaret(pos);
+    });
+  };
   const open = items.length > 0 && dismissed !== before;
   const active = Math.min(index, items.length - 1);
 
@@ -106,6 +131,14 @@ export function useListSuggest(value: string, setValue: (v: string) => void, inp
     accept,
     onKeyDown,
     setIndex,
+    listQuery: query,
+    listMatches,
+    dropListToken,
+    /** Puts the caret at `pos` (after the caller changed the text). */
+    placeCaret: (pos: number) => {
+      setCaret(pos);
+      requestAnimationFrame(() => input.current?.setSelectionRange(pos, pos));
+    },
     inputProps: { onSelect: track, onKeyUp: track, onClick: track },
   };
 }
