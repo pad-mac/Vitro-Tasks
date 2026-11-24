@@ -48,7 +48,9 @@ MainActor.assumeIsolated {
   render("list-large", large, margins: false, ListWidgetView(entry: ListEntry.make(snap, view: list, date: now, done: [], fit: 14)))
   render("day-two", large, DayWidgetView(entry: ScheduleEntry(date: now, snap: snap, layout: .twoDays, done: [])))
   render("day-split", large, DayWidgetView(entry: ScheduleEntry(date: now, snap: snap, layout: .split, done: [])))
-  render("week-medium", medium, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 5)))
-  render("week-large", large, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: 16)))
+  let weekM = WeekProvider.fit(height: medium.height)
+  let weekL = WeekProvider.fit(height: large.height)
+  render("week-medium", medium, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: weekM.all, fitWithMore: weekM.withMore)))
+  render("week-large", large, margins: false, WeekWidgetView(entry: WeekEntry(date: now, snap: snap, shift: 0, done: [], fit: weekL.all, fitWithMore: weekL.withMore)))
   print("rendered into \(out.path)")
 }
