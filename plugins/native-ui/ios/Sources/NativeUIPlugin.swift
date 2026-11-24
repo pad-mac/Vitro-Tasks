@@ -1,6 +1,7 @@
 // Native parts around the web view on iOS: the glass tab bar, haptics, the
 // keyboard (the web view makes room for it, no form bar above it, its look
-// follows the app's theme). Holding a task (menu, drag) is the page's own.
+// follows the app's theme), and the data the home screen widgets show.
+// Holding a task (menu, drag) is the page's own.
 //
 // The page talks to this plugin with
 //   window.webkit.messageHandlers.vitroNative.postMessage({ type, ... })
@@ -11,6 +12,9 @@ import ObjectiveC
 import Tauri
 import UIKit
 import WebKit
+#if canImport(WidgetKit)
+  import WidgetKit
+#endif
 
 final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
   private weak var webview: WKWebView?
@@ -23,6 +27,7 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
   /// Colour behind the web view while a sheet is open (it shows around the keyboard's rounded corners).
   private var backdrop: UIColor?
   private var keyboardUp = false
+  private let focusGate = FocusGate()
 
   override func load(webview: WKWebView) {
     if Thread.isMainThread {
@@ -36,6 +41,7 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     self.webview = webview
     webview.configuration.userContentController.add(self, name: "vitroNative")
     KeyboardTweaks.install()
+    focusGate.install(on: webview)
     ScrollLock.install(webview.scrollView)
     watchKeyboard()
     attach(0)
@@ -89,6 +95,12 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
       applyBackdrop()
     case "fit":
       if !keyboardUp { resize(0) }
+    case "widgets":
+      if let json = body["json"] as? String { WidgetStore.write(json) }
+    case "widgetsTake":
+      emit("widgetActions", ["actions": WidgetStore.takeActions()])
+    case "allowFocus":
+      focusGate.allow()
     default:
       break
     }
@@ -178,6 +190,83 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     let b = host.bounds
     let frame = CGRect(x: b.minX, y: b.minY, width: b.width, height: b.height - covered)
     if webview.frame != frame { webview.frame = frame }
+  }
+}
+
+// MARK: - Widgets
+
+/// What the home screen widgets (ios/widgets) share with the app: the page's
+/// snapshot of what they show, and the checkboxes ticked in them. Both live in
+/// the app group of the app and its widgets. SideStore signs the app with its
+/// own team and renames the group ("group.app.vitro.tasks.<TEAM>"), so its
+/// real name comes from the provisioning profile.
+enum WidgetStore {
+  static let group: String = {
+    if let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+      let data = try? Data(contentsOf: url),
+      let start = data.range(of: Data("<?xml".utf8)),
+      let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+      let plist = try? PropertyListSerialization.propertyList(from: data.subdata(in: start.lowerBound..<end.upperBound), options: [], format: nil)
+        as? [String: Any],
+      let entitlements = plist["Entitlements"] as? [String: Any],
+      let groups = entitlements["com.apple.security.application-groups"] as? [String],
+      let group = groups.first(where: { $0.hasPrefix("group.app.vitro.tasks") }) ?? groups.first
+    {
+      return group
+    }
+    return "group.app.vitro.tasks"
+  }()
+
+  static var folder: URL? {
+    FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+  }
+
+  private static let queue = DispatchQueue(label: "app.vitro.tasks.widgets", qos: .utility)
+
+  static func write(_ json: String) {
+    queue.async {
+      guard let folder = folder else { return }
+      try? Data(json.utf8).write(to: folder.appendingPathComponent("widgets.json"), options: .atomic)
+      #if canImport(WidgetKit)
+        if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
+      #endif
+    }
+  }
+
+  /// The widgets' ticks since the last time, handed to the page once.
+  static func takeActions() -> [[String: Any]] {
+    queue.sync {
+      guard let url = folder?.appendingPathComponent("actions.json"), let data = try? Data(contentsOf: url) else { return [] }
+      try? FileManager.default.removeItem(at: url)
+      return ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
+    }
+  }
+}
+
+/// iOS raises the keyboard only for a field focused by a tap. A widget's +
+/// opens the quick add through a link, without a tap: for a moment after the
+/// page asks, a focus may raise it too. (WebKit's input delegate; everything
+/// else stays as WebKit decides.)
+final class FocusGate: NSObject {
+  private var until = Date.distantPast
+
+  func install(on webview: WKWebView) {
+    let setter = NSSelectorFromString("_setInputDelegate:")
+    if webview.responds(to: setter) { webview.perform(setter, with: self) }
+  }
+
+  func allow() {
+    until = Date().addingTimeInterval(1.5)
+  }
+
+  /// _WKFocusStartsInputSessionPolicy: 0 auto (WebKit's own rule), 1 allow.
+  @objc(_webView:decidePolicyForFocusedElement:)
+  func decidePolicy(_ webView: WKWebView, focusedElement: AnyObject) -> Int {
+    if Date() < until {
+      until = .distantPast
+      return 1
+    }
+    return 0
   }
 }
 

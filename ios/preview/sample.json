@@ -1,0 +1,1535 @@
+{
+ "v": 1,
+ "at": 0,
+ "today": "2026-11-24",
+ "from": "2026-11-16",
+ "to": "2026-12-27",
+ "views": [
+  {
+   "id": "today",
+   "name": "Today",
+   "kind": "smart",
+   "color": null,
+   "depth": 0,
+   "filter": "today",
+   "rows": [
+    {
+     "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+     "title": "Sign up for colloquium",
+     "p": 2,
+     "date": "2026-11-21",
+     "time": null,
+     "first": "2026-11-21"
+    },
+    {
+     "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+     "title": "Chase missing chapters",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+     "title": "Editors call",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": "14:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+     "title": "Deep work",
+     "p": 2,
+     "date": "2026-11-24",
+     "time": "10:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+     "title": "Water the plants",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "5d408222-c501-45ce-8016-e066e40cdd94",
+     "title": "Standup",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "09:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+     "title": "Lunch",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "12:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+     "title": "Proofs",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "14:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+     "title": "Run",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "18:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+     "title": "Reading group: prepare session",
+     "p": 2,
+     "date": "2026-11-25",
+     "time": "18:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "025de146-890c-4d38-a0ff-47aa2b41328c",
+     "title": "Reply to organisers",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "f41516c8-db9f-4d2b-9f18-1422c27840d7",
+     "title": "Print the text",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+     "title": "Send style sheet to contributors",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": null,
+     "first": "2026-11-25"
+    },
+    {
+     "id": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+     "title": "Seminar",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "10:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+     "title": "Library",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "13:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+     "title": "Train home",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "16:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+     "title": "Submit abstract",
+     "p": 3,
+     "date": "2026-11-25",
+     "time": "17:00",
+     "first": "2026-11-25"
+    }
+   ],
+   "count": 9
+  },
+  {
+   "id": "next7",
+   "name": "Next 7 Days",
+   "kind": "smart",
+   "color": null,
+   "depth": 0,
+   "filter": "next7",
+   "rows": [
+    {
+     "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+     "title": "Sign up for colloquium",
+     "p": 2,
+     "date": "2026-11-21",
+     "time": null,
+     "first": "2026-11-21"
+    },
+    {
+     "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+     "title": "Chase missing chapters",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+     "title": "Editors call",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": "14:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+     "title": "Deep work",
+     "p": 2,
+     "date": "2026-11-24",
+     "time": "10:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+     "title": "Water the plants",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "5d408222-c501-45ce-8016-e066e40cdd94",
+     "title": "Standup",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "09:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+     "title": "Lunch",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "12:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+     "title": "Proofs",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "14:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+     "title": "Run",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "18:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+     "title": "Reading group: prepare session",
+     "p": 2,
+     "date": "2026-11-25",
+     "time": "18:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "025de146-890c-4d38-a0ff-47aa2b41328c",
+     "title": "Reply to organisers",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "f41516c8-db9f-4d2b-9f18-1422c27840d7",
+     "title": "Print the text",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+     "title": "Send style sheet to contributors",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": null,
+     "first": "2026-11-25"
+    },
+    {
+     "id": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+     "title": "Seminar",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "10:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+     "title": "Library",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "13:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+     "title": "Train home",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "16:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+     "title": "Conference abstract",
+     "p": 3,
+     "date": "2026-11-27",
+     "time": null,
+     "first": "2026-11-27"
+    },
+    {
+     "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+     "title": "Seminar presentation",
+     "p": 3,
+     "date": "2026-11-29",
+     "time": null,
+     "first": "2026-11-29"
+    },
+    {
+     "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+     "title": "Read Esposito on algorithmic prediction",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "4cdd1ae6-1b64-44a8-861a-1f9f22efe8af",
+     "title": "Call with publisher",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": "11:00",
+     "first": "2026-11-26"
+    },
+    {
+     "id": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+     "title": "Submit abstract",
+     "p": 3,
+     "date": "2026-11-25",
+     "time": "17:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "ff629511-19d3-44be-be6f-4b007591ad7c",
+     "title": "Book train tickets",
+     "p": 1,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+     "title": "Revise article draft",
+     "p": 1,
+     "date": "2026-12-01",
+     "time": null,
+     "first": "2026-12-01"
+    }
+   ],
+   "count": 20
+  },
+  {
+   "id": "all",
+   "name": "All",
+   "kind": "smart",
+   "color": null,
+   "depth": 0,
+   "rows": [
+    {
+     "id": "0ac6a53b-4b47-4282-b960-819fc3623ad7",
+     "title": "Look into bike repair",
+     "p": 1,
+     "date": null,
+     "time": null,
+     "first": null
+    },
+    {
+     "id": "2e9a3839-5a0b-49a1-9628-f70176d55d01",
+     "title": "Idea: notes on timeline view",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null
+    },
+    {
+     "id": "5d408222-c501-45ce-8016-e066e40cdd94",
+     "title": "Standup",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "09:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+     "title": "Editors call",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": "14:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+     "title": "Seminar",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "10:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+     "title": "Submit abstract",
+     "p": 3,
+     "date": "2026-11-25",
+     "time": "17:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+     "title": "Reading group: prepare session",
+     "p": 2,
+     "date": "2026-11-25",
+     "time": "18:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "025de146-890c-4d38-a0ff-47aa2b41328c",
+     "title": "Reply to organisers",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "f41516c8-db9f-4d2b-9f18-1422c27840d7",
+     "title": "Print the text",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+     "title": "Read Esposito on algorithmic prediction",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+     "title": "Conference abstract",
+     "p": 3,
+     "date": "2026-11-27",
+     "time": null,
+     "first": "2026-11-27"
+    },
+    {
+     "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+     "title": "Revise article draft",
+     "p": 1,
+     "date": "2026-12-01",
+     "time": null,
+     "first": "2026-12-01"
+    },
+    {
+     "id": "c0628bbe-ac90-431d-93db-62765531af2c",
+     "title": "Workshop application",
+     "p": 0,
+     "date": "2026-12-10",
+     "time": null,
+     "first": "2026-12-10"
+    },
+    {
+     "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+     "title": "Sign up for colloquium",
+     "p": 2,
+     "date": "2026-11-21",
+     "time": null,
+     "first": "2026-11-21"
+    },
+    {
+     "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+     "title": "Seminar presentation",
+     "p": 3,
+     "date": "2026-11-29",
+     "time": null,
+     "first": "2026-11-29"
+    },
+    {
+     "id": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+     "title": "Deep work",
+     "p": 2,
+     "date": "2026-11-24",
+     "time": "10:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+     "title": "Proofs",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "14:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+     "title": "Chase missing chapters",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+     "title": "Library",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "13:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+     "title": "Send style sheet to contributors",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": null,
+     "first": "2026-11-25"
+    },
+    {
+     "id": "4cdd1ae6-1b64-44a8-861a-1f9f22efe8af",
+     "title": "Call with publisher",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": "11:00",
+     "first": "2026-11-26"
+    },
+    {
+     "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+     "title": "Proof introduction",
+     "p": 0,
+     "date": "2026-12-04",
+     "time": null,
+     "first": "2026-12-04"
+    },
+    {
+     "id": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+     "title": "Lunch",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "12:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+     "title": "Run",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "18:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+     "title": "Water the plants",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+     "title": "Train home",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "16:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "ff629511-19d3-44be-be6f-4b007591ad7c",
+     "title": "Book train tickets",
+     "p": 1,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "b5280b39-4952-4636-870d-b049cf5fb684",
+     "title": "Renew library card",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null
+    }
+   ],
+   "count": 26
+  },
+  {
+   "id": "inbox",
+   "name": "Inbox",
+   "kind": "smart",
+   "color": null,
+   "depth": 0,
+   "rows": [
+    {
+     "id": "0ac6a53b-4b47-4282-b960-819fc3623ad7",
+     "title": "Look into bike repair",
+     "p": 1,
+     "date": null,
+     "time": null,
+     "first": null
+    },
+    {
+     "id": "2e9a3839-5a0b-49a1-9628-f70176d55d01",
+     "title": "Idea: notes on timeline view",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null
+    }
+   ],
+   "count": 2
+  },
+  {
+   "id": "deadlines",
+   "name": "Deadlines",
+   "kind": "smart",
+   "color": null,
+   "depth": 0,
+   "rows": [
+    {
+     "id": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+     "title": "Submit abstract",
+     "p": 3,
+     "date": "2026-11-25",
+     "time": "17:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "ff629511-19d3-44be-be6f-4b007591ad7c",
+     "title": "Book train tickets",
+     "p": 1,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+     "title": "Chase missing chapters",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+     "title": "Seminar presentation",
+     "p": 3,
+     "date": "2026-11-29",
+     "time": null,
+     "first": "2026-11-29"
+    },
+    {
+     "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+     "title": "Conference abstract",
+     "p": 3,
+     "date": "2026-11-27",
+     "time": null,
+     "first": "2026-11-27"
+    },
+    {
+     "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+     "title": "Proof introduction",
+     "p": 0,
+     "date": "2026-12-04",
+     "time": null,
+     "first": "2026-12-04"
+    },
+    {
+     "id": "c0628bbe-ac90-431d-93db-62765531af2c",
+     "title": "Workshop application",
+     "p": 0,
+     "date": "2026-12-10",
+     "time": null,
+     "first": "2026-12-10"
+    },
+    {
+     "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+     "title": "Revise article draft",
+     "p": 1,
+     "date": "2026-12-01",
+     "time": null,
+     "first": "2026-12-01"
+    }
+   ],
+   "count": 8
+  },
+  {
+   "id": "4af9b672-21f3-4444-b8c8-81ff88ed65f8",
+   "name": "Studies",
+   "kind": "list",
+   "color": "#0088ff",
+   "depth": 0,
+   "rows": [
+    {
+     "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+     "title": "Read Esposito on algorithmic prediction",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+     "title": "Reading group: prepare session",
+     "p": 2,
+     "date": "2026-11-25",
+     "time": "18:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "025de146-890c-4d38-a0ff-47aa2b41328c",
+     "title": "Reply to organisers",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "f41516c8-db9f-4d2b-9f18-1422c27840d7",
+     "title": "Print the text",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+     "title": "Conference abstract",
+     "p": 3,
+     "date": "2026-11-27",
+     "time": null,
+     "first": "2026-11-27"
+    },
+    {
+     "id": "c0628bbe-ac90-431d-93db-62765531af2c",
+     "title": "Workshop application",
+     "p": 0,
+     "date": "2026-12-10",
+     "time": null,
+     "first": "2026-12-10"
+    },
+    {
+     "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+     "title": "Revise article draft",
+     "p": 1,
+     "date": "2026-12-01",
+     "time": null,
+     "first": "2026-12-01"
+    },
+    {
+     "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+     "title": "Seminar presentation",
+     "p": 3,
+     "date": "2026-11-29",
+     "time": null,
+     "first": "2026-11-29"
+    },
+    {
+     "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+     "title": "Sign up for colloquium",
+     "p": 2,
+     "date": "2026-11-21",
+     "time": null,
+     "first": "2026-11-21"
+    },
+    {
+     "id": "5d408222-c501-45ce-8016-e066e40cdd94",
+     "title": "Standup",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "09:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+     "title": "Editors call",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": "14:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+     "title": "Seminar",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "10:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+     "title": "Submit abstract",
+     "p": 3,
+     "date": "2026-11-25",
+     "time": "17:00",
+     "first": "2026-11-25"
+    }
+   ],
+   "count": 11
+  },
+  {
+   "id": "508a9db4-32a0-49df-9ca0-038ee57ffc8f",
+   "name": "Research",
+   "kind": "list",
+   "color": "#34c759",
+   "depth": 1,
+   "rows": [
+    {
+     "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+     "title": "Read Esposito on algorithmic prediction",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+     "title": "Reading group: prepare session",
+     "p": 2,
+     "date": "2026-11-25",
+     "time": "18:00",
+     "first": "2026-11-25"
+    },
+    {
+     "id": "025de146-890c-4d38-a0ff-47aa2b41328c",
+     "title": "Reply to organisers",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "f41516c8-db9f-4d2b-9f18-1422c27840d7",
+     "title": "Print the text",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null,
+     "sub": 1,
+     "parent": "62032b4f-ccb6-4698-b56a-6983687dfba7"
+    },
+    {
+     "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+     "title": "Conference abstract",
+     "p": 3,
+     "date": "2026-11-27",
+     "time": null,
+     "first": "2026-11-27"
+    },
+    {
+     "id": "c0628bbe-ac90-431d-93db-62765531af2c",
+     "title": "Workshop application",
+     "p": 0,
+     "date": "2026-12-10",
+     "time": null,
+     "first": "2026-12-10"
+    },
+    {
+     "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+     "title": "Revise article draft",
+     "p": 1,
+     "date": "2026-12-01",
+     "time": null,
+     "first": "2026-12-01"
+    }
+   ],
+   "count": 5
+  },
+  {
+   "id": "72cef5ca-c769-4951-9ed9-f14113602426",
+   "name": "Seminars",
+   "kind": "list",
+   "color": "#ff8d28",
+   "depth": 1,
+   "rows": [
+    {
+     "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+     "title": "Seminar presentation",
+     "p": 3,
+     "date": "2026-11-29",
+     "time": null,
+     "first": "2026-11-29"
+    },
+    {
+     "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+     "title": "Sign up for colloquium",
+     "p": 2,
+     "date": "2026-11-21",
+     "time": null,
+     "first": "2026-11-21"
+    }
+   ],
+   "count": 2
+  },
+  {
+   "id": "4d5e7667-887e-4cc6-9db5-7d97636928d8",
+   "name": "Edited volume",
+   "kind": "list",
+   "color": "#6155f5",
+   "depth": 0,
+   "rows": [
+    {
+     "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+     "title": "Chase missing chapters",
+     "p": 3,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+     "title": "Send style sheet to contributors",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": null,
+     "first": "2026-11-25"
+    },
+    {
+     "id": "4cdd1ae6-1b64-44a8-861a-1f9f22efe8af",
+     "title": "Call with publisher",
+     "p": 2,
+     "date": "2026-11-26",
+     "time": "11:00",
+     "first": "2026-11-26"
+    },
+    {
+     "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+     "title": "Proof introduction",
+     "p": 0,
+     "date": "2026-12-04",
+     "time": null,
+     "first": "2026-12-04"
+    },
+    {
+     "id": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+     "title": "Deep work",
+     "p": 2,
+     "date": "2026-11-24",
+     "time": "10:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+     "title": "Proofs",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "14:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+     "title": "Library",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "13:00",
+     "first": "2026-11-25"
+    }
+   ],
+   "count": 7
+  },
+  {
+   "id": "a54d2eb1-831c-4f6f-85d9-893e206de223",
+   "name": "Home",
+   "kind": "list",
+   "color": "#ff383c",
+   "depth": 0,
+   "rows": [
+    {
+     "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+     "title": "Water the plants",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": null,
+     "first": "2026-11-24"
+    },
+    {
+     "id": "ff629511-19d3-44be-be6f-4b007591ad7c",
+     "title": "Book train tickets",
+     "p": 1,
+     "date": "2026-11-26",
+     "time": null,
+     "first": "2026-11-26"
+    },
+    {
+     "id": "b5280b39-4952-4636-870d-b049cf5fb684",
+     "title": "Renew library card",
+     "p": 0,
+     "date": null,
+     "time": null,
+     "first": null
+    },
+    {
+     "id": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+     "title": "Lunch",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "12:30",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+     "title": "Run",
+     "p": 0,
+     "date": "2026-11-24",
+     "time": "18:00",
+     "first": "2026-11-24"
+    },
+    {
+     "id": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+     "title": "Train home",
+     "p": 0,
+     "date": "2026-11-25",
+     "time": "16:00",
+     "first": "2026-11-25"
+    }
+   ],
+   "count": 6
+  }
+ ],
+ "days": {
+  "2026-11-21": [
+   {
+    "id": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+    "task": "e01c1ae5-22c7-4d23-974e-3febc8d6e7bb",
+    "title": "Sign up for colloquium",
+    "color": "#ff8d28",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-11-24": [
+   {
+    "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+    "task": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+    "title": "Chase missing chapters",
+    "color": "#6155f5",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "5d408222-c501-45ce-8016-e066e40cdd94",
+    "task": "5d408222-c501-45ce-8016-e066e40cdd94",
+    "title": "Standup",
+    "color": "#0088ff",
+    "start": 540,
+    "end": 570
+   },
+   {
+    "id": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+    "task": "a746e93e-628e-4da3-b4ce-4b8a9b4c3cd8",
+    "title": "Deep work",
+    "color": "#6155f5",
+    "start": 600,
+    "end": 720
+   },
+   {
+    "id": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+    "task": "97b1c832-b200-4117-8e32-98e4f6a77d93",
+    "title": "Lunch",
+    "color": "#ff383c",
+    "start": 750,
+    "end": 810
+   },
+   {
+    "id": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+    "task": "ba1b6a70-e926-4335-a39d-78ae0ac5b5cd",
+    "title": "Editors call",
+    "color": "#0088ff",
+    "start": 840,
+    "end": 900
+   },
+   {
+    "id": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+    "task": "0f61ada1-f787-46e8-8b35-6df98723c05d",
+    "title": "Proofs",
+    "color": "#6155f5",
+    "start": 870,
+    "end": 990
+   },
+   {
+    "id": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+    "task": "944e75c8-5543-4bfa-a176-5b86f42c722e",
+    "title": "Run",
+    "color": "#ff383c",
+    "start": 1080,
+    "end": 1170
+   }
+  ],
+  "2026-11-25": [
+   {
+    "id": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+    "task": "e57d40eb-e225-4449-b007-13c8671cb0d7",
+    "title": "Send style sheet to contributors",
+    "color": "#6155f5",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+    "task": "ca26dfe3-a1ea-449c-b087-c1b6ab3ded0b",
+    "title": "Seminar",
+    "color": "#0088ff",
+    "start": 600,
+    "end": 720
+   },
+   {
+    "id": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+    "task": "3edffd20-af72-48dc-8cf0-35c9b2b9a2c6",
+    "title": "Library",
+    "color": "#6155f5",
+    "start": 780,
+    "end": 900
+   },
+   {
+    "id": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+    "task": "2ded6740-35d6-4145-b130-eb3c3c5dbdef",
+    "title": "Train home",
+    "color": "#ff383c",
+    "start": 960,
+    "end": 1200
+   },
+   {
+    "id": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+    "task": "62032b4f-ccb6-4698-b56a-6983687dfba7",
+    "title": "Reading group: prepare session",
+    "color": "#34c759",
+    "start": 1080,
+    "end": 1140
+   },
+   {
+    "id": "c1f34696-fcd4-4342-9fe9-de33826819a7:d",
+    "task": "c1f34696-fcd4-4342-9fe9-de33826819a7",
+    "title": "Submit abstract",
+    "color": "#0088ff",
+    "start": 1020,
+    "end": 1050,
+    "deadline": 1
+   }
+  ],
+  "2026-11-26": [
+   {
+    "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "task": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "title": "Read Esposito on algorithmic prediction",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "4cdd1ae6-1b64-44a8-861a-1f9f22efe8af",
+    "task": "4cdd1ae6-1b64-44a8-861a-1f9f22efe8af",
+    "title": "Call with publisher",
+    "color": "#6155f5",
+    "start": 660,
+    "end": 720
+   },
+   {
+    "id": "ff629511-19d3-44be-be6f-4b007591ad7c:d",
+    "task": "ff629511-19d3-44be-be6f-4b007591ad7c",
+    "title": "Book train tickets",
+    "color": "#ff383c",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   }
+  ],
+  "2026-11-27": [
+   {
+    "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "task": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "title": "Read Esposito on algorithmic prediction",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "task": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "title": "Conference abstract",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-11-27",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-11-28": [
+   {
+    "id": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "task": "6b7238cb-f6a0-4592-87a4-d15ac92215b7",
+    "title": "Read Esposito on algorithmic prediction",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "task": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "title": "Conference abstract",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "2a35b9ff-6709-43ea-96fc-9db6dba36afc:d",
+    "task": "2a35b9ff-6709-43ea-96fc-9db6dba36afc",
+    "title": "Chase missing chapters",
+    "color": "#6155f5",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   }
+  ],
+  "2026-11-29": [
+   {
+    "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "task": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "title": "Conference abstract",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "task": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "title": "Seminar presentation",
+    "color": "#ff8d28",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-11-30": [
+   {
+    "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "task": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "title": "Conference abstract",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "task": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "title": "Seminar presentation",
+    "color": "#ff8d28",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-11-30",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-01": [
+   {
+    "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "task": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "title": "Seminar presentation",
+    "color": "#ff8d28",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-02": [
+   {
+    "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "task": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "title": "Seminar presentation",
+    "color": "#ff8d28",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d:d",
+    "task": "fc22a55c-b72d-4b1f-af4e-6fa8db272b2d",
+    "title": "Seminar presentation",
+    "color": "#ff8d28",
+    "start": 600,
+    "end": 630,
+    "deadline": 1
+   }
+  ],
+  "2026-12-03": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "9893899a-1a41-4bea-9cc5-e3d46e080b13:d",
+    "task": "9893899a-1a41-4bea-9cc5-e3d46e080b13",
+    "title": "Conference abstract",
+    "color": "#34c759",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   },
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-03",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-04": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "task": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "title": "Proof introduction",
+    "color": "#6155f5",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-05": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "task": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "title": "Proof introduction",
+    "color": "#6155f5",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-06": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "task": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "title": "Proof introduction",
+    "color": "#6155f5",
+    "start": null,
+    "end": null
+   },
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-06",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-07": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-08": [
+   {
+    "id": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1:d",
+    "task": "b995a0bb-e4fb-4ab8-bd5d-397a989a4bf1",
+    "title": "Proof introduction",
+    "color": "#6155f5",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   }
+  ],
+  "2026-12-09": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-09",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-10": [
+   {
+    "id": "c0628bbe-ac90-431d-93db-62765531af2c:d",
+    "task": "c0628bbe-ac90-431d-93db-62765531af2c",
+    "title": "Workshop application",
+    "color": "#34c759",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   }
+  ],
+  "2026-12-12": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-12",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-14": [
+   {
+    "id": "d580b358-fa56-4852-931e-aed62fc0757c:d",
+    "task": "d580b358-fa56-4852-931e-aed62fc0757c",
+    "title": "Revise article draft",
+    "color": "#34c759",
+    "start": null,
+    "end": null,
+    "deadline": 1
+   }
+  ],
+  "2026-12-15": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-15",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-18": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-18",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-21": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-21",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-24": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-24",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ],
+  "2026-12-27": [
+   {
+    "id": "5dec7a24-302b-4237-a7e2-058e8707a7c8~2026-12-27",
+    "task": "5dec7a24-302b-4237-a7e2-058e8707a7c8",
+    "title": "Water the plants",
+    "color": "#ff383c",
+    "start": null,
+    "end": null
+   }
+  ]
+ }
+}

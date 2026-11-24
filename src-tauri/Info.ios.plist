@@ -18,6 +18,18 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Taps on the home screen widgets open vitrotasks://add, task and calendar links. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.vitro.tasks</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vitrotasks</string>
+			</array>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

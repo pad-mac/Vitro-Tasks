@@ -153,6 +153,17 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| format!("could not write {path}: {e}"))
 }
 
+/// Links opened from outside (a home screen widget's vitrotasks:// taps on
+/// iOS), kept until the page takes them: a link that starts the app arrives
+/// before the page listens.
+#[derive(Default)]
+struct OpenedUrls(std::sync::Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_opened_urls(state: tauri::State<'_, OpenedUrls>) -> Vec<String> {
+    state.0.lock().map(|mut urls| std::mem::take(&mut *urls)).unwrap_or_default()
+}
+
 #[tauri::command]
 fn show_main_window(app: AppHandle) {
     #[cfg(desktop)]
@@ -181,9 +192,11 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(OpenedUrls::default())
         .invoke_handler(tauri::generate_handler![
             set_quick_add_shortcut,
             show_main_window,
+            take_opened_urls,
             write_text_file
         ])
         .setup(|app| {
@@ -196,7 +209,19 @@ pub fn run() {
         });
     #[cfg(desktop)]
     let builder = builder.on_window_event(|window, event| desktop::on_window_event(window, event));
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running Vitro Tasks");
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building Vitro Tasks");
+    app.run(|app, event| {
+        #[cfg(target_os = "ios")]
+        if let tauri::RunEvent::Opened { urls } = &event {
+            use tauri::{Emitter, Manager};
+            let urls: Vec<String> = urls.iter().map(|u| u.to_string()).collect();
+            if let Ok(mut pending) = app.state::<OpenedUrls>().0.lock() {
+                pending.extend(urls);
+            }
+            let _ = app.emit("vitro:opened", ());
+        }
+        let _ = (app, event);
+    });
 }

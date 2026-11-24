@@ -461,6 +461,16 @@ export function App() {
     window.addEventListener("vitro:back", back);
     return () => window.removeEventListener("vitro:back", back);
   }, []);
+  // A widget's link (lib/widgetBridge): settings and the quick add give way; its + opens the quick add.
+  useEffect(() => {
+    const onLink = (e: Event) => {
+      setSettingsOpen(false);
+      if ((e as CustomEvent<{ add: boolean }>).detail?.add) openAdd(null);
+      else setAddOpen(false);
+    };
+    window.addEventListener("vitro:link", onLink);
+    return () => window.removeEventListener("vitro:link", onLink);
+  }, [openAdd]);
   const pressWatched = useRef(false);
   useEffect(() => {
     if (!isMobile || pressWatched.current) return;
