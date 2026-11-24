@@ -39,6 +39,13 @@ describe("custom order", () => {
     expect(ids(applyRanks([p, a, c, x], ranks))).toEqual(["p", "c", "a", "x"]);
   });
 
+  it("never reorders completed tasks: they keep their completion order", () => {
+    const x = task({ id: "x", status: 1, completed_at: 10 });
+    const y = task({ id: "y", status: 1, completed_at: 20 });
+    const ranks = ranksFor(["b", "a", "x", "y"], {});
+    expect(ids(applyRanks([a, b, y, x], ranks))).toEqual(["b", "a", "y", "x"]);
+  });
+
   it("keeps other groups' ranks and drops ones that are gone", () => {
     expect(ranksFor(["b", "a"], { z: 4, y: 1 }, new Set(["z", "a", "b"]))).toEqual({ z: 4, b: 1, a: 2 });
     expect(parseRanks("not json")).toEqual({});

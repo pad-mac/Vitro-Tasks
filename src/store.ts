@@ -115,6 +115,14 @@ export type CalMode = "month" | "week" | "multiweek" | "days";
 
 export const SIDEBAR_DEFAULT = 262;
 
+/** The four UI text sizes (Settings → Text size); 3 is the original size. Each multiplies every font size (--ts). */
+export const TEXT_SIZES = [0.86, 0.93, 1, 1.08] as const;
+export const TEXT_SIZE_DEFAULT = 3;
+const clampTextSize = (n: number) => Math.max(1, Math.min(TEXT_SIZES.length, Math.round(n) || TEXT_SIZE_DEFAULT));
+function applyTextSize(n: number) {
+  if (typeof document !== "undefined") document.documentElement.style.setProperty("--ts", String(TEXT_SIZES[n - 1]));
+}
+
 /** Key under which a view's own settings are stored. */
 export function viewKey(view: ViewRef): string {
   return view.kind === "calendar" ? "calendar" : `${view.kind}:${view.id}`;
@@ -175,6 +183,8 @@ interface State {
   calWeeks: number;
   /** Multi-day: how many days side by side (1–6). */
   calDays: number;
+  /** UI text size, 1–4 (3 = original). Kept per device. */
+  textSize: number;
   /** Week view: long titles wrap onto more lines (else one line that fades out). */
   calWrap: boolean;
   /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
@@ -232,6 +242,7 @@ interface State {
   setCalMode(m: CalMode): void;
   setCalWeeks(n: number): void;
   setCalDays(n: number): void;
+  setTextSize(n: number): void;
   setCalWrap(on: boolean): void;
   goCalToday(): void;
   /** Shows a day in the calendar (a tap on a widget's day). */
@@ -522,6 +533,7 @@ export const useStore = create<State>((set, get) => {
     calMode: "month",
     calWeeks: 4,
     calDays: 3,
+    textSize: TEXT_SIZE_DEFAULT,
     calWrap: false,
     calMonthLike: "month",
     calTodayTick: 0,
@@ -553,7 +565,9 @@ export const useStore = create<State>((set, get) => {
         const calDays = Math.max(1, Math.min(6, Number(await getMeta(db, "cal_days")) || 3));
         const calMonthLike = (await getMeta(db, "cal_month_like")) === "multiweek" ? "multiweek" : "month";
         const calWrap = (await getMeta(db, "cal_wrap")) === "1";
-        set({ calWeeks, calDays, calMonthLike, calWrap });
+        const textSize = clampTextSize(Number(await getMeta(db, "text_size")));
+        applyTextSize(textSize);
+        set({ calWeeks, calDays, calMonthLike, calWrap, textSize });
         set({ theme, shortcut, servers, defaultServer, showDetails, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
@@ -745,6 +759,12 @@ export const useStore = create<State>((set, get) => {
       const calDays = Math.max(1, Math.min(6, n));
       set({ calDays });
       void setMeta(db, "cal_days", String(calDays));
+    },
+    setTextSize(n) {
+      const textSize = clampTextSize(n);
+      applyTextSize(textSize);
+      set({ textSize });
+      void setMeta(db, "text_size", String(textSize));
     },
     goCalToday() {
       set({ calTodayTick: get().calTodayTick + 1 });

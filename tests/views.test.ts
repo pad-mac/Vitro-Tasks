@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entriesForDay, groupTasks, listWithDescendants, subgroupTasks, tasksForView, type Data } from "../src/lib/views";
+import { compareTasks, entriesForDay, groupTasks, listWithDescendants, subgroupTasks, tasksForView, type Data } from "../src/lib/views";
 import type { List, Section, Task } from "../src/shared/schema";
 
 const TODAY = "2026-11-16";
@@ -126,5 +126,27 @@ describe("list visibility", () => {
     expect(ids(tasksForView({ kind: "smart", id: "deadlines" }, d, false, TODAY))).toBe("cd");
     expect(ids(tasksForView({ kind: "calendar" }, d, false, TODAY))).toBe("abdeh");
     expect(ids(tasksForView({ kind: "list", id: "home" }, d, false, TODAY))).toBe("dh");
+  });
+});
+
+describe("completed tasks", () => {
+  const open1 = task({ id: "o1", start_date: "2026-11-20" });
+  const open2 = task({ id: "o2", start_date: "2026-11-18" });
+  const pinnedDone = task({ id: "pd", pinned: 1, status: 1, completed_at: 100, start_date: "2026-11-01" });
+  const doneOld = task({ id: "d1", status: 1, completed_at: 50, priority: 3, start_date: "2026-11-02" });
+  const doneNew = task({ id: "d2", status: 2, completed_at: 300, start_date: "2026-12-01" });
+  const all = [doneOld, open1, pinnedDone, doneNew, open2];
+  const order = (sort: Parameters<typeof compareTasks>[0]) => [...all].sort(compareTasks(sort)).map((t) => t.id);
+
+  it("always come last, newest completion first, whatever the sort", () => {
+    for (const sort of ["date", "priority", "title", "manual", "created", "deadline", "datedeadline"] as const) {
+      expect(order(sort).slice(2)).toEqual(["d2", "pd", "d1"]);
+    }
+    expect(order("date").slice(0, 2)).toEqual(["o2", "o1"]);
+  });
+
+  it("a completed pinned task is not pinned to the top of a board lane", () => {
+    const lane = [...all].sort(compareTasks("priority"));
+    expect(subgroupTasks(lane, "priority", TODAY).map((g) => g.key)).not.toContain("pinned");
   });
 });

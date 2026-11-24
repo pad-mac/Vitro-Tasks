@@ -18,8 +18,8 @@ export function parseRanks(raw: string | undefined): Ranks {
   }
 }
 
-/** Pinned tasks stay first and completed ones last, whatever the order. */
-const part = (t: Task) => `${t.pinned}:${t.status}`;
+/** Pinned tasks stay first, whatever the order. */
+const part = (t: Task) => `${t.pinned}`;
 
 /**
  * Lays a custom order over an already sorted group. Tasks that have a rank
@@ -29,7 +29,8 @@ const part = (t: Task) => `${t.pinned}:${t.status}`;
 export function applyRanks(sorted: Task[], ranks: Ranks): Task[] {
   const slots = new Map<string, number[]>();
   sorted.forEach((t, i) => {
-    if (ranks[t.id] === undefined) return;
+    // Completed tasks keep their completion order (newest first); a custom order never moves them.
+    if (ranks[t.id] === undefined || t.status !== 0) return;
     const k = part(t);
     if (!slots.has(k)) slots.set(k, []);
     slots.get(k)!.push(i);

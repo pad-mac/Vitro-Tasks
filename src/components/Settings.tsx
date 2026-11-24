@@ -3,7 +3,7 @@ import { todayKey } from "../lib/dates";
 import { isMobile, isTauri, saveTextFile } from "../lib/platform";
 import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
-import { hiddenSmartViews, useStore, type ImportResult, type Theme } from "../store";
+import { TEXT_SIZES, hiddenSmartViews, useStore, type ImportResult, type Theme } from "../store";
 import { PALETTES, defaultPalette } from "../lib/palettes";
 import { SMART_VIEWS } from "../lib/views";
 import { SMART_ICONS } from "./Sidebar";
@@ -328,6 +328,30 @@ function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
 }
 
 /** Which palette new lists take their colours from (every palette stays in the list menu). */
+/** UI text size: four stops on a slider, small A to large A (3 is the original size). Kept per device. */
+function TextSize() {
+  const value = useStore((s) => s.textSize);
+  const setTextSize = useStore((s) => s.setTextSize);
+  const last = TEXT_SIZES.length;
+  return (
+    <div className="text-size">
+      <span className="palette-head">Text size</span>
+      <div className="ts-row">
+        <span className="ts-a ts-a-sm" aria-hidden>A</span>
+        <div className="ts-slider" style={{ "--p": (value - 1) / (last - 1) } as React.CSSProperties}>
+          <div className="ts-track">
+            {TEXT_SIZES.map((_, i) => (
+              <i key={i} className={i + 1 <= value ? "is-on" : ""} style={{ left: `${(i / (last - 1)) * 100}%` }} />
+            ))}
+          </div>
+          <input type="range" min={1} max={last} step={1} value={value} aria-label="Text size" aria-valuetext={["Smallest", "Small", "Default", "Large"][value - 1]} onChange={(e) => setTextSize(Number(e.target.value))} />
+        </div>
+        <span className="ts-a ts-a-lg" aria-hidden>A</span>
+      </div>
+    </div>
+  );
+}
+
 function PaletteChoice() {
   const settings = useStore((s) => s.settings);
   const setPalette = useStore((s) => s.setPalette);
@@ -383,6 +407,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <TextSize />
           <PaletteChoice />
         </section>
 

@@ -186,8 +186,11 @@ export function compareTasks(sort: SortBy): (a: Task, b: Task) => number {
     x === y ? 0 : x === null ? 1 : y === null ? -1 : x < y ? -1 : 1;
   const byPos = (a: Task, b: Task) => a.position - b.position || a.created_at - b.created_at;
   return (a, b) => {
+    // Completed tasks always come last, newest completion first, whatever the sort (pinned or not).
+    const ad = a.status !== 0, bd = b.status !== 0;
+    if (ad !== bd) return ad ? 1 : -1;
+    if (ad) return (b.completed_at ?? 0) - (a.completed_at ?? 0) || byPos(a, b);
     if (a.pinned !== b.pinned) return b.pinned - a.pinned;
-    if (a.status !== b.status) return a.status - b.status;
     switch (sort) {
       case "date":
         return nullsLast(a.start_date, b.start_date) || nullsLast(a.start_time, b.start_time) || byPos(a, b);
@@ -295,8 +298,8 @@ export interface Subgroup {
  */
 export function subgroupTasks(tasks: Task[], sort: SortBy, today = todayKey()): Subgroup[] {
   const out: Subgroup[] = [];
-  const pinned = tasks.filter((t) => t.pinned);
-  const rest = tasks.filter((t) => !t.pinned);
+  const pinned = tasks.filter((t) => t.pinned && t.status === 0);
+  const rest = tasks.filter((t) => !t.pinned || t.status !== 0);
   if (pinned.length) out.push({ key: "pinned", label: "Pinned", tasks: pinned, tone: "pinned" });
   if (sort === "date" || sort === "deadline" || sort === "datedeadline") {
     const day = (t: Task) => (sort === "date" ? t.start_date : sort === "deadline" ? t.deadline_date : (firstWhen(t)?.slice(0, 10) ?? null));

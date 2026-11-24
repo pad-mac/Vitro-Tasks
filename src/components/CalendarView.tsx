@@ -219,9 +219,9 @@ function EdgeHandles({ task, start = true, end = true }: { task: Task; start?: b
   );
 }
 
-/** The mark on an entry of a repeating task (its later occurrences in the calendar are projections of it). */
+/** The mark on an entry of a repeating task (its later occurrences in the calendar are projections of it). Desktop only: the phone's chips are too narrow to spare the room. */
 function RepeatMark({ task }: { task: Task }) {
-  if (!task.repeat || task.status !== 0) return null;
+  if (isMobile || !task.repeat || task.status !== 0) return null;
   return (
     <span className="cal-repeat" title={describeRepeat(task.repeat, task.start_date ?? task.deadline_date, true)}>
       <Icon name="repeat" size={10} />
