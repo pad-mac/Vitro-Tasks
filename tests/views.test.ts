@@ -150,3 +150,22 @@ describe("completed tasks", () => {
     expect(subgroupTasks(lane, "priority", TODAY).map((g) => g.key)).not.toContain("pinned");
   });
 });
+
+describe("order within a calendar day", () => {
+  it("spans, then deadlines, then untimed by position, then timed by time — whatever order they come in", () => {
+    const D = "2026-12-09";
+    const timed = task({ id: "elena", start_date: D, start_time: "18:00", position: 5 });
+    const deadline = task({ id: "referat", deadline_date: D, position: 3 });
+    const a = task({ id: "goett", start_date: D, position: 1 });
+    const b = task({ id: "tyr", start_date: D, position: 2 });
+    const span = task({ id: "span", start_date: "2026-12-08", end_date: "2026-12-10", position: 9 });
+    const early = task({ id: "early", start_date: D, start_time: "09:00", position: 0 });
+    const want = ["span", "referat", "goett", "tyr", "early", "elena"];
+    const all = [timed, deadline, a, b, span, early];
+    for (let i = 0; i < all.length; i++) {
+      const rot = [...all.slice(i), ...all.slice(0, i)];
+      expect(entriesForDay(rot, D).map((e) => e.task.id)).toEqual(want);
+      expect(entriesForDay([...rot].reverse(), D).map((e) => e.task.id)).toEqual(want);
+    }
+  });
+});

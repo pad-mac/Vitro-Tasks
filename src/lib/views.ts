@@ -397,20 +397,20 @@ export function entriesForDay(tasks: Task[], day: string): DayEntry[] {
     }
     if (t.deadline_date === day) out.push({ task: t, kind: "deadline" });
   }
-  // Multi-day spans first and in a stable order, so their bars line up from
-  // one day to the next; then all-day entries; then timed ones by time.
-  const span = (e: DayEntry) =>
-    e.kind === "planned" && e.task.end_date && e.task.start_date && e.task.end_date > e.task.start_date;
+  // Multi-day spans first and in a stable order, so their bars line up from one day to the next;
+  // then deadlines; then entries without a time; then timed ones by time. Ties by the tasks' position.
+  // (Each rank is a number: a check that answered null for one task and false for another made the
+  // sort inconsistent, and the day came out in storage order.)
+  const rank = (e: DayEntry) => (e.kind === "deadline" ? 1 : e.task.end_date && e.task.start_date && e.task.end_date > e.task.start_date ? 0 : e.task.start_time ? 3 : 2);
+  const timeOf = (e: DayEntry) => (e.kind === "planned" ? e.task.start_time : e.task.deadline_time) ?? "";
   return out.sort((a, b) => {
-    const sa = span(a);
-    const sb = span(b);
-    if (sa !== sb) return sa ? -1 : 1;
-    if (sa && sb) return a.task.start_date! < b.task.start_date! ? -1 : a.task.start_date! > b.task.start_date! ? 1 : a.task.id < b.task.id ? -1 : 1;
-    const ta = a.kind === "planned" ? a.task.start_time : a.task.deadline_time;
-    const tb = b.kind === "planned" ? b.task.start_time : b.task.deadline_time;
-    if (ta === tb) return a.task.position - b.task.position;
-    if (ta === null) return -1;
-    if (tb === null) return 1;
-    return ta < tb ? -1 : 1;
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) return a.task.start_date! < b.task.start_date! ? -1 : a.task.start_date! > b.task.start_date! ? 1 : a.task.id < b.task.id ? -1 : a.task.id > b.task.id ? 1 : 0;
+    const ta = timeOf(a);
+    const tb = timeOf(b);
+    if (ta !== tb) return ta < tb ? -1 : 1;
+    return a.task.position - b.task.position;
   });
 }
