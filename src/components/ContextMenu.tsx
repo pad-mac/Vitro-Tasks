@@ -3,7 +3,8 @@ import { useState } from "react";
 import { addDays, deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { openLayerWindow, windowAction } from "../lib/platform";
 import { PRIORITY_LABELS, listVisibility, orderedLists } from "../lib/views";
-import { LIST_COLORS, useStore, type MenuTarget } from "../store";
+import { PALETTES, PALETTE_COLORS, defaultPalette } from "../lib/palettes";
+import { useStore, type MenuTarget } from "../store";
 import { DatePickerPanel, Flag, FloatingPanel, Icon, MenuItem, ServerMark, ToggleItem, usePresence } from "./ui";
 import { holdMenu, taskElement } from "./HoldMenu";
 
@@ -248,8 +249,64 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
   const servers = useStore((s) => s.servers);
   const moveToServer = useStore((s) => s.moveListToServer);
   const [confirm, setConfirm] = useState(false);
+  const [page, setPage] = useState<"main" | "colors">("main");
+  const allLists = useStore((s) => s.lists);
   if (!list) return null;
   const vis = listVisibility(settings, id);
+  const palette = defaultPalette(settings);
+  const color = list.color.toLowerCase();
+  if (page === "colors") {
+    // Custom: colours lists have that are in no palette (this list's first).
+    const custom = [...new Set([color, ...allLists.map((l) => l.color.toLowerCase())])].filter((c) => /^#[0-9a-f]{6}$/.test(c) && !PALETTE_COLORS.has(c)).slice(0, 7);
+    return (
+      <div className="menu cm cm-colors">
+        <SubHead title="Colour" onBack={() => setPage("main")} />
+        {PALETTES.map((p) => (
+          <div key={p.id} className="palette-group">
+            <span className="cm-label">{p.name}</span>
+            <div className="swatches">
+              {p.colors.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  className={`swatch ${c === color ? "is-active" : ""}`}
+                  style={{ background: c }}
+                  aria-label={`${p.name} ${c}`}
+                  onClick={() => void updateList(id, { color: c })}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="palette-group">
+          <span className="cm-label">Custom</span>
+          <div className="swatches">
+            {/* Any colour: the system's colour picker; saved when it closes. */}
+            <label className="swatch swatch-add" title="Pick any colour">
+              <Icon name="plus" size={11} />
+              <input
+                type="color"
+                defaultValue={color}
+                ref={(el) => {
+                  if (el) el.onchange = () => void updateList(id, { color: el.value });
+                }}
+              />
+            </label>
+            {custom.map((c) => (
+              <button
+                type="button"
+                key={c}
+                className={`swatch ${c === color ? "is-active" : ""}`}
+                style={{ background: c }}
+                aria-label={`Custom ${c}`}
+                onClick={() => void updateList(id, { color: c })}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="menu cm">
       <MenuItem onClick={() => { setRenaming(id); close(); }}>
@@ -280,31 +337,26 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
           <div className="cm-sep" />
         </>
       )}
+      {/* The default palette; the last circle opens every palette and custom colours. */}
       <div className="swatches">
-        {LIST_COLORS.map((c) => (
+        {palette.colors.map((c) => (
           <button
             type="button"
             key={c}
-            className={`swatch ${c === list.color.toLowerCase() ? "is-active" : ""}`}
+            className={`swatch ${c === color ? "is-active" : ""}`}
             style={{ background: c }}
-            aria-label={`Color ${c}`}
+            aria-label={`Colour ${c}`}
             onClick={() => void updateList(id, { color: c })}
           />
         ))}
-        {/* Any colour: the system's colour picker; saved when it closes. */}
-        <label
-          className={`swatch swatch-custom ${LIST_COLORS.includes(list.color.toLowerCase()) ? "" : "is-active"}`}
-          style={LIST_COLORS.includes(list.color.toLowerCase()) ? undefined : { background: list.color }}
-          title="Custom colour"
-        >
-          <input
-            type="color"
-            defaultValue={list.color}
-            ref={(el) => {
-              if (el) el.onchange = () => void updateList(id, { color: el.value });
-            }}
-          />
-        </label>
+        <button
+          type="button"
+          className={`swatch swatch-more ${palette.colors.includes(color) ? "" : "is-active"}`}
+          style={palette.colors.includes(color) ? undefined : { background: color }}
+          title="More colours"
+          aria-label="More colours"
+          onClick={() => setPage("colors")}
+        />
       </div>
       <div className="cm-sep" />
       <span className="cm-label">Show tasks in</span>

@@ -18,6 +18,7 @@ import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
 import { moveInOrder, orderKey, parseRanks, positionsFor, ranksFor } from "./lib/order";
 import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
 import { advance } from "./lib/repeat";
+import { colorForNew, defaultPalette } from "./lib/palettes";
 import { addDays, diffDays, todayKey } from "./lib/dates";
 import {
   SMART_DEFAULTS,
@@ -81,11 +82,6 @@ export function hiddenSmartViews(settings: Record<string, string>): SmartId[] {
   }
 }
 
-/** List colours: the first eight are given to new lists in turn; with a custom one in the menu. */
-export const LIST_COLORS = [
-  "#7c8794", "#5b8def", "#3fa796", "#c9a227", "#d9773d", "#c8553d", "#9a6bd1", "#5f9e5a",
-  "#4aa3d8", "#6e74d6", "#d1609b", "#e07a86", "#8fae3a", "#b3916a", "#8d6e5a",
-];
 
 export type Theme = "system" | "light" | "dark";
 
@@ -240,6 +236,8 @@ interface State {
   setEditMode(view: ViewRef, mode: EditMode): Promise<void>;
   /** Which of All, Today, … the sidebar shows (Settings → Sidebar; synced). */
   setSmartShown(id: SmartId, shown: boolean): Promise<void>;
+  /** The palette new lists take their colours from (synced). */
+  setPalette(id: string): Promise<void>;
   setListVisibility(listId: string, key: VisibilityKey, shown: boolean): Promise<void>;
   checkUpdate(): Promise<void>;
   installUpdate(): Promise<void>;
@@ -614,7 +612,7 @@ export const useStore = create<State>((set, get) => {
     },
 
     async importTickTick(text, includeCompleted) {
-      const r = readTickTick(text, { lists: get().lists }, { includeCompleted, colors: LIST_COLORS });
+      const r = readTickTick(text, { lists: get().lists }, { includeCompleted, colors: Array.from({ length: 8 }, (_, i) => colorForNew(defaultPalette(get().settings), i)) });
       const res = await writeImport({ lists: r.lists as unknown as Row[], sections: r.sections as unknown as Row[], tasks: r.tasks as unknown as Row[] }, "missing");
       // Tasks from an earlier import of the same backup get the repeat rules that did not carry over then.
       let repeats = 0;
@@ -779,6 +777,10 @@ export const useStore = create<State>((set, get) => {
       const key = `edit:${viewKey(view)}`;
       set({ settings: { ...get().settings, [key]: mode } });
       await save("settings", { id: key, value: mode, updated_at: 0, deleted: 0 } as Setting);
+    },
+    async setPalette(palette) {
+      set({ settings: { ...get().settings, palette } });
+      await save("settings", { id: "palette", value: palette, updated_at: 0, deleted: 0 } as Setting);
     },
     async setSmartShown(smart, shown) {
       const id = "sidebar:hidden";
@@ -1001,7 +1003,7 @@ export const useStore = create<State>((set, get) => {
       const list: List = {
         id: uid(),
         name,
-        color: LIST_COLORS[lists.length % 8],
+        color: colorForNew(defaultPalette(get().settings), lists.length),
         parent_id: parentId,
         position: nextPos(lists),
         view_mode: "list",

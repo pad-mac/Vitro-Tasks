@@ -72,11 +72,11 @@ export function formatDateTime(date: string, time: string | null, today = todayK
   return time ? `${formatDate(date, today)} ${time}` : formatDate(date, today);
 }
 
-/** "3d left", "today", "2d over" for a deadline. */
+/** "3d", "today", "2d over" for a deadline (the pill already says it is a deadline). */
 export function deadlineCountdown(key: string, today = todayKey()): string {
   const diff = diffDays(today, key);
   if (diff === 0) return "today";
-  if (diff > 0) return `${diff}d left`;
+  if (diff > 0) return `${diff}d`;
   return `${-diff}d over`;
 }
 

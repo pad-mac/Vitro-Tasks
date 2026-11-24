@@ -11,10 +11,10 @@ Every task has two independent dates:
 
 | Area | Details |
 | --- | --- |
-| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar, and takes one of 15 colours or any custom one (right-click the list). Drag lists in the sidebar into any order (on the middle of another list, a list becomes its sublist). The sidebar is resizable by dragging its edge. |
+| Lists | Lists with sublists of any depth. A parent list shows the tasks of all its sublists. Sections inside a list. Each list can be hidden from All, from Today / Next 7 Days, and from the calendar, and takes a colour from five palettes or any custom one (right-click the list; the row shows the default palette, the last circle opens all of them). New lists take their colours from the default palette, chosen under Settings → Appearance: Vivid (Apple's system colours, 2025), Crisp (Radix Colors, step 9), Bright and Deep (Tailwind 500 and 600), Soft (the earlier, quieter set). Drag lists in the sidebar into any order (on the middle of another list, a list becomes its sublist). The sidebar is resizable by dragging its edge. |
 | Global views | All, Today, Next 7 Days, Deadlines, Inbox, Completed. Settings → Sidebar chooses which of them the sidebar shows. |
 | View modes | List, Board and Timeline for every list and global view, each with its own grouping (section, list, planned date, deadline, priority) and sorting (date, deadline, date & deadline — whichever of the two comes first —, priority, title, created, custom). |
-| Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. Dragging a card to another column changes that field. |
+| Board | Columns follow the grouping; inside each column, tasks are sub-grouped by the sort field. A card's date, deadline and list wrap onto more lines when they do not fit. Dragging a card to another column changes that field. |
 | Order | Drag tasks into any order, in lists and on boards, whatever the sort. With the sort "Custom" this sets the tasks' own order; with any other sort the view remembers your order on top of it, and the sort menu offers "Restore default order". Dropping into another group changes what the group stands for (section, date, priority, list). |
 | Timeline | Day, week and month zoom. Drag a bar to move it, drag its right edge to change the end, drag the diamond to move the deadline. |
 | Calendar | Month, week and multi-week (2 to 6 weeks, set in the view menu). Drag across days (or across hours in the week view) to create a task with that range, drag entries to reschedule, drag the lower edge of a timed entry to change its duration, and the left or right edge of an all-day entry (one day or several) to change its first or last day. Scrolling glides through weeks (month view) or days (week view, horizontal scroll) and settles on a whole week or day. Deadlines appear as outlined entries. In the week view, long titles fade out at the end, or wrap (Options → Wrap Titles in Week View); drop an entry on a day's date to make it an all-day entry of that day. One-day entries with a time show only a bar and text in the list colour. In the week view, days with a deadline get a frame around their date. |
@@ -53,7 +53,7 @@ Example: `Draft chapter wed ^30.11. !high #research` · `Team call every 2 weeks
 
 All of them can be changed under Settings → Shortcuts. Single-key shortcuts do nothing while you are typing.
 
-Selected things take the plain colours of the theme (no highlight colour): a picked date gets an empty ring, switches are a thin outline with a dot. On the desktop the sidebar's text is a quieter grey than the page's; list colours and marks there stay at full strength.
+Selected things take the plain colours of the theme (no highlight colour): a picked date gets an empty ring; switches have a raised knob on a recessed track, which fills with the theme's ink when on (like the primary buttons). On the desktop the sidebar's text is a quieter grey than the page's; list colours and marks there stay at full strength.
 
 ### Importing from TickTick
 

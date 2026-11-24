@@ -25,6 +25,12 @@
   --active: rgba(0, 0, 0, 0.085);
   --ink: #2e2e2e;
   --on-ink: #f2f2f2;
+  /* Board cards: a little greyer than other raised surfaces in the light theme. */
+  --card: #e9e9e9;
+  --switch-track: rgba(0, 0, 0, 0.13);
+  --switch-edge: rgba(0, 0, 0, 0.06);
+  --knob: #ffffff;
+  --knob-on: #ffffff;
   --red: #e0443a;
   --signal: #d9541e;
   --signal-soft: rgba(217, 84, 30, 0.1);
@@ -51,6 +57,11 @@
   --active: rgba(255, 255, 255, 0.09);
   --ink: #e2e2e2;
   --on-ink: #1c1c1c;
+  --card: #242424;
+  --switch-track: rgba(255, 255, 255, 0.15);
+  --switch-edge: rgba(255, 255, 255, 0.04);
+  --knob: #d4d4d4;
+  --knob-on: #1c1c1c;
   --red: #f0655c;
   --signal: #ff8a54;
   --signal-soft: rgba(255, 138, 84, 0.13);
@@ -257,19 +268,30 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .cm-deadline, .hm-deadline { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
 .cm-deadline em, .hm-deadline em { font-style: normal; color: var(--muted); font-size: 0.9em; }
 .menu-item.has-deadline .menu-label > .icon:first-child { color: var(--red); }
-/* A switch: a thin outlined track with a dot; on, both take the ink and the dot moves over. */
-.switch { position: relative; width: 24px; height: 14px; border-radius: 7px; border: 1.25px solid var(--faint); flex: none; box-sizing: border-box; transition: background var(--fast), border-color var(--fast); }
-.switch::after { content: ""; position: absolute; top: 50%; left: 2px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--faint); transition: translate var(--fast), background var(--fast); }
-.switch.is-on { border-color: var(--ink); }
-.switch.is-on::after { background: var(--ink); translate: 10px 0; }
+/* A switch in the app's own terms: a recessed track like the segmented controls', a raised knob like their
+   chosen segment; on, the track fills with the ink, as the primary buttons do. */
+.switch { position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: var(--switch-track); box-shadow: inset 0 0 0 0.5px var(--switch-edge); transition: background 160ms ease, box-shadow 160ms ease; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--knob); box-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.05); transition: translate 180ms cubic-bezier(0.3, 0.75, 0.35, 1), background 160ms ease; }
+.switch.is-on { background: var(--ink); box-shadow: none; }
+.switch.is-on::after { translate: 12px 0; background: var(--knob-on); }
+.is-mobile .switch { width: 40px; height: 24px; border-radius: 12px; }
+.is-mobile .switch::after { width: 20px; height: 20px; }
+.is-mobile .switch.is-on::after { translate: 16px 0; }
 .view-switch { display: flex; gap: 4px; padding: 0 6px 4px; }
 .view-switch button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 6px; border-radius: var(--r); color: var(--faint); font-size: 11.5px; transition: background var(--fast), color var(--fast); }
 .view-switch button:hover { background: var(--hover); color: var(--text); }
 .view-switch button.is-active { color: var(--text); background: var(--active); }
-.swatches { display: grid; grid-template-columns: repeat(8, 16px); justify-content: space-between; row-gap: 8px; padding: 8px 10px; }
-/* Any colour: a rainbow ring until a custom colour is set, then that colour. */
-.swatch-custom { position: relative; cursor: pointer; background: conic-gradient(#e0443a, #f0a22e, #c9a227, #5f9e5a, #3fa796, #4aa3d8, #5b8def, #9a6bd1, #d1609b, #e0443a); }
-.swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.swatches { display: grid; grid-template-columns: repeat(9, 16px); justify-content: space-between; row-gap: 8px; padding: 8px 10px; }
+/* More colours: a colour wheel until the list has a colour from elsewhere, then that colour. */
+.swatch-more { background: conic-gradient(#ff383c, #ff8d28, #ffcc00, #34c759, #00c3d0, #0088ff, #6155f5, #cb30e0, #ff383c); }
+/* Every palette, then custom colours: one 8-column grid, so all rows line up. */
+.cm-colors { width: 256px; padding-bottom: 4px; }
+.cm-colors .cm-label { padding: 6px 10px 2px; }
+.cm-colors .swatches { grid-template-columns: repeat(8, 20px); padding: 6px 10px 8px; }
+.cm-colors .swatch { width: 20px; height: 20px; }
+.swatch-add { position: relative; display: grid; place-items: center; cursor: pointer; color: var(--muted); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); }
+.swatch-add:hover { color: var(--text); }
+.swatch-add input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .swatch { width: 16px; height: 16px; border-radius: 50%; transition: transform var(--fast); }
 .swatch:hover { transform: scale(1.15); }
 .swatch.is-active { box-shadow: 0 0 0 2px var(--float), 0 0 0 3.5px var(--text); }
@@ -344,7 +366,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .column.is-drop { background: var(--hover); }
 .column-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 2px; flex: none; }
 .column-head .group-label { font-size: 15px; }
-.column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 60px; padding: 6px 2px 6px; margin: -6px -2px 0; }
+.column-body { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; min-height: 60px; padding: 6px 2px 6px; margin: -6px -2px 0; }
 /* Scrolled: the cards fade out under the column's head instead of being cut at its edge. */
 .column-body.is-scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); }
 .column-empty { color: var(--faint); font-size: 13px; text-align: center; padding: 16px 0; border: 1px dashed var(--line); border-radius: var(--r-lg); }
@@ -353,7 +375,7 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .lane-head { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 2px; text-align: left; }
 .lane-head > .icon { color: var(--p2); }
 .lane-label { font-weight: 600; font-size: 13.5px; }
-.card { position: relative; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 11px 13px; cursor: pointer; transition: border-color var(--fast), background var(--fast), transform var(--fast); }
+.card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 11px 13px; cursor: pointer; transition: border-color var(--fast), background var(--fast), transform var(--fast); }
 .card:hover { border-color: var(--faint); }
 .card:active { transform: scale(0.99); }
 .card.is-selected { background: var(--active); }
@@ -363,9 +385,12 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .card-top .task-title { margin-top: calc(9.5px - 0.5lh); }
 .card .task-title { white-space: normal; display: block; }
 .card-notes { margin: 5px 0 0 27px; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-foot { display: flex; align-items: center; margin: 6px 0 0 27px; }
+.card-foot { display: flex; align-items: center; min-width: 0; margin: 6px 0 0 27px; }
 .card-foot:empty, .card-foot .task-meta:empty { display: none; }
-.card-foot .task-meta { flex-wrap: wrap; gap: 5px 9px; }
+/* Date, deadline and list wrap onto more lines rather than push the card (and its lane) wider. */
+.card-foot .task-meta { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; gap: 5px 9px; }
+.card-foot .task-meta > * { max-width: 100%; white-space: nowrap; }
+.card-foot .meta-list { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .card-new { padding: 7px; }
 
 /* ---------- Timeline ---------- */
@@ -1447,6 +1472,16 @@ html:not(.is-mobile) .cal-chip.is-timed { background: none; color: color-mix(in 
 html:not(.is-mobile) .cal-chip.is-timed:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
 html:not(.is-mobile) .cal-chip.is-deadline { background: none; color: var(--signal); }
 html:not(.is-mobile) .week-event .cal-chip { background: color-mix(in srgb, var(--c) 30%, var(--bg)); }
+
+/* ---------- Settings: the palette for new lists ---------- */
+.palette-choice { display: flex; flex-direction: column; margin-top: 14px; }
+.palette-head { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.palette-row > span:first-child { flex: 1; }
+.toggle-row.palette-row > .palette-dots, .toggle-row.palette-row > .palette-check { flex: none; }
+.palette-dots { display: inline-flex; gap: 6px; }
+.palette-dots i { width: 12px; height: 12px; border-radius: 50%; }
+.palette-check { display: grid; place-items: center; width: 16px; color: var(--text); }
+.palette-row.is-active > span:first-child { font-weight: 500; }
 
 /* ---------- Settings: rows with a switch ---------- */
 .toggle-list { display: flex; flex-direction: column; }

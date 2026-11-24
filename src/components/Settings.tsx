@@ -4,6 +4,7 @@ import { isMobile, isTauri, saveTextFile } from "../lib/platform";
 import { isTickTickBackup, isVitroCsv } from "../lib/transfer";
 import { ACTIONS, DEFAULT_SHORTCUTS, comboFromEvent, shortcutRecording, type ActionId } from "../lib/shortcuts";
 import { hiddenSmartViews, useStore, type ImportResult, type Theme } from "../store";
+import { PALETTES, defaultPalette } from "../lib/palettes";
 import { SMART_VIEWS } from "../lib/views";
 import { SMART_ICONS } from "./Sidebar";
 import type { SyncServer } from "../db/sync";
@@ -319,6 +320,29 @@ function ShortcutRow({ id, label }: { id: ActionId; label: string }) {
   );
 }
 
+/** Which palette new lists take their colours from (every palette stays in the list menu). */
+function PaletteChoice() {
+  const settings = useStore((s) => s.settings);
+  const setPalette = useStore((s) => s.setPalette);
+  const current = defaultPalette(settings).id;
+  return (
+    <div className="palette-choice" role="radiogroup" aria-label="Colours for new lists">
+      <span className="palette-head">Colours for new lists</span>
+      {PALETTES.map((p) => (
+        <button type="button" key={p.id} role="radio" aria-checked={p.id === current} className={`toggle-row palette-row ${p.id === current ? "is-active" : ""}`} onClick={() => void setPalette(p.id)}>
+          <span>{p.name}</span>
+          <span className="palette-dots">
+            {p.colors.map((c) => (
+              <i key={c} style={{ background: c }} />
+            ))}
+          </span>
+          <span className="palette-check">{p.id === current && <Icon name="check" size={14} />}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Settings({ onClose }: { onClose: () => void }) {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
@@ -352,6 +376,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <PaletteChoice />
         </section>
 
         <SidebarSection />
