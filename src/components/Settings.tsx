@@ -55,7 +55,7 @@ function ServerRow({ server, several }: { server: SyncServer; several: boolean }
       : st?.status === "error"
         ? (st.message ?? "Sync failed")
         : st?.last
-          ? `Synced at ${new Date(st.last).toLocaleTimeString()}`
+          ? `Synced at ${new Date(st.last).toLocaleTimeString()}${st.version && st.version !== "dev" ? ` · server ${st.version}` : ""}`
           : "Connected";
   return (
     <div className={`server-card ${server.enabled ? "" : "is-off"}`}>
@@ -80,8 +80,8 @@ function ServerRow({ server, several }: { server: SyncServer; several: boolean }
       </div>
       {server.enabled && st?.outdated && (
         <div className="server-warn" role="status">
-          <b>This server needs an update.</b> It runs an older version than the app, so repeat rules set here do not reach your other devices. On the server, in the folder you cloned the repository to:
-          <code>git pull && cd server && docker compose up -d --build</code>
+          <b>This server needs an update.</b> It runs an older version than the app, so not everything set here reaches your other devices. Once, on the server, in the folder you cloned the repository to (from then on it updates itself):
+          <code>git pull && cd server && docker compose up -d</code>
           The apps then send what it missed again by themselves.
         </div>
       )}

@@ -233,8 +233,8 @@ export interface SyncRequest {
 export interface SyncResponse {
   cursor: number;
   changes: ChangeSet;
-  /** From protocol 2 on: what the server can do (older servers send nothing here). */
-  server?: { protocol: number };
+  /** From protocol 2 on: what the server can do, and (from 0.14.1) its version. Older servers send nothing here. */
+  server?: { protocol: number; version?: string };
 }
 
 /**

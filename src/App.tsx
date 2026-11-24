@@ -305,7 +305,7 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
         : sync.status === "syncing"
           ? "Syncing…"
           : sync.oldServers?.length
-            ? `${sync.oldServers.join(", ")}: the server needs an update (repeat rules do not reach other devices). Click for Settings.`
+            ? `${sync.oldServers.join(", ")}: the server needs an update (not everything reaches your other devices). Click for Settings.`
             : `Synced${sync.last ? ` at ${new Date(sync.last).toLocaleTimeString()}` : ""}`;
   const syncClass = sync.status === "idle" && sync.oldServers?.length ? "outdated" : sync.status;
   return (

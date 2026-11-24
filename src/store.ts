@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { openDb, type Db } from "./db/driver";
 import { adoptRows, assignOrigin, getMeta, loadAll, migrate, purgeOrigin, put, remove, setMeta, uid, type AdoptedChange } from "./db/repo";
-import { getDefaultServer, getServers, hostName, resetServer, setDefaultServer, setServers, syncOnce, type SyncServer } from "./db/sync";
+import { getDefaultServer, getServers, hostName, resetServer, setDefaultServer, setServers, OutdatedServerError, syncOnce, type SyncServer } from "./db/sync";
 import {
   announceChange,
   appVersion,
@@ -86,6 +86,8 @@ export interface SyncState {
   outdated?: boolean;
   /** All servers together: the names of those that need updating. */
   oldServers?: string[];
+  /** The server's version, when it says. */
+  version?: string;
 }
 
 /** Screen rectangle a floating panel attaches to. */
@@ -456,10 +458,15 @@ export const useStore = create<State>((set, get) => {
     mark({ ...get().serverSync[server.id], status: "syncing", message: undefined });
     try {
       const r = await syncOnce(db, server);
-      mark({ status: "idle", last: Date.now(), outdated: r.outdated });
+      mark({ status: "idle", last: Date.now(), outdated: r.outdated, version: r.serverVersion });
       return r.pulled;
     } catch (e) {
-      mark({ status: "error", message: e instanceof Error ? e.message : String(e), last: get().serverSync[server.id]?.last });
+      mark({
+        status: "error",
+        message: e instanceof Error ? e.message : String(e),
+        last: get().serverSync[server.id]?.last,
+        outdated: e instanceof OutdatedServerError,
+      });
       return 0;
     }
   }

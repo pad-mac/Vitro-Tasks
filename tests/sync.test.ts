@@ -4,7 +4,7 @@ import http from "node:http";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadAll, put, remove } from "../src/db/repo";
-import { syncOnce, type SyncConfig } from "../src/db/sync";
+import { OutdatedServerError, syncOnce, type SyncConfig } from "../src/db/sync";
 import type { Db } from "../src/db/driver";
 import type { Task } from "../src/shared/schema";
 import { createServer, migrate } from "../server/src/index";
@@ -125,7 +125,7 @@ describe.skipIf(!url)("sync", () => {
       fetch(`${cfg.url}/v1/sync`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: JSON.stringify(body) });
     const res = await post({ since: 0, changes: { tasks: [{ id: "x", updated_at: 1, title: "kept", "title; DROP TABLE tasks": 1, later_field: "y" }] } });
     expect(res.status).toBe(200);
-    expect((await res.json()).server).toEqual({ protocol: 2 });
+    expect((await res.json()).server).toEqual({ protocol: 2, version: "dev" });
     const row = (await pool.query("SELECT title, extra FROM tasks WHERE id = 'x'")).rows[0];
     expect(row.title).toBe("kept");
     expect(row.extra).toEqual({ "title; DROP TABLE tasks": 1, later_field: "y" });
@@ -157,26 +157,27 @@ describe.skipIf(!url)("sync", () => {
     expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "r1")?.repeat).toBe("FREQ=WEEKLY;INTERVAL=1");
   });
 
-  it("still syncs with a server from before repeats, and once it is updated the rules reach the other devices", async () => {
+  it("calls a server from before 0.11 too old, and once a server keeps every field the rules reach the other devices", async () => {
     const a = await memoryDb();
     const b = await memoryDb();
-    // A server from before 0.11: refuses task rows with a field it does not know,
-    // stores and returns rows without it, and says nothing about its protocol.
+    await put(a, "tasks", task("old-r1", "on old server", { start_date: "2026-11-24", repeat: "FREQ=DAILY;INTERVAL=2" }), 6000);
+    // A server from before 0.11 refuses task rows with a field it does not know.
+    const tooOld: typeof fetch = async () => new Response(JSON.stringify({ error: "invalid tasks row" }), { status: 400 });
+    await expect(syncOnce(a, cfg, tooOld)).rejects.toBeInstanceOf(OutdatedServerError);
+    // What earlier app versions left behind with it: rows sent without the rule, a server
+    // that stores and returns them without it and says nothing about its protocol.
     let old = true;
     const oldFetch: typeof fetch = async (input, init) => {
       if (!old) return fetch(input, init);
       const body = JSON.parse(String(init?.body ?? "{}"));
-      if ((body.changes?.tasks ?? []).some((r: Record<string, unknown>) => "repeat" in r)) return new Response(JSON.stringify({ error: "invalid tasks row" }), { status: 400 });
-      const res = await fetch(input, init);
+      for (const r of body.changes?.tasks ?? []) delete r.repeat;
+      const res = await fetch(input, { ...init, body: JSON.stringify(body) });
       const data = await res.json();
       delete data.server;
       for (const r of data.changes?.tasks ?? []) delete r.repeat;
       return new Response(JSON.stringify(data), { status: res.status });
     };
-    // A sets a rule; the old server keeps the task without it.
-    await put(a, "tasks", task("old-r1", "on old server", { start_date: "2026-11-24", repeat: "FREQ=DAILY;INTERVAL=2" }), 6000);
-    const first = await syncOnce(a, cfg, oldFetch);
-    expect(first).toMatchObject({ pushed: 1, outdated: true });
+    expect((await syncOnce(a, cfg, oldFetch)).outdated).toBe(true);
     // B gets the task without the rule, and renames it.
     await syncOnce(b, cfg, oldFetch);
     await put(b, "tasks", { ...(await loadAll<Task>(b, "tasks")).find((t) => t.id === "old-r1")!, title: "renamed on B" } as never, 6500);
@@ -188,6 +189,7 @@ describe.skipIf(!url)("sync", () => {
     old = false;
     const updated = await syncOnce(a, cfg, oldFetch);
     expect(updated.outdated).toBe(false);
+    expect(updated.serverVersion).toBe("dev");
     await syncOnce(b, cfg);
     expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "old-r1")).toMatchObject({ title: "renamed on B", repeat: "FREQ=DAILY;INTERVAL=2" });
     // Only once: the next round sends nothing again.

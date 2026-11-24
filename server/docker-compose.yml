@@ -1,4 +1,10 @@
 # Run from the server/ folder:  VITRO_TOKEN=<long secret> POSTGRES_PASSWORD=<secret> docker compose up -d
+#
+# The sync server runs the image published with every release and updates
+# itself: the updater below checks for a new image every 15 minutes and
+# restarts the server on it (the database and its data stay as they are; the
+# schema upgrades itself on start). Only the containers labelled for it are
+# touched.
 services:
   db:
     image: postgres:16-alpine
@@ -14,9 +20,9 @@ services:
       interval: 5s
       retries: 10
   sync:
-    build:
-      context: ..
-      dockerfile: server/Dockerfile
+    image: ghcr.io/pad-mac/vitro-sync:latest
+    # To run this checkout instead (no updates then): replace the line above with
+    #   build: { context: .., dockerfile: server/Dockerfile }
     restart: unless-stopped
     depends_on:
       db:
@@ -28,5 +34,18 @@ services:
     ports:
       # Bound to localhost: put a TLS reverse proxy (Caddy, nginx) in front.
       - "127.0.0.1:8787:8787"
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+  # Watchtower, the maintained fork (the original was archived in December 2025).
+  updater:
+    image: nickfedor/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "900"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
 volumes:
   vitro-db:

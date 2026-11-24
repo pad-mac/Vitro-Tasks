@@ -113,6 +113,43 @@ jobs:
           files: out/*
           generate_release_notes: true
 
+  # The sync server's image for every release: servers set up with
+  # server/docker-compose.yml update themselves to it.
+  server-image:
+    needs: [test, windows]
+    if: needs.windows.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VITRO_VERSION=${{ needs.windows.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.windows.outputs.version }}
+          tags: |
+            ghcr.io/pad-mac/vitro-sync:latest
+            ghcr.io/pad-mac/vitro-sync:${{ needs.windows.outputs.version }}
+      - name: The image can be pulled without signing in
+        run: |
+          docker logout ghcr.io
+          docker pull ghcr.io/pad-mac/vitro-sync:${{ needs.windows.outputs.version }}
+          docker run --rm ghcr.io/pad-mac/vitro-sync:${{ needs.windows.outputs.version }} node -e "console.log(process.env.VITRO_VERSION)"
+
   ios:
     uses: ./.github/workflows/ios.yml
 

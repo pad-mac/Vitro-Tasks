@@ -18,6 +18,9 @@ import {
 
 pg.types.setTypeParser(20, (v) => Number(v)); // BIGINT -> number
 
+/** The release this server was built from (set in the published image). */
+const VERSION = process.env.VITRO_VERSION || "dev";
+
 export async function migrate(pool: pg.Pool): Promise<void> {
   for (const stmt of postgresDdl()) await pool.query(stmt);
 }
@@ -87,7 +90,7 @@ export async function sync(pool: pg.Pool, req: SyncRequest): Promise<SyncRespons
       }
     }
     await client.query("COMMIT");
-    return { cursor, changes, server: { protocol: SYNC_PROTOCOL } };
+    return { cursor, changes, server: { protocol: SYNC_PROTOCOL, version: VERSION } };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     throw e;
@@ -138,7 +141,7 @@ export function createServer(pool: pg.Pool, token: string): http.Server {
         return void res.end();
       }
       const path = (req.url ?? "/").split("?")[0];
-      if (req.method === "GET" && path === "/v1/health") return send(200, { ok: true });
+      if (req.method === "GET" && path === "/v1/health") return send(200, { ok: true, version: VERSION });
       if (req.headers.authorization !== `Bearer ${token}`) throw new HttpError(401, "bad or missing token");
       if (req.method === "POST" && path === "/v1/sync") {
         let parsed: SyncRequest;

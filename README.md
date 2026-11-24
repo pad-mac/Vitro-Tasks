@@ -105,12 +105,14 @@ The database is `%APPDATA%\app.vitro.tasks\vitro.db`.
 
 ## Sync server
 
-The server is one small Node process plus Postgres. On your server:
+The server is one small Node process plus Postgres, and it updates itself. On your server, in a clone of this repository:
 
 ```
 cd server
 VITRO_TOKEN=<long random secret> POSTGRES_PASSWORD=<another secret> docker compose up -d
 ```
+
+This runs the image published with every release (`ghcr.io/pad-mac/vitro-sync`, amd64 and arm64) and an updater (the maintained fork of Watchtower) that checks for a new image every 15 minutes and restarts the server on it; the database and its data stay, and the schema upgrades itself on start. Only the sync server is touched. Settings → Sync servers shows each server's version.
 
 It listens on `127.0.0.1:8787`. Put a reverse proxy with TLS in front of it, then add it under Settings → Sync servers in the app (a name, the URL and the token). `GET /v1/health` answers without a token. For separate sets of lists (work and private, say), run one server per set and add each to the app; the servers need no change for that (which server a row lives on is only recorded on the device). The first server added takes the lists already on the device; removing one of several takes its lists off the device (they stay on the server), removing the only one keeps them on the device.
 
@@ -118,9 +120,9 @@ How it works: every row carries `updated_at` and a `deleted` flag. The app sends
 
 The token is a single shared secret, so one server serves one person (or one shared set of lists).
 
-Updating the server: `cd /opt/vitro-tasks && git pull && cd server && docker compose up -d --build` (the schema upgrades itself on start).
+A server set up before 0.14.1 (built from the checkout, without the updater) moves over once: `cd <your clone> && git pull && cd server && docker compose up -d`. From then on it updates itself.
 
-From 0.14 the server keeps every field a row carries, also ones it has no column for yet (in an `extra` column), and a field a row leaves out stays as it is (an older app does not clear what a newer one set; the app does the same with rows from the server). So new features sync without updating the server again. An older server (before 0.14) is shown as needing an update: the sync dot in the title bar turns amber, the phone's Settings button gets a badge, and the server's card in Settings says what to run. On the first sync with an updated server, each device sends its repeat rules again (newer than the stored version, so the server takes them), so rules set while the server was older reach the other devices. A server from before 0.11 refuses rows with repeat rules; the app then sends them without (everything else keeps syncing) and keeps the rules on the device until the update.
+Every new field syncs: the server keeps every field a row carries, also ones it has no column for yet (in an `extra` column), and a field a row leaves out stays as it is (an older app does not clear what a newer one set; the app does the same with rows from the server). A server older than the app is shown where you look: the sync dot in the title bar turns amber, the phone's Settings button gets a badge, and the server's card in Settings says what to run. On the first sync with a server from 0.14 on, each device sends its repeat rules again (newer than the stored version, so the server takes them): rules set while the server was older reach the other devices then.
 
 ## Releasing
 

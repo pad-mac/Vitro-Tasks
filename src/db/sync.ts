@@ -25,17 +25,25 @@ export interface SyncResult {
   /**
    * The server is older than this app (it speaks an older sync protocol):
    * what is new in the app (repeat rules) may not reach other devices until
-   * it is updated.
+   * it updates (servers set up from the published image update themselves).
    */
   outdated?: boolean;
+  /** The server's version, when it says (from 0.14.1). */
+  serverVersion?: string;
+}
+
+/** A server too old to sync with this app at all (before 0.11). */
+export class OutdatedServerError extends Error {
+  readonly outdated = true;
+  constructor() {
+    super("This server is too old for this app: update it (Settings → Sync servers shows how).");
+  }
 }
 
 /**
- * Task fields added after the first server versions. A server from before
- * 0.11 refuses rows that carry them; one from 0.11 to 0.13 knows these but
- * would drop fields added later. From protocol 2 on the server keeps every
- * field, and on the first sync with such a server they are all sent again
- * (they may have been lost on the way before).
+ * Task fields added after the first server versions. From protocol 2 on the
+ * server keeps every field; on the first sync with such a server these are
+ * sent again, once (an older server may have dropped them).
  */
 const NEWER_TASK_FIELDS = ["repeat"];
 
@@ -111,18 +119,11 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
       headers: { "content-type": "application/json", authorization: `Bearer ${cfg.token}` },
       body: JSON.stringify(body),
     });
-  let res = await post({ since, changes });
-  if (res.status === 400 && changes.tasks?.length) {
-    // A server from before repeats refuses task rows with fields it does not
-    // know: send them without, so everything else still syncs.
-    const text = await res.clone().text().catch(() => "");
-    if (/invalid tasks row/.test(text)) {
-      const tasks = changes.tasks.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !NEWER_TASK_FIELDS.includes(k))));
-      res = await post({ since, changes: { ...changes, tasks } });
-    }
-  }
+  const res = await post({ since, changes });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // A server from before 0.11 refuses rows with fields it does not know.
+    if (res.status === 400 && /invalid tasks row/.test(text)) throw new OutdatedServerError();
     throw new Error(`Sync server answered ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
   }
   const data = (await res.json()) as SyncResponse;
@@ -141,10 +142,10 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
     await setMeta(db, resentKey(cfg.id), "1");
     if (kept.length) {
       const next = await syncOnce(db, cfg, fetchImpl);
-      return { pushed: pushed + next.pushed, pulled: pulled + next.pulled, cursor: next.cursor, outdated: next.outdated };
+      return { ...next, pushed: pushed + next.pushed, pulled: pulled + next.pulled };
     }
   }
-  return { pushed, pulled, cursor: data.cursor, outdated: protocol < SYNC_PROTOCOL };
+  return { pushed, pulled, cursor: data.cursor, outdated: protocol < SYNC_PROTOCOL, serverVersion: data.server?.version };
 }
 
 const resentKey = (id?: string) => (id ? `sync_resent:${id}` : "sync_resent");
