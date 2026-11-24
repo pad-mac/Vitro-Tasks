@@ -321,15 +321,24 @@ struct Chip: View {
   let scheme: ColorScheme
   var size: CGFloat = 10
   var height: CGFloat = 15
+  /// Cut the title at the chip's edge instead of ending it with "…" (the week's narrow columns).
+  var clip = false
 
   var body: some View {
     let color = Palette.list(entry.color, scheme)
     let shape = RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-    Text(entry.title)
+    let title = Text(entry.title)
       .font(.system(size: size, weight: .medium))
       .foregroundStyle(.primary)
       .lineLimit(1)
-      .padding(.horizontal, 4)
+    Group {
+      if clip {
+        // The chip's size comes from its column; the title lies over it at its full length.
+        Color.clear.overlay(alignment: .leading) { title.fixedSize().padding(.leading, 4) }
+      } else {
+        title.padding(.horizontal, 4)
+      }
+    }
       .frame(maxWidth: .infinity, alignment: .leading)
       .frame(height: height)
       .background(entry.deadline != nil ? Color.clear : color.opacity(scheme == .dark ? 0.32 : 0.22))

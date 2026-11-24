@@ -7,37 +7,47 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-// Own margins: the columns nearly to the edges, the arrows as far from the top as from the sides.
-private let topInset: CGFloat = 12
-private let sideInset: CGFloat = 6
-private let bottomInset: CGFloat = 8
-private let columnGap: CGFloat = 2
-private let titleHeight: CGFloat = 24
-private let dayHeight: CGFloat = 19
+// Own margins: the columns out to the edges (as far from them as from each
+// other), a low title row with the arrows as far from the top as from the sides.
+private let topInset: CGFloat = 8
+private let columnGap: CGFloat = 3
+private let sideInset: CGFloat = columnGap
+private let bottomInset: CGFloat = 6
+private let titleHeight: CGFloat = 20
+private let titleGap: CGFloat = 4
+private let dayHeight: CGFloat = 18
+private let dayGap: CGFloat = 3
 private let chipHeight: CGFloat = 15
 private let chipGap: CGFloat = 2
+/// The "+N" line under the chips: lower than a chip, so one more chip fits.
+private let moreHeight: CGFloat = 11
 
 struct WeekEntry: TimelineEntry {
   let date: Date
   let snap: Snapshot?
   let shift: Int
   let done: Set<String>
-  /// Chips that fit under a day.
+  /// Chips that fit under a day: all of them, or with the "+N" line under them.
   let fit: Int
+  let fitWithMore: Int
 }
 
 struct WeekProvider: TimelineProvider {
-  private func fit(_ context: Context) -> Int {
-    let room = context.displaySize.height - topInset - titleHeight - 6 - dayHeight - 4 - bottomInset
-    return max(2, Int((room + chipGap) / (chipHeight + chipGap)))
+  /// Under a day's header: chips (each with the gap after it), and maybe the "+N" line.
+  static func fit(height: CGFloat) -> (all: Int, withMore: Int) {
+    let room = height - topInset - titleHeight - titleGap - dayHeight - dayGap - bottomInset
+    let step = chipHeight + chipGap
+    return (max(2, Int((room + chipGap) / step)), max(1, Int((room - moreHeight) / step)))
   }
 
   private func entry(_ snap: Snapshot?, _ date: Date, _ context: Context) -> WeekEntry {
-    WeekEntry(date: date, snap: snap, shift: Store.weekShift(at: date), done: Store.pendingDone(), fit: fit(context))
+    let f = Self.fit(height: context.displaySize.height)
+    return WeekEntry(date: date, snap: snap, shift: Store.weekShift(at: date), done: Store.pendingDone(), fit: f.all, fitWithMore: f.withMore)
   }
 
   func placeholder(in context: Context) -> WeekEntry {
-    WeekEntry(date: Date(), snap: nil, shift: 0, done: [], fit: fit(context))
+    let f = Self.fit(height: context.displaySize.height)
+    return WeekEntry(date: Date(), snap: nil, shift: 0, done: [], fit: f.all, fitWithMore: f.withMore)
   }
 
   func getSnapshot(in context: Context, completion: @escaping (WeekEntry) -> Void) {
@@ -83,7 +93,7 @@ struct WeekWidgetView: View {
     let month = Day.months[Day.month(middle)]
     let title = Day.year(middle) == Day.year(today) ? month : "\(month) \(Day.year(middle))"
 
-    return VStack(alignment: .leading, spacing: 6) {
+    return VStack(alignment: .leading, spacing: titleGap) {
       ZStack {
         Button(intent: ShiftWeek(by: 0)) {
           Text(title)
@@ -106,7 +116,7 @@ struct WeekWidgetView: View {
             DayColumn(
               day: day, index: i, today: today,
               entries: (snap.days[day] ?? []).filter { !entry.done.contains($0.task) },
-              fit: entry.fit, scheme: scheme)
+              fit: entry.fit, fitWithMore: entry.fitWithMore, scheme: scheme)
           }
         }
       }
@@ -128,7 +138,7 @@ private struct Arrow: View {
       Image(systemName: symbol)
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(.secondary)
-        .frame(width: 30, height: titleHeight)
+        .frame(width: 26, height: titleHeight)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -141,12 +151,15 @@ private struct DayColumn: View {
   let today: String
   let entries: [Entry]
   let fit: Int
+  let fitWithMore: Int
   let scheme: ColorScheme
 
   var body: some View {
     let isToday = day == today
-    // Room for one chip less when the rest has to be counted.
-    let shown = entries.count > fit ? fit - 1 : entries.count
+    // Fewer chips when the rest has to be counted.
+    let shown = entries.count > fit ? fitWithMore : entries.count
+    // Days gone by: their entries fade (as in the app's calendar), the header stays.
+    let fade = day < today ? 0.55 : 1
     VStack(spacing: chipGap) {
       HStack(spacing: 3) {
         Text(Day.letters[index])
@@ -164,9 +177,10 @@ private struct DayColumn: View {
       .background {
         if isToday { Capsule().fill(Color.primary) }
       }
-      .padding(.bottom, 4 - chipGap)
+      .padding(.bottom, dayGap - chipGap)
       ForEach(entries.prefix(max(0, shown))) { e in
         WeekChip(entry: e, scheme: scheme)
+          .opacity(fade)
       }
       if entries.count > shown {
         Text("+\(entries.count - shown)")
@@ -175,17 +189,18 @@ private struct DayColumn: View {
           .monospacedDigit()
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.leading, 3)
-          .frame(height: chipHeight)
+          .frame(height: moreHeight)
+          .opacity(fade)
       }
       Spacer(minLength: 0)
     }
-    .opacity(day < today ? 0.55 : 1)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .contentShape(Rectangle())
   }
 }
 
 /// All day: tinted with the list colour. At a set time: the colour as a bar, as in the app's month.
+/// Titles run to the column's edge and are cut there (no "…" taking the room).
 private struct WeekChip: View {
   let entry: Entry
   let scheme: ColorScheme
@@ -193,19 +208,24 @@ private struct WeekChip: View {
   var body: some View {
     if entry.timed && entry.deadline == nil {
       let color = Palette.list(entry.color, scheme)
-      HStack(spacing: 2.5) {
-        RoundedRectangle(cornerRadius: 1).fill(color).frame(width: 2, height: chipHeight - 5)
-        Text(entry.title)
-          .font(.system(size: 10, weight: .medium))
-          .foregroundStyle(.primary)
-          .lineLimit(1)
-      }
-      .padding(.leading, 1.5)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .frame(height: chipHeight)
-      .clipped()
+      // The chip's size comes from the column; the title lies over it at its full length, cut off at the edge.
+      Color.clear
+        .frame(maxWidth: .infinity)
+        .frame(height: chipHeight)
+        .overlay(alignment: .leading) {
+          HStack(spacing: 2.5) {
+            RoundedRectangle(cornerRadius: 1).fill(color).frame(width: 2, height: chipHeight - 5)
+            Text(entry.title)
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.primary)
+              .lineLimit(1)
+              .fixedSize()
+          }
+          .padding(.leading, 1.5)
+        }
+        .clipped()
     } else {
-      Chip(entry: entry, scheme: scheme)
+      Chip(entry: entry, scheme: scheme, clip: true)
     }
   }
 }

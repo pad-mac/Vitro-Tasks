@@ -1,5 +1,5 @@
 import { flushSync } from "react-dom";
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -286,7 +286,7 @@ function SpanBar({ task, c0, c1, lane, top, from, to, n }: { task: Task; c0: num
   const right = task.end_date! > to;
   return (
     <div
-      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""} ${ghost ? "is-ghost" : ""}`}
+      className={`cal-chip cal-span ${left ? "cont-left" : ""} ${right ? "cont-right" : ""} ${task.status ? "is-done" : ""} ${isSelected ? "is-selected" : ""} ${ghost ? "is-ghost" : ""} ${(task.end_date ?? task.start_date)! < todayKey() ? "is-past" : ""}`}
       data-id={ghost ? undefined : task.id}
       data-ghost={ghost}
       style={{
@@ -344,7 +344,7 @@ function DayCell({
   return (
     <div
       data-day={day}
-      className={`cal-cell ${outside ? "is-out" : ""} ${isWeekend(day) ? "is-weekend" : ""} ${drop.over ? "is-drop" : ""} ${selected ? `is-sel ${selected}` : ""}`}
+      className={`cal-cell ${outside ? "is-out" : ""} ${day < today ? "is-past" : ""} ${isWeekend(day) ? "is-weekend" : ""} ${drop.over ? "is-drop" : ""} ${selected ? `is-sel ${selected}` : ""}`}
       style={{ paddingTop: (month ? 30 : 4) + lanes * CHIP_H }}
       {...drop.props}
     >
@@ -557,13 +557,13 @@ export function placeTimed(entries: DayEntry[]): Placed[] {
   return items;
 }
 
-function TimedEvent({ p, resizeEnd, onResizeStart }: { p: Placed; resizeEnd: number | null; onResizeStart: (e: RPointerEvent, p: Placed) => void }) {
+function TimedEvent({ p, past, resizeEnd, onResizeStart }: { p: Placed; past: boolean; resizeEnd: number | null; onResizeStart: (e: RPointerEvent, p: Placed) => void }) {
   const end = resizeEnd ?? p.end;
   const planned = p.entry.kind === "planned";
   const height = Math.max(18, ((end - p.start) / 60) * HOUR_H - 2);
   return (
     <div
-      className={`week-event ${resizeEnd !== null ? "is-resizing" : ""}`}
+      className={`week-event ${resizeEnd !== null ? "is-resizing" : ""} ${past ? "is-past" : ""}`}
       style={{
         // Wrapped titles stop at the last line that fits (with the time under them), not mid-line.
         ["--lines" as string]: Math.max(1, Math.floor((height - 4 - 14) / 15)),
@@ -598,6 +598,10 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
   const snap = (y: number) => clampMin(Math.round(((y / HOUR_H) * 60) / SNAP) * SNAP);
   const drop = useDropTarget((id, kind) => moveEntry(id, kind, day, Math.min(snap(lastY.current), 24 * 60 - SNAP)));
   const placed = useMemo(() => placeTimed(entries), [entries]);
+  // Today's entries fade once they are over; earlier days fade as a whole (.week-col.is-past).
+  const today = todayKey();
+  const isToday = day === today;
+  const nowMin = useMinutesNow(isToday);
   const capture = (id: number) => {
     try {
       ref.current?.setPointerCapture(id);
@@ -619,7 +623,7 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
     <div
       ref={ref}
       data-day={day}
-      className={`week-col ${isWeekend(day) ? "is-weekend" : ""} ${drop.over ? "is-drop" : ""}`}
+      className={`week-col ${isWeekend(day) ? "is-weekend" : ""} ${day < today ? "is-past" : ""} ${drop.over ? "is-drop" : ""}`}
       {...drop.props}
       onDragOver={(e) => {
         lastY.current = yOf(e.clientY);
@@ -676,11 +680,12 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
         setResize(null);
       }}
     >
-      {day === todayKey() && <NowLine />}
+      {isToday && <NowLine />}
       {placed.map((p) => (
         <TimedEvent
           key={`${p.entry.task.id}:${p.entry.kind}`}
           p={p}
+          past={isToday && p.end <= nowMin}
           resizeEnd={resize?.id === p.entry.task.id ? resize.end : null}
           onResizeStart={(e, item) => {
             e.stopPropagation();
@@ -699,13 +704,42 @@ function HourColumn({ day, entries }: { day: string; entries: DayEntry[] }) {
   );
 }
 
+// The minute now, one clock for everything in the calendar that follows it
+// (the now line, today's entries that are over), ticking on the minute.
+let clockNow = Date.now();
+const clockSubs = new Set<() => void>();
+let clockTimer: ReturnType<typeof setTimeout> | undefined;
+const nextTick = () => setTimeout(tickClock, 60_000 - (Date.now() % 60_000) + 20);
+function tickClock() {
+  clockNow = Date.now();
+  clockSubs.forEach((f) => f());
+  clockTimer = nextTick();
+}
+function subscribeClock(f: () => void) {
+  clockSubs.add(f);
+  if (!clockTimer) {
+    clockNow = Date.now();
+    clockTimer = nextTick();
+  }
+  return () => {
+    clockSubs.delete(f);
+    if (!clockSubs.size) {
+      clearTimeout(clockTimer);
+      clockTimer = undefined;
+    }
+  };
+}
+const noClock = () => () => {};
+/** Minutes into the day now; follows the clock only where `live` (today's column), else read once. */
+function useMinutesNow(live: boolean): number {
+  const at = useSyncExternalStore(live ? subscribeClock : noClock, () => clockNow);
+  const d = new Date(live ? at : Date.now());
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 function NowLine() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(t);
-  }, []);
-  return <i className="week-now" style={{ top: ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_H }} />;
+  const now = useMinutesNow(true);
+  return <i className="week-now" style={{ top: (now / 60) * HOUR_H }} />;
 }
 
 /** A day's header in the week view; a task dropped on it goes to that day's all-day row. */
