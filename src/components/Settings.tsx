@@ -55,7 +55,7 @@ function ServerRow({ server, several }: { server: SyncServer; several: boolean }
       : st?.status === "error"
         ? (st.message ?? "Sync failed")
         : st?.last
-          ? `Synced at ${new Date(st.last).toLocaleTimeString()}${st.outdated ? " · update this server to sync repeats" : ""}`
+          ? `Synced at ${new Date(st.last).toLocaleTimeString()}`
           : "Connected";
   return (
     <div className={`server-card ${server.enabled ? "" : "is-off"}`}>
@@ -78,8 +78,15 @@ function ServerRow({ server, several }: { server: SyncServer; several: boolean }
         <label>Token</label>
         <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="VITRO_TOKEN of your server" />
       </div>
+      {server.enabled && st?.outdated && (
+        <div className="server-warn" role="status">
+          <b>This server needs an update.</b> It runs an older version than the app, so repeat rules set here do not reach your other devices. On the server, in the folder you cloned the repository to:
+          <code>git pull && cd server && docker compose up -d --build</code>
+          The apps then send what it missed again by themselves.
+        </div>
+      )}
       <div className="form-actions">
-        <span className={`sync-state sync-${server.enabled ? (st?.status ?? "idle") : "off"}`}>
+        <span className={`sync-state sync-${server.enabled ? (st?.status === "idle" && st.outdated ? "outdated" : (st?.status ?? "idle")) : "off"}`}>
           <i className="sync-dot" />
           {status}
         </span>

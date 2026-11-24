@@ -1,6 +1,6 @@
 import type { Db } from "./driver";
-import { applyRemote, assignOrigin, collectDirty, getMeta, markClean, markOriginDirty, markRepeatsDirty, setMeta } from "./repo";
-import type { SyncRequest, SyncResponse } from "../shared/schema";
+import { applyRemote, assignOrigin, collectDirty, getMeta, markClean, markOriginDirty, sendAgain, setMeta, valuesIn } from "./repo";
+import { SYNC_PROTOCOL, type SyncRequest, type SyncResponse } from "../shared/schema";
 
 /** Where to sync. `id` names the server in the app's list (rows carry it as their `origin`). */
 export interface SyncConfig {
@@ -22,11 +22,21 @@ export interface SyncResult {
   pushed: number;
   pulled: number;
   cursor: number;
-  /** The server is older than this app and refused fields it does not know (repeat rules): they stay on this device. */
+  /**
+   * The server is older than this app (it speaks an older sync protocol):
+   * what is new in the app (repeat rules) may not reach other devices until
+   * it is updated.
+   */
   outdated?: boolean;
 }
 
-/** Fields added after the first server versions; an older server refuses rows that carry them. */
+/**
+ * Task fields added after the first server versions. A server from before
+ * 0.11 refuses rows that carry them; one from 0.11 to 0.13 knows these but
+ * would drop fields added later. From protocol 2 on the server keeps every
+ * field, and on the first sync with such a server they are all sent again
+ * (they may have been lost on the way before).
+ */
 const NEWER_TASK_FIELDS = ["repeat"];
 
 const cleanUrl = (url: string) => url.trim().replace(/\/+$/, "");
@@ -102,7 +112,6 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
       body: JSON.stringify(body),
     });
   let res = await post({ since, changes });
-  let outdated = false;
   if (res.status === 400 && changes.tasks?.length) {
     // A server from before repeats refuses task rows with fields it does not
     // know: send them without, so everything else still syncs.
@@ -110,7 +119,6 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
     if (/invalid tasks row/.test(text)) {
       const tasks = changes.tasks.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !NEWER_TASK_FIELDS.includes(k))));
       res = await post({ since, changes: { ...changes, tasks } });
-      outdated = res.ok;
     }
   }
   if (!res.ok) {
@@ -119,17 +127,24 @@ export async function syncOnce(db: Db, cfg: SyncConfig, fetchImpl: typeof fetch 
   }
   const data = (await res.json()) as SyncResponse;
   await markClean(db, changes);
-  const known = await getMeta(db, outdatedKey(cfg.id));
-  if (outdated) await setMeta(db, outdatedKey(cfg.id), "1");
-  else if (known === "1" && changes.tasks?.length) {
-    // Updated since: the repeat rules it missed go up with the next round.
-    await setMeta(db, outdatedKey(cfg.id), "");
-    await markRepeatsDirty(db, origin);
-  }
+  const pushed = Object.values(changes).reduce((n, rows) => n + (rows?.length ?? 0), 0);
+  const protocol = Number(data.server?.protocol) || 1;
+  // A server that keeps every field, for the first time: what this device
+  // set in newer fields goes up again, newer than any version of its row (a
+  // server that dropped them still has the same version without them).
+  const resent = protocol >= SYNC_PROTOCOL && (await getMeta(db, resentKey(cfg.id))) !== "1";
+  const kept = resent ? await valuesIn(db, origin, NEWER_TASK_FIELDS) : [];
   const pulled = await applyRemote(db, data.changes, origin);
   await setMeta(db, cursorKey(cfg.id), String(data.cursor));
-  const pushed = Object.values(changes).reduce((n, rows) => n + (rows?.length ?? 0), 0);
-  return { pushed, pulled, cursor: data.cursor, outdated: outdated || (known === "1" && !changes.tasks?.length) };
+  if (resent) {
+    await sendAgain(db, kept);
+    await setMeta(db, resentKey(cfg.id), "1");
+    if (kept.length) {
+      const next = await syncOnce(db, cfg, fetchImpl);
+      return { pushed: pushed + next.pushed, pulled: pulled + next.pulled, cursor: next.cursor, outdated: next.outdated };
+    }
+  }
+  return { pushed, pulled, cursor: data.cursor, outdated: protocol < SYNC_PROTOCOL };
 }
 
-const outdatedKey = (id?: string) => (id ? `sync_outdated:${id}` : "sync_outdated");
+const resentKey = (id?: string) => (id ? `sync_resent:${id}` : "sync_resent");

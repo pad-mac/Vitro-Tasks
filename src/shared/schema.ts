@@ -152,6 +152,8 @@ export function postgresDdl(): string[] {
     );
     // Later versions add columns here without a migration framework.
     for (const c of cols) out.push(`ALTER TABLE ${e.name} ADD COLUMN IF NOT EXISTS ${colDdl(c, PG_TYPES)}`);
+    // Fields this server has no column for (from a newer app): kept as they are, so they sync anyway.
+    out.push(`ALTER TABLE ${e.name} ADD COLUMN IF NOT EXISTS extra JSONB NOT NULL DEFAULT '{}'`);
     out.push(`CREATE INDEX IF NOT EXISTS ${e.name}_seq ON ${e.name} (seq)`);
   }
   return out;
@@ -231,4 +233,14 @@ export interface SyncRequest {
 export interface SyncResponse {
   cursor: number;
   changes: ChangeSet;
+  /** From protocol 2 on: what the server can do (older servers send nothing here). */
+  server?: { protocol: number };
 }
+
+/**
+ * Sync protocol of this version. 2: the server keeps fields it has no column
+ * for and returns them, and a field missing from a row leaves the stored
+ * value as it is (both ways), so new fields sync without updating the server
+ * and an older app does not clear what a newer one set.
+ */
+export const SYNC_PROTOCOL = 2;

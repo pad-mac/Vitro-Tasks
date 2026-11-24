@@ -304,7 +304,10 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
         ? `Sync failed: ${sync.message}`
         : sync.status === "syncing"
           ? "Syncing…"
-          : `Synced${sync.last ? ` at ${new Date(sync.last).toLocaleTimeString()}` : ""}`;
+          : sync.oldServers?.length
+            ? `${sync.oldServers.join(", ")}: the server needs an update (repeat rules do not reach other devices). Click for Settings.`
+            : `Synced${sync.last ? ` at ${new Date(sync.last).toLocaleTimeString()}` : ""}`;
+  const syncClass = sync.status === "idle" && sync.oldServers?.length ? "outdated" : sync.status;
   return (
     <header className="titlebar" data-tauri-drag-region>
       <nav className="tb-nav">
@@ -323,7 +326,7 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
           {update.status === "installing" ? `Updating… ${Math.round((update.progress ?? 0) * 100)}%` : `Update to ${update.version}`}
         </button>
       )}
-      <button type="button" className={`tb-btn tb-icon sync-${sync.status}`} title={syncTitle} onClick={() => (sync.status === "off" ? onSettings() : void syncNow())}>
+      <button type="button" className={`tb-btn tb-icon sync-${syncClass}`} title={syncTitle} onClick={() => (sync.status === "off" || syncClass === "outdated" ? onSettings() : void syncNow())}>
         <Icon name="sync" size={17} />
         <i className="sync-dot" />
       </button>

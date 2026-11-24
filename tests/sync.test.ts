@@ -120,15 +120,32 @@ describe.skipIf(!url)("sync", () => {
     expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "k1")!.title).toBe("from slow clock");
   });
 
-  it("leaves out fields it does not know (from a newer app), never putting them into SQL", async () => {
-    const res = await fetch(`${cfg.url}/v1/sync`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({ since: 0, changes: { tasks: [{ id: "x", updated_at: 1, title: "kept", "title; DROP TABLE tasks": 1, later_field: "y" }] } }),
-    });
+  it("keeps fields it has no column for (from a newer app) and gives them back, never putting their names into SQL", async () => {
+    const post = (body: unknown) =>
+      fetch(`${cfg.url}/v1/sync`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const res = await post({ since: 0, changes: { tasks: [{ id: "x", updated_at: 1, title: "kept", "title; DROP TABLE tasks": 1, later_field: "y" }] } });
     expect(res.status).toBe(200);
-    const row = (await pool.query("SELECT title FROM tasks WHERE id = 'x'")).rows[0];
+    expect((await res.json()).server).toEqual({ protocol: 2 });
+    const row = (await pool.query("SELECT title, extra FROM tasks WHERE id = 'x'")).rows[0];
     expect(row.title).toBe("kept");
+    expect(row.extra).toEqual({ "title; DROP TABLE tasks": 1, later_field: "y" });
+    // An edit that does not carry it keeps it; the next pull has it.
+    await post({ since: 0, changes: { tasks: [{ id: "x", updated_at: 2, title: "edited" }] } });
+    const back = await (await post({ since: 0, changes: {} })).json();
+    expect(back.changes.tasks.find((t: { id: string }) => t.id === "x")).toMatchObject({ title: "edited", later_field: "y" });
+  });
+
+  it("an older app's row without a field leaves that field as it is", async () => {
+    const a = await memoryDb();
+    await put(a, "tasks", task("keep-r", "weekly", { start_date: "2026-11-24", repeat: "FREQ=WEEKLY" }), 5100);
+    await syncOnce(a, cfg);
+    // An app from before repeats edits the title: its row has no repeat field.
+    // (Later than A's first sync, which sent A's rules again as the server keeps every field.)
+    const old = { ...task("keep-r", "renamed elsewhere", { start_date: "2026-11-24" }), updated_at: Date.now() + 10_000 } as Record<string, unknown>;
+    delete old.repeat;
+    await fetch(`${cfg.url}/v1/sync`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: JSON.stringify({ since: 0, changes: { tasks: [old] } }) });
+    await syncOnce(a, cfg);
+    expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "keep-r")).toMatchObject({ title: "renamed elsewhere", repeat: "FREQ=WEEKLY" });
   });
 
   it("carries repeat rules between devices", async () => {
@@ -140,30 +157,40 @@ describe.skipIf(!url)("sync", () => {
     expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "r1")?.repeat).toBe("FREQ=WEEKLY;INTERVAL=1");
   });
 
-  it("still syncs with a server from before repeats, and sends the rules once it is updated", async () => {
+  it("still syncs with a server from before repeats, and once it is updated the rules reach the other devices", async () => {
     const a = await memoryDb();
-    // An old server: refuses any task row with a field it does not know.
+    const b = await memoryDb();
+    // A server from before 0.11: refuses task rows with a field it does not know,
+    // stores and returns rows without it, and says nothing about its protocol.
     let old = true;
-    const seen: string[] = [];
     const oldFetch: typeof fetch = async (input, init) => {
+      if (!old) return fetch(input, init);
       const body = JSON.parse(String(init?.body ?? "{}"));
-      const rows: Record<string, unknown>[] = body.changes?.tasks ?? [];
-      if (old && rows.some((r) => "repeat" in r)) return new Response(JSON.stringify({ error: "invalid tasks row" }), { status: 400 });
-      for (const r of rows) seen.push(`${r.id}:${"repeat" in r ? r.repeat : "-"}`);
-      return fetch(input, init);
+      if ((body.changes?.tasks ?? []).some((r: Record<string, unknown>) => "repeat" in r)) return new Response(JSON.stringify({ error: "invalid tasks row" }), { status: 400 });
+      const res = await fetch(input, init);
+      const data = await res.json();
+      delete data.server;
+      for (const r of data.changes?.tasks ?? []) delete r.repeat;
+      return new Response(JSON.stringify(data), { status: res.status });
     };
+    // A sets a rule; the old server keeps the task without it.
     await put(a, "tasks", task("old-r1", "on old server", { start_date: "2026-11-24", repeat: "FREQ=DAILY;INTERVAL=2" }), 6000);
     const first = await syncOnce(a, cfg, oldFetch);
     expect(first).toMatchObject({ pushed: 1, outdated: true });
-    expect(seen).toEqual(["old-r1:-"]);
-    // The rule stays on the device.
-    expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "old-r1")?.repeat).toBe("FREQ=DAILY;INTERVAL=2");
-    // Updated server: the next upload with task rows goes through whole, and the missed rules follow.
-    old = false;
-    await put(a, "tasks", task("old-r2", "after the update"), 7000);
-    const second = await syncOnce(a, cfg, oldFetch);
-    expect(second.outdated).toBe(false);
+    // B gets the task without the rule, and renames it.
+    await syncOnce(b, cfg, oldFetch);
+    await put(b, "tasks", { ...(await loadAll<Task>(b, "tasks")).find((t) => t.id === "old-r1")!, title: "renamed on B" } as never, 6500);
+    await syncOnce(b, cfg, oldFetch);
+    // A takes the rename and keeps its rule (the server's row has no repeat field to clear it with).
     await syncOnce(a, cfg, oldFetch);
-    expect(seen).toContain("old-r1:FREQ=DAILY;INTERVAL=2");
+    expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "old-r1")).toMatchObject({ title: "renamed on B", repeat: "FREQ=DAILY;INTERVAL=2" });
+    // The server is updated: A's first sync with it sends the rule again, newer than the stored version.
+    old = false;
+    const updated = await syncOnce(a, cfg, oldFetch);
+    expect(updated.outdated).toBe(false);
+    await syncOnce(b, cfg);
+    expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "old-r1")).toMatchObject({ title: "renamed on B", repeat: "FREQ=DAILY;INTERVAL=2" });
+    // Only once: the next round sends nothing again.
+    expect((await syncOnce(a, cfg)).pushed).toBe(0);
   });
 });

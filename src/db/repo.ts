@@ -112,9 +112,35 @@ export async function markOriginDirty(db: Db, origin: string): Promise<void> {
   for (const name of ENTITY_NAMES) await db.exec(`UPDATE ${name} SET dirty = 1 WHERE origin = $1`, [origin]);
 }
 
-/** Marks a server's repeating tasks for upload again (a server that could not take their rules before). */
-export async function markRepeatsDirty(db: Db, origin: string): Promise<void> {
-  await db.exec(`UPDATE tasks SET dirty = 1 WHERE origin = $1 AND repeat IS NOT NULL AND repeat <> ''`, [origin]);
+
+/**
+ * Rows that carry a value in fields an older server dropped, as they are now.
+ * Read before a pull that may clear them, and sent again once the server keeps
+ * them (sendAgain).
+ */
+export async function valuesIn(db: Db, origin: string, fields: string[]): Promise<{ id: string; values: Row }[]> {
+  if (!fields.length) return [];
+  const rows = await db.all<Row>(
+    `SELECT id, ${fields.join(", ")} FROM tasks WHERE origin = $1 AND (${fields.map((f) => `(${f} IS NOT NULL AND ${f} <> '')`).join(" OR ")})`,
+    [origin],
+  );
+  return rows.map(({ id, ...values }) => ({ id: id as string, values }));
+}
+
+/**
+ * Puts those values back where a pull cleared them, and marks the rows newer
+ * than any version anywhere, so the server takes them (the same version again
+ * would be ignored as old).
+ */
+export async function sendAgain(db: Db, kept: { id: string; values: Row }[], now = Date.now()): Promise<void> {
+  for (const { id, values } of kept) {
+    const fields = Object.keys(values);
+    // Placeholders once each and in order (see driver).
+    await db.exec(
+      `UPDATE tasks SET ${fields.map((f, i) => `${f} = COALESCE(NULLIF(${f}, ''), $${i + 1})`).join(", ")}, updated_at = MAX($${fields.length + 1}, updated_at + 1), dirty = 1 WHERE id = $${fields.length + 2}`,
+      [...fields.map((f) => values[f] as Param), now, id],
+    );
+  }
 }
 
 /** Clears the dirty flag for rows that were uploaded and not edited since. */
@@ -137,9 +163,12 @@ export async function markClean(db: Db, pushed: ChangeSet): Promise<void> {
 export async function applyRemote(db: Db, changes: ChangeSet, origin = ""): Promise<number> {
   let applied = 0;
   for (const name of ENTITY_NAMES) {
-    // A row new to this device lives on the server it came from; a known row keeps its server.
-    const { sql, cols } = upsertSql(name, ["dirty", "origin"], ["origin"]);
     for (const row of changes[name] ?? []) {
+      // A row new to this device lives on the server it came from; a known row
+      // keeps its server, and every field the incoming row does not carry (an
+      // older server has no column for it): absent is not cleared.
+      const absent = colNames(name).filter((c) => !(c in row));
+      const { sql, cols } = upsertSql(name, ["dirty", "origin"], ["origin", ...absent]);
       const local = await db.all<{ updated_at: number; dirty: number }>(
         `SELECT updated_at, dirty FROM ${name} WHERE id = $1`,
         [row.id as string],

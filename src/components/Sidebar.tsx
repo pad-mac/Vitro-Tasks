@@ -224,7 +224,8 @@ function Resizer() {
 }
 
 export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSettings?: () => void }) {
-  const syncError = useStore((s) => s.sync.status === "error");
+  // A sync error, or a server that needs an update.
+  const syncError = useStore((s) => s.sync.status === "error" || !!s.sync.oldServers?.length);
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);

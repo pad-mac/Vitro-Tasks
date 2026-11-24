@@ -82,8 +82,10 @@ export interface SyncState {
   status: "off" | "idle" | "syncing" | "error";
   message?: string;
   last?: number;
-  /** The server is too old to keep repeat rules. */
+  /** The server speaks an older sync protocol than the app: what is new may not reach other devices. */
   outdated?: boolean;
+  /** All servers together: the names of those that need updating. */
+  oldServers?: string[];
 }
 
 /** Screen rectangle a floating panel attaches to. */
@@ -471,7 +473,8 @@ export const useStore = create<State>((set, get) => {
     if (failed.length) return { status: "error", message: failed.map((x) => `${x.name}: ${get().serverSync[x.id]?.message ?? "failed"}`).join(" · ") };
     if (states.some((x) => x.status === "syncing")) return { status: "syncing" };
     const lasts = states.map((x) => x.last ?? 0);
-    return { status: "idle", last: lasts.some((x) => !x) ? undefined : Math.min(...lasts) };
+    const old = on.filter((x) => get().serverSync[x.id]?.outdated).map((x) => x.name);
+    return { status: "idle", last: lasts.some((x) => !x) ? undefined : Math.min(...lasts), ...(old.length ? { oldServers: old } : {}) };
   }
 
   async function storeServers(servers: SyncServer[]) {

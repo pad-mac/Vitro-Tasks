@@ -146,6 +146,8 @@ code, kbd { font: 12px var(--mono); background: var(--active); padding: 1px 6px;
 .sync-syncing .sync-dot { background: var(--p2); }
 .sync-syncing .icon { animation: spin 0.9s linear infinite; }
 .sync-error .sync-dot { background: var(--red); }
+/* A server that needs an update: synced, but not everything gets through. */
+.sync-outdated .sync-dot { background: var(--p2); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .banner { flex: none; background: var(--signal-soft); color: var(--signal); padding: 7px 14px; font-size: 12.5px; text-align: center; border-bottom: 1px solid var(--line); }
 
@@ -1479,6 +1481,9 @@ html.pin-h .app { height: var(--app-h); flex: none; }
 /* Settings: a card per server. */
 .server-card { display: flex; flex-direction: column; gap: 9px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 12px; }
 .server-card.is-off .form-row, .server-card.is-off .server-name { opacity: 0.6; }
+.server-warn { padding: 10px 12px; border-radius: 9px; background: color-mix(in srgb, var(--p2) 13%, transparent); color: var(--text); font-size: 12.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+.server-warn b { font-weight: 600; }
+.server-warn code { display: block; margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--text) 7%, transparent); font: 500 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .server-top { display: flex; align-items: center; gap: 8px; }
 .server-name { flex: 1; min-width: 0; height: 30px; padding: 0 8px; margin-left: -8px; border: 1.5px solid transparent; border-radius: var(--r); background: transparent; font-weight: 600; font-size: 14px; transition: border-color var(--fast), background var(--fast); }
 .server-name:hover { background: var(--hover); }

@@ -4,10 +4,13 @@ import http from "node:http";
 import pg from "pg";
 import {
   ENTITY_NAMES,
+  LOCAL_COLS,
+  SYNC_PROTOCOL,
   colNames,
   postgresDdl,
   withDefaults,
   type ChangeSet,
+  type EntityName,
   type Row,
   type SyncRequest,
   type SyncResponse,
@@ -23,6 +26,34 @@ function validRow(row: Row): boolean {
   return !!row && typeof row.id === "string" && row.id.length > 0 && row.id.length <= 200 && Number.isFinite(Number(row.updated_at));
 }
 
+/** Never stored as a row's own fields. */
+const NOT_FIELDS = new Set(["seq", "extra", ...LOCAL_COLS.map((c) => c.name)]);
+/** Most a row may carry in fields this server has no column for. */
+const EXTRA_LIMIT = 32 * 1024;
+
+/**
+ * One row's write: a new row takes defaults for what it leaves out; a known
+ * row keeps every field the incoming one leaves out (an older app does not
+ * clear what a newer one set). Fields without a column go into `extra`.
+ */
+function rowWrite(name: EntityName, row: Row): { sql: string; params: unknown[] } {
+  const cols = colNames(name);
+  const known = new Set(cols);
+  const extra: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) if (!known.has(k) && !NOT_FIELDS.has(k) && v !== undefined) extra[k] = v;
+  const extraJson = JSON.stringify(extra);
+  if (extraJson.length > EXTRA_LIMIT) throw new HttpError(400, `too much in a ${name} row`);
+  const present = cols.filter((c) => c !== "id" && c in row);
+  const full = withDefaults(name, row);
+  const set = [...present.map((c) => `${c} = EXCLUDED.${c}`), `extra = ${name}.extra || EXCLUDED.extra`, "seq = EXCLUDED.seq"];
+  return {
+    sql:
+      `INSERT INTO ${name} (${cols.join(", ")}, extra, seq) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}, $${cols.length + 1}::jsonb, nextval('vitro_seq')) ` +
+      `ON CONFLICT (id) DO UPDATE SET ${set.join(", ")} WHERE ${name}.updated_at < EXCLUDED.updated_at`,
+    params: [...cols.map((c) => full[c] ?? null), extraJson],
+  };
+}
+
 /**
  * Applies a client's changes and returns everything newer than its cursor.
  * Last write wins per row by updated_at; every accepted write gets the next
@@ -35,16 +66,10 @@ export async function sync(pool: pg.Pool, req: SyncRequest): Promise<SyncRespons
     // One sync at a time, so sequence order equals commit order.
     await client.query("SELECT pg_advisory_xact_lock(727274)");
     for (const name of ENTITY_NAMES) {
-      const cols = colNames(name);
-      const set = cols.filter((c) => c !== "id").map((c) => `${c} = EXCLUDED.${c}`);
-      const sql =
-        `INSERT INTO ${name} (${cols.join(", ")}, seq) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}, nextval('vitro_seq')) ` +
-        `ON CONFLICT (id) DO UPDATE SET ${set.join(", ")}, seq = EXCLUDED.seq WHERE ${name}.updated_at < EXCLUDED.updated_at`;
       for (const row of req.changes?.[name] ?? []) {
         if (!validRow(row)) throw new HttpError(400, `invalid ${name} row`);
-        // Fields this server does not know yet (from a newer app) are left out, not refused.
-        const full = withDefaults(name, row);
-        await client.query(sql, cols.map((c) => full[c] ?? null));
+        const { sql, params } = rowWrite(name, row);
+        await client.query(sql, params);
       }
     }
     const since = Number(req.since) || 0;
@@ -52,16 +77,17 @@ export async function sync(pool: pg.Pool, req: SyncRequest): Promise<SyncRespons
     let cursor = since;
     for (const name of ENTITY_NAMES) {
       const cols = colNames(name);
-      const r = await client.query(`SELECT ${cols.join(", ")}, seq FROM ${name} WHERE seq > $1 ORDER BY seq`, [since]);
+      const r = await client.query(`SELECT ${cols.join(", ")}, extra, seq FROM ${name} WHERE seq > $1 ORDER BY seq`, [since]);
       if (r.rows.length) {
-        changes[name] = r.rows.map(({ seq, ...row }) => {
+        changes[name] = r.rows.map(({ seq, extra, ...row }) => {
           cursor = Math.max(cursor, seq);
-          return row as Row;
+          // Its own columns win over anything kept in extra under the same name.
+          return { ...(extra ?? {}), ...row } as Row;
         });
       }
     }
     await client.query("COMMIT");
-    return { cursor, changes };
+    return { cursor, changes, server: { protocol: SYNC_PROTOCOL } };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     throw e;

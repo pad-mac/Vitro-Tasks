@@ -114,11 +114,13 @@ VITRO_TOKEN=<long random secret> POSTGRES_PASSWORD=<another secret> docker compo
 
 It listens on `127.0.0.1:8787`. Put a reverse proxy with TLS in front of it, then add it under Settings → Sync servers in the app (a name, the URL and the token). `GET /v1/health` answers without a token. For separate sets of lists (work and private, say), run one server per set and add each to the app; the servers need no change for that (which server a row lives on is only recorded on the device). The first server added takes the lists already on the device; removing one of several takes its lists off the device (they stay on the server), removing the only one keeps them on the device.
 
-How it works: every row carries `updated_at` and a `deleted` flag. The app sends its changed rows and its cursor to `POST /v1/sync`; the server keeps the newer version of each row, numbers every accepted change, and returns everything after the cursor. The schema for both sides is generated from `src/shared/schema.ts`, which is also the reference for a future mobile client.
+How it works: every row carries `updated_at` and a `deleted` flag. The app sends its changed rows and its cursor to `POST /v1/sync`; the server keeps the newer version of each row, numbers every accepted change, and returns everything after the cursor, with the protocol it speaks (`server.protocol`, 2 from 0.14). The schema for both sides is generated from `src/shared/schema.ts`, which is also the reference for a future mobile client.
 
 The token is a single shared secret, so one server serves one person (or one shared set of lists).
 
-Updating the server: `cd /opt/vitro-tasks && git pull && cd server && docker compose up -d --build` (the schema upgrades itself on start). Repeat rules (since 0.11) need a server from 0.11 on; an older one still syncs everything else, the rules stay on the device that set them, and Settings → Sync servers says to update it. After the update they go up with the next sync. From 0.11 on the server leaves out fields it does not know instead of refusing them, so a newer app never stops syncing with it.
+Updating the server: `cd /opt/vitro-tasks && git pull && cd server && docker compose up -d --build` (the schema upgrades itself on start).
+
+From 0.14 the server keeps every field a row carries, also ones it has no column for yet (in an `extra` column), and a field a row leaves out stays as it is (an older app does not clear what a newer one set; the app does the same with rows from the server). So new features sync without updating the server again. An older server (before 0.14) is shown as needing an update: the sync dot in the title bar turns amber, the phone's Settings button gets a badge, and the server's card in Settings says what to run. On the first sync with an updated server, each device sends its repeat rules again (newer than the stored version, so the server takes them), so rules set while the server was older reach the other devices. A server from before 0.11 refuses rows with repeat rules; the app then sends them without (everything else keeps syncing) and keeps the rules on the device until the update.
 
 ## Releasing
 

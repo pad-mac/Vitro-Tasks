@@ -101,7 +101,8 @@ function load(stateJson: string, pulledJson: string, changesJson: string) {
     const cur = map.get(row.id as string);
     if (cur && Number(cur.updated_at) >= Number(row.updated_at)) return false;
     if (row.deleted) map.delete(row.id as string);
-    else map.set(row.id as string, { ...withDefaults(entity, row), origin: (cur?.origin as string | undefined) ?? origin });
+    // A field the row does not carry (an older server has no column for it) keeps its value.
+    else map.set(row.id as string, { ...(cur ? { ...cur, ...row } : withDefaults(entity, row)), origin: (cur?.origin as string | undefined) ?? origin });
     return true;
   };
   for (const name of ENTITY_NAMES) for (const row of Object.values(pulled.rows[name] ?? {})) apply(name, row, (row.origin as string) ?? "");
