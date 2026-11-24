@@ -145,7 +145,7 @@ private struct AllDayRow: View {
     if !entries.isEmpty {
       HStack(spacing: 4) {
         ForEach(entries.prefix(room)) { e in
-          Link(destination: Links.task(e.task)) {
+          TapLink(Links.task(e.task)) {
             Chip(entry: e, scheme: scheme, size: 11, height: 19)
           }
         }
@@ -242,7 +242,7 @@ private struct HourColumn: View {
           let y = CGFloat(p.start - from * 60) / 60 * hourH
           let h = max(14, CGFloat(p.end - p.start) / 60 * hourH - 1.5)
           let w = width / CGFloat(p.cols)
-          Link(destination: Links.task(p.entry.task)) {
+          TapLink(Links.task(p.entry.task)) {
             Block(entry: p.entry, start: p.start, end: p.end, height: h, scheme: scheme)
           }
           .frame(width: max(0, w - 2), height: h)

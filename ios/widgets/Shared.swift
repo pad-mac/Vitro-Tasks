@@ -249,6 +249,26 @@ struct OpenAppView: View {
   }
 }
 
+/// A tap that opens the app at a link. (The previews draw only the content:
+/// ImageRenderer cannot draw links.)
+struct TapLink<Content: View>: View {
+  let url: URL
+  let content: Content
+
+  init(_ url: URL, @ViewBuilder content: () -> Content) {
+    self.url = url
+    self.content = content()
+  }
+
+  var body: some View {
+    #if PREVIEW
+      content
+    #else
+      Link(destination: url) { content }
+    #endif
+  }
+}
+
 enum Links {
   private static func make(_ path: String, _ items: [(String, String)]) -> URL {
     var c = URLComponents()

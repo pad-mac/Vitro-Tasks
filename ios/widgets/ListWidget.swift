@@ -125,7 +125,7 @@ struct ListWidgetView: View {
         .foregroundStyle(.secondary)
         .monospacedDigit()
       Spacer(minLength: 6)
-      Link(destination: Links.add(list: view.id)) {
+      TapLink(Links.add(list: view.id)) {
         Image(systemName: "plus")
           .font(.system(size: 12, weight: .bold))
           .foregroundStyle(Palette.background(scheme))
@@ -157,7 +157,7 @@ private struct RowView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Complete")
-      Link(destination: Links.task(row.id)) {
+      TapLink(Links.task(row.id)) {
         HStack(spacing: 6) {
           Text(row.title)
             .font(.system(size: 13.5))

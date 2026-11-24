@@ -78,14 +78,18 @@ struct WeekWidgetView: View {
         }
         .buttonStyle(.plain)
         Spacer(minLength: 6)
-        Arrow(symbol: "chevron.left", by: -1)
-        Arrow(symbol: "chevron.right", by: 1)
+        // The right chevron's edge lines up with the columns' (its tap area reaches into the margin).
+        HStack(spacing: 0) {
+          Arrow(symbol: "chevron.left", by: -1)
+          Arrow(symbol: "chevron.right", by: 1)
+        }
+        .padding(.trailing, -11)
       }
       .frame(height: titleHeight)
       HStack(alignment: .top, spacing: 3) {
         ForEach(0..<7, id: \.self) { i in
           let day = Day.add(monday, i)
-          Link(destination: Links.calendar(day: day)) {
+          TapLink(Links.calendar(day: day)) {
             DayColumn(
               day: day, index: i, today: today,
               entries: (snap.days[day] ?? []).filter { !entry.done.contains($0.task) },
@@ -107,7 +111,7 @@ private struct Arrow: View {
       Image(systemName: symbol)
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(.secondary)
-        .frame(width: 28, height: titleHeight)
+        .frame(width: 30, height: titleHeight)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
