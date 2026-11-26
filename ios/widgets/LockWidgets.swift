@@ -99,9 +99,12 @@ struct NextEntry: TimelineEntry {
   }
 }
 
+/// A day's entry in the snapshot (inside a provider, `Entry` means its timeline entry).
+typealias DayItem = Entry
+
 struct NextProvider: TimelineProvider {
   func placeholder(in context: Context) -> NextEntry {
-    let e = Entry(id: "a", task: "a", title: "Seminar", color: nil, start: 14 * 60, end: 16 * 60, deadline: nil, note: "Room 3.12")
+    let e = DayItem(id: "a", task: "a", title: "Seminar", color: nil, start: 14 * 60, end: 16 * 60, deadline: nil, note: "Room 3.12")
     return NextEntry(date: Date(), day: Day.key(Date()), item: e)
   }
 
