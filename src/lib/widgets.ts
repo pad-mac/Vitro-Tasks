@@ -86,6 +86,7 @@ function noteOf(notes: string | null | undefined): { note?: string } {
 const SMART: { id: SmartId; name: string }[] = [
   { id: "today", name: "Today" },
   { id: "next7", name: "Next 7 Days" },
+  { id: "thisweek", name: "This Week" },
   { id: "all", name: "All" },
   { id: "inbox", name: "Inbox" },
   { id: "deadlines", name: "Deadlines" },

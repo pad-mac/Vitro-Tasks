@@ -11,6 +11,7 @@ import { isTyping } from "../lib/shortcuts";
 import { PRIORITY_LABELS, defaultsForView, orderedLists } from "../lib/views";
 import { ParsedChips } from "../QuickAdd";
 import { formatDateTime, todayKey } from "../lib/dates";
+import { horizonLabel } from "../lib/horizon";
 import type { Task } from "../shared/schema";
 import { useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
@@ -329,7 +330,7 @@ export function MobileAdd({
   const list = lists.find((l) => l.id === base.list_id);
   const when = base.start_date
     ? `${formatDateTime(base.start_date, base.start_time ?? null, today)}${base.end_date ? ` – ${formatDateTime(base.end_date, base.end_time ?? null, today)}` : ""}`
-    : "";
+    : horizonLabel(base.horizon, today);
   return (
     <>
       <div className={`m-scrim ${open ? "is-open" : ""}`} onClick={close} />
@@ -390,7 +391,7 @@ export function MobileAdd({
             )
           )}
           <div className="m-tools">
-            {toolButton("date", <Icon name="calendar" size={20} />, "Date", !!base.start_date)}
+            {toolButton("date", <Icon name={!base.start_date && base.horizon ? "horizon" : "calendar"} size={20} />, "Date", !!base.start_date || !!base.horizon)}
             {toolButton("deadline", <Icon name="deadline" size={20} />, "Deadline", !!base.deadline_date)}
             {toolButton("priority", <Flag priority={base.priority ?? 0} size={20} />, "Priority", !!base.priority)}
             {toolButton(

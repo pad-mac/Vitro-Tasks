@@ -9,6 +9,7 @@ export const SMART_ICONS: Record<SmartId, string> = {
   all: "layers",
   today: "sun",
   next7: "week",
+  thisweek: "horizon",
   deadlines: "deadline",
   inbox: "inbox",
   completed: "done",

@@ -1,7 +1,8 @@
 // The app's own right-click menus: tasks, lists, the view-layer buttons and detached windows.
 import { useState } from "react";
 import { addDays, deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
-import { openLayerWindow, windowAction } from "../lib/platform";
+import { thisWeek } from "../lib/horizon";
+import { isMobile, openLayerWindow, windowAction } from "../lib/platform";
 import { PRIORITY_LABELS, listVisibility, orderedLists } from "../lib/views";
 import { PALETTES, PALETTE_COLORS, defaultPalette } from "../lib/palettes";
 import { useStore, type MenuTarget } from "../store";
@@ -120,6 +121,8 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
             date={start}
             time={task.start_time}
             range={span}
+            horizon={task.horizon}
+            onHorizon={(h) => void update(id, { horizon: h })}
             repeat={task.parent_id ? undefined : task.repeat}
             onRepeat={task.parent_id ? undefined : (r) => void update(id, { repeat: r })}
             onChange={(d, t) =>
@@ -152,8 +155,8 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
   const dates: [string, string, string][] = [
     ["today", "Today", today],
     ["tomorrow", "Tomorrow", addDays(today, 1)],
-    ["nextweek", "Next week (in 7 days)", addDays(today, 7)],
   ];
+  const week = thisWeek(today);
   return (
     <div className="menu cm cm-task">
       <IconRow label="Date">
@@ -168,6 +171,14 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
             <Icon name={icon} size={20} />
           </button>
         ))}
+        <button
+          type="button"
+          title="This week"
+          className={`cm-icon ${!task.start_date && task.horizon === week ? "is-active" : ""}`}
+          onClick={run(() => update(id, { horizon: week }))}
+        >
+          <Icon name="thisweek" size={20} />
+        </button>
         <button type="button" title="Pick a date" className="cm-icon" onClick={() => setPage("date")}>
           <Icon name="pickdate" size={20} />
         </button>
@@ -386,15 +397,30 @@ function ListMenu({ id, close }: { id: string; close: () => void }) {
 function LayerMenu({ layer, close }: { layer: "tasks" | "calendar"; close: () => void }) {
   const view = useStore((s) => s.view);
   const lastTaskView = useStore((s) => s.lastTaskView);
+  const detached = useStore((s) => s.detached);
+  const current = view.kind === "calendar" ? "calendar" : "tasks";
+  const side = useStore((s) => s.splits[current]);
+  const setSplit = useStore((s) => s.setSplit);
+  const name = layer === "tasks" ? "Tasks" : "Calendar";
   return (
     <div className="menu cm">
+      {!detached && !isMobile && (
+        <MenuItem
+          onClick={() => {
+            setSplit(current, side === layer ? null : layer);
+            close();
+          }}
+        >
+          <Icon name="editpane" size={15} /> {side === layer ? "Close the split view" : `Open ${name} in split view`}
+        </MenuItem>
+      )}
       <MenuItem
         onClick={() => {
           void openLayerWindow(layer, layer === "calendar" ? { kind: "calendar" } : view.kind === "calendar" ? lastTaskView : view);
           close();
         }}
       >
-        <Icon name="window" size={15} /> Open {layer === "tasks" ? "Tasks" : "Calendar"} in a new window
+        <Icon name="window" size={15} /> Open {name} in a new window
       </MenuItem>
     </div>
   );

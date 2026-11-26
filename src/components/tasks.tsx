@@ -1,6 +1,7 @@
 // Building blocks shared by the list, board, timeline and calendar views.
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
+import { horizonLabel, horizonOverdue, horizonWeek } from "../lib/horizon";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { dateForRule } from "./RepeatPicker";
 import { describeRepeat } from "../lib/repeat";
@@ -249,6 +250,8 @@ export function useCreateTask() {
       if (base.list_id !== list.id) patch.section_id = null;
     }
     if (patch.end_date && (!patch.start_date || patch.end_date <= patch.start_date)) patch.end_date = null;
+    // A typed day wins over This Week of the view it is added in.
+    if (patch.start_date && patch.start_date !== base.start_date) patch.horizon = null;
     return addTask(patch);
   };
 }
@@ -331,6 +334,9 @@ export function TaskMeta({ task, showList, dotList }: { task: Task; showList?: b
           {formatDateTime(task.start_date, task.start_time, today)}
           {repeat}
         </span>
+      )}
+      {!task.start_date && horizonWeek(task.horizon) && (
+        <span className={`meta-date ${open && horizonOverdue(task.horizon, today) ? "is-overdue" : ""}`}>{horizonLabel(task.horizon, today)}</span>
       )}
       {task.deadline_date && (
         <span

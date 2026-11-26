@@ -1,30 +1,11 @@
 // Controls (iOS 18): the round buttons for Control Center, the lock screen's two corners
 // and the Action button. Each opens the app at a place, through the same vitrotasks://
-// links the widgets use.
+// links the widgets use, with OpenLink (ios/shared/OpenLink.swift: it runs in the app).
 
 #if os(iOS)
   import AppIntents
   import SwiftUI
   import WidgetKit
-
-  @available(iOS 18.0, *)
-  struct OpenLink: AppIntent {
-    static var title: LocalizedStringResource = "Open Vitro Tasks"
-    static var isDiscoverable: Bool = false
-
-    @Parameter(title: "Link")
-    var link: String
-
-    init() {}
-
-    init(_ link: String) {
-      self.link = link
-    }
-
-    func perform() async throws -> some IntentResult & OpensIntent {
-      .result(opensIntent: OpenURLIntent(URL(string: link) ?? URL(string: "vitrotasks://open")!))
-    }
-  }
 
   @available(iOS 18.0, *)
   struct AddControl: ControlWidget {

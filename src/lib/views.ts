@@ -1,10 +1,11 @@
 // Pure view logic: which tasks a view shows, and how they are grouped and sorted.
 import { addDays, diffDays, todayKey } from "./dates";
+import { dueThisWeek, horizonOverdue, horizonWeek, thisWeek, weeksAway } from "./horizon";
 import { occurrences, parseRule } from "./repeat";
 import { applyRanks, type Ranks } from "./order";
 import type { GroupBy, List, Section, SortBy, Task, ViewMode } from "../shared/schema";
 
-export type SmartId = "all" | "today" | "next7" | "inbox" | "deadlines" | "completed" | "trash";
+export type SmartId = "all" | "today" | "next7" | "thisweek" | "inbox" | "deadlines" | "completed" | "trash";
 
 export type ViewRef =
   | { kind: "smart"; id: SmartId }
@@ -21,6 +22,7 @@ export const SMART_VIEWS: { id: SmartId; name: string }[] = [
   { id: "all", name: "All" },
   { id: "today", name: "Today" },
   { id: "next7", name: "Next 7 Days" },
+  { id: "thisweek", name: "This Week" },
   { id: "deadlines", name: "Deadlines" },
   { id: "inbox", name: "Inbox" },
   { id: "completed", name: "Completed" },
@@ -32,6 +34,7 @@ export const SMART_DEFAULTS: Record<SmartId, ViewPrefs> = {
   all: { view_mode: "list", group_by: "list", sort_by: "date" },
   today: { view_mode: "list", group_by: "date", sort_by: "priority" },
   next7: { view_mode: "list", group_by: "date", sort_by: "priority" },
+  thisweek: { view_mode: "list", group_by: "date", sort_by: "priority" },
   deadlines: { view_mode: "list", group_by: "deadline", sort_by: "deadline" },
   inbox: { view_mode: "list", group_by: "none", sort_by: "manual" },
   completed: { view_mode: "list", group_by: "none", sort_by: "date" },
@@ -142,6 +145,9 @@ export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, 
         return d !== null && d <= end && shownIn("today")(t);
       });
     }
+    case "thisweek":
+      // Planned for this week, or for a week gone by (shown as overdue).
+      return open.filter((t) => dueThisWeek(t, today) && shownIn("today")(t));
     case "deadlines":
       return open.filter((t) => t.deadline_date !== null);
     default:
@@ -158,6 +164,12 @@ export interface Group {
   tone?: "overdue";
 }
 
+/** A task's bucket by its planned date, or by its horizon when it has none. */
+export function planBucket(t: Pick<Task, "start_date" | "horizon">, today: string): string {
+  if (!t.start_date && horizonWeek(t.horizon)) return horizonOverdue(t.horizon, today) ? "overdue" : (weeksAway(t.horizon, today) ?? 0) > 0 ? "later" : "thisweek";
+  return dateBucket(t.start_date, today);
+}
+
 export function dateBucket(date: string | null, today: string): string {
   if (!date) return "none";
   if (date < today) return "overdue";
@@ -167,10 +179,12 @@ export function dateBucket(date: string | null, today: string): string {
   return "later";
 }
 
-const DATE_BUCKETS: { key: string; label: string; date: (today: string) => string | null }[] = [
+const DATE_BUCKETS: { key: string; label: string; date: (today: string) => string | null; planned?: boolean }[] = [
   { key: "overdue", label: "Overdue", date: (t) => t },
   { key: "today", label: "Today", date: (t) => t },
   { key: "tomorrow", label: "Tomorrow", date: (t) => addDays(t, 1) },
+  // Only by planned date: tasks with This Week as their horizon.
+  { key: "thisweek", label: "This Week", date: () => null, planned: true },
   { key: "week", label: "Next 7 Days", date: (t) => addDays(t, 2) },
   { key: "later", label: "Later", date: (t) => addDays(t, 7) },
   { key: "none", label: "No Date", date: () => null },
@@ -265,12 +279,13 @@ export function groupTasks(
     case "date":
     case "deadline": {
       const field = groupBy === "date" ? "start_date" : "deadline_date";
-      const groups = DATE_BUCKETS.map((b) =>
+      const bucket = (t: Task) => (groupBy === "date" ? planBucket(t, today) : dateBucket(t.deadline_date, today));
+      const groups = DATE_BUCKETS.filter((b) => !b.planned || groupBy === "date").map((b) =>
         make(
           b.key,
           b.key === "none" ? (groupBy === "date" ? "No Date" : "No Deadline") : b.label,
-          b.key === "overdue" ? {} : ({ [field]: b.date(today) } as Partial<Task>),
-          (t) => dateBucket(t[field], today) === b.key,
+          b.key === "overdue" ? {} : b.key === "thisweek" ? { horizon: thisWeek(today) } : groupBy === "date" ? { start_date: b.date(today), horizon: null } : ({ [field]: b.date(today) } as Partial<Task>),
+          (t) => bucket(t) === b.key,
           b.key === "overdue" ? "overdue" : undefined,
         ),
       );
@@ -279,6 +294,8 @@ export function groupTasks(
       const keepEmpty =
         view.kind === "smart" && view.id === "today"
           ? ["today"]
+          : view.kind === "smart" && view.id === "thisweek"
+            ? ["thisweek"]
           : view.kind === "smart" && view.id === "next7"
             ? ["today", "tomorrow"]
             : ["today", "tomorrow", "none"];
@@ -308,8 +325,9 @@ export function subgroupTasks(tasks: Task[], sort: SortBy, today = todayKey()): 
   if (pinned.length) out.push({ key: "pinned", label: "Pinned", tasks: pinned, tone: "pinned" });
   if (sort === "date" || sort === "deadline" || sort === "datedeadline") {
     const day = (t: Task) => (sort === "date" ? t.start_date : sort === "deadline" ? t.deadline_date : (firstWhen(t)?.slice(0, 10) ?? null));
+    const bucket = (t: Task) => (sort === "deadline" ? dateBucket(day(t), today) : !day(t) ? planBucket(t, today) : dateBucket(day(t), today));
     for (const b of DATE_BUCKETS) {
-      const inBucket = rest.filter((t) => dateBucket(day(t), today) === b.key);
+      const inBucket = rest.filter((t) => bucket(t) === b.key);
       if (!inBucket.length) continue;
       const label = b.key === "none" ? (sort === "deadline" ? "No Deadline" : "No Date") : b.label;
       out.push({ key: b.key, label, tasks: inBucket, tone: b.key === "overdue" ? "overdue" : undefined });
@@ -350,6 +368,7 @@ export function defaultsForView(view: ViewRef, today = todayKey()): Partial<Task
   if (view.kind === "smart") {
     if (view.id === "today") return { start_date: today };
     if (view.id === "next7") return { start_date: today };
+    if (view.id === "thisweek") return { horizon: thisWeek(today) };
     if (view.id === "deadlines") return { deadline_date: today };
   }
   return {};

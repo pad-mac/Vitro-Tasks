@@ -75,6 +75,8 @@ export const ENTITIES: Entity[] = [
       { name: "created_at", type: "int", def: "0" },
       // Repeat rule in iCalendar RRULE form ("FREQ=WEEKLY;INTERVAL=1"); null: once.
       { name: "repeat", type: "text" },
+      // A horizon instead of a planned date: "week:<that week's Monday>" (This Week). Null with a date.
+      { name: "horizon", type: "text" },
     ],
   },
   {
@@ -236,6 +238,8 @@ export interface Task extends SyncMeta {
   created_at: number;
   /** Repeat rule (see lib/repeat); null for a task that happens once. */
   repeat: string | null;
+  /** A horizon instead of a planned date ("week:YYYY-MM-DD", that week's Monday); null or missing: none. */
+  horizon?: string | null;
   /** Never stored: set on the calendar's projected later occurrences of a repeating task, to the real task's id. */
   ghostOf?: string;
 }

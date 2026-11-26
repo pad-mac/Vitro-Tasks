@@ -25,6 +25,8 @@
   --faint: #a3a3a3;
   --hover: rgba(0, 0, 0, 0.045);
   --active: rgba(0, 0, 0, 0.085);
+  /* A picked value in a picker: one step deeper than --active. */
+  --pick: rgba(0, 0, 0, 0.14);
   --ink: #2e2e2e;
   --on-ink: #f2f2f2;
   /* Board cards: a little greyer than other raised surfaces in the light theme. */
@@ -57,6 +59,7 @@
   --faint: #636363;
   --hover: rgba(255, 255, 255, 0.05);
   --active: rgba(255, 255, 255, 0.09);
+  --pick: rgba(255, 255, 255, 0.16);
   --ink: #e2e2e2;
   --on-ink: #1c1c1c;
   --card: #242424;
@@ -130,6 +133,10 @@ code, kbd { font: calc(12px * var(--ts)) var(--mono); background: var(--active);
 .tb-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; color: var(--muted); font-weight: 500; font-size: calc(12px * var(--ts)); transition: background var(--fast), color var(--fast); }
 .tb-btn:hover { background: var(--hover); color: var(--text); }
 .tb-btn.is-active { background: var(--active); color: var(--text); }
+/* The layer shown beside the current one in a split: a light outline (on its own, or with the grey of the current layer). */
+.tb-btn.is-split { box-shadow: inset 0 0 0 1px var(--line); color: var(--text); }
+/* Split with itself: the outline one step darker, so it shows on the grey. */
+.tb-btn.is-active.is-split { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--faint) 65%, transparent); }
 .tb-icon { padding: 0; width: 22px; justify-content: center; }
 .tb-icon .icon { width: 15px; height: 15px; }
 .tb-btn > .icon { width: 15px; height: 15px; }
@@ -192,6 +199,13 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 *:hover > .hover-reveal, .hover-reveal:has(.is-open), .hover-reveal:focus-within { opacity: 1; pointer-events: auto; }
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* Split view: two panes of equal width, a hairline between them. */
+.split-pane { border-left: 1px solid var(--line-soft); }
+.split-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 6px; margin-left: -6px; border-radius: 6px; transition: background var(--fast); }
+.split-title h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-title .icon { flex: none; color: var(--faint); transform: rotate(90deg); }
+.pop-trigger:hover .split-title { background: var(--hover); }
+.split-pick { min-width: 0; }
 .view-head { display: flex; align-items: center; gap: 10px; padding: 0 22px 0 18px; height: 64px; flex: none; }
 .view-head h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 60px; }
 .calendar .view-head { padding-left: 24px; }
@@ -270,7 +284,8 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .seg button:disabled { opacity: 0.4; cursor: default; }
 /* Beside a sub page's title (the date's Start / End): the switch takes the rest of the row. */
 .cm-subhead-row:has(.seg) .cm-subhead { flex: none; }
-.cm-subhead-row .seg { flex: 1; }
+.cm-subhead-row .seg { flex: 1; border-color: transparent; background: var(--hover); }
+.cm-subhead-row .seg button.is-active { box-shadow: none; background: var(--pick); }
 .cm-picker { min-width: 0; padding-bottom: 0; }
 .cm-picker .date-pop { padding: 6px 6px 10px; }
 .cm-deadline, .hm-deadline { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -608,17 +623,31 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .quick-picks .chip-btn { flex: 1 1 auto; padding: 5px 6px; text-align: center; }
 .mini-cal-head { display: flex; align-items: center; gap: 2px; margin-bottom: 6px; }
 .mini-cal-title { flex: 1; font-weight: 600; padding-left: 4px; }
-.mini-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.mini-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px 0; --day: 30px; }
 .mini-cal-dow { text-align: center; font-size: calc(11px * var(--ts)); color: var(--faint); padding: 3px 0; }
-.mini-cal-day { border: 1px solid transparent; width: 30px; height: 30px; justify-self: center; display: grid; place-items: center; padding: 0; border-radius: 50%; font-size: calc(12.5px * var(--ts)); font-variant-numeric: tabular-nums; transition: background var(--fast); }
-.mini-cal-day:hover { background: var(--active); }
+/* A day fills its column (so a span can run through as one band); its number sits in a circle of --day. */
+.mini-cal-day { position: relative; width: 100%; height: var(--day); display: grid; place-items: center; padding: 0; border: 0; background: none; font-size: calc(12.5px * var(--ts)); font-variant-numeric: tabular-nums; }
+.mini-cal-day > span { position: relative; z-index: 1; display: grid; place-items: center; width: var(--day); height: var(--day); border-radius: 50%; transition: background var(--fast); }
+html:not(.is-mobile) .mini-cal-day:hover:not(:disabled) > span { background: var(--active); }
 .mini-cal-day.is-out { color: var(--faint); }
-.mini-cal-day.in-range { background: var(--active); }
-/* The picked day: an empty ring, nothing filled. */
-.mini-cal-day.is-selected { box-shadow: inset 0 0 0 var(--ring) var(--ink); font-weight: 600; }
-.mini-cal-day.is-selected:hover { background: transparent; }
-.mini-cal-day:disabled { opacity: 0.35; cursor: default; background: none; }
+/* A span: one band from its first to its last day, rounded where it starts, ends, or a week row breaks it. */
+.mini-cal-day.in-range::before { content: ""; position: absolute; inset: 0; background: var(--active); }
+.mini-cal-day.band-start::before { left: calc(50% - var(--day) / 2); border-radius: calc(var(--day) / 2) 0 0 calc(var(--day) / 2); }
+.mini-cal-day.band-end::before { right: calc(50% - var(--day) / 2); border-radius: 0 calc(var(--day) / 2) calc(var(--day) / 2) 0; }
+.mini-cal-day.band-start.band-end::before { border-radius: calc(var(--day) / 2); }
+html:not(.is-mobile) .mini-cal-day.in-range:hover:not(:disabled) > span { background: var(--pick); }
+/* The picked day: a grey fill (deeper than a span), its number bold. */
+.mini-cal-day.is-selected { font-weight: 700; }
+.mini-cal-day.is-selected > span { background: var(--pick); }
+.mini-cal-day:disabled { opacity: 0.35; cursor: default; }
 .mini-cal-day.is-today { color: var(--red); font-weight: 600; }
+.mini-cal-day.is-today.is-selected { font-weight: 700; }
+/* This Week: the one quick pick, a little bolder than the chips it replaced. */
+.week-pick { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 8px; background: var(--hover); color: var(--text); font-size: calc(13px * var(--ts)); font-weight: 500; transition: background var(--fast); }
+.week-pick .icon { color: var(--muted); }
+html:not(.is-mobile) .week-pick:hover { background: var(--active); }
+.week-pick.is-active { background: var(--pick); font-weight: 600; }
+.week-pick.is-active .icon { color: var(--text); }
 .date-pop-foot { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 /* Time and repeat: pills side by side; once set, a small × inside takes the value away. */
 .foot-pill { display: inline-flex; align-items: center; flex: none; min-width: 0; height: 28px; border: 1px solid var(--line); border-radius: 14px; font-size: calc(13px * var(--ts)); transition: border-color var(--fast); }
@@ -1055,14 +1084,16 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .m-add-picker .p-chip:disabled { opacity: 0.35; }
 .m-add-picker .p-seg { display: flex; gap: 2px; padding: 3px; margin-bottom: 10px; border-radius: 11px; background: var(--hover); }
 .m-add-picker .p-seg button { flex: 1; height: 34px; border-radius: 9px; font-size: calc(15px * var(--ts)); font-weight: 500; color: var(--muted); transition: background var(--fast), color var(--fast); }
-.m-add-picker .p-seg button.is-on { background: var(--raised); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 0 0.5px var(--line); }
+.m-add-picker .p-seg button.is-on { background: var(--pick); color: var(--text); font-weight: 600; }
+.m-add-picker .p-quick .week-pick { height: 36px; border-radius: 18px; font-size: calc(15px * var(--ts)); }
 .m-add-picker .mini-cal { padding: 0; }
 .m-add-picker .mini-cal-head { height: 40px; }
 .m-add-picker .mini-cal-title { font-size: calc(16px * var(--ts)); font-weight: 600; }
 .m-add-picker .mini-cal-head .icon-btn { width: 40px; height: 40px; }
 .m-add-picker .mini-cal-grid { gap: 2px 0; }
 .m-add-picker .mini-cal-dow { font-size: calc(12px * var(--ts)); height: 24px; }
-.m-add-picker .mini-cal-day { width: 40px; height: 40px; margin: 0 auto; font-size: calc(16px * var(--ts)); }
+.m-add-picker .mini-cal-grid { --day: 40px; }
+.m-add-picker .mini-cal-day { font-size: calc(16px * var(--ts)); }
 .m-add-picker .p-time { display: flex; align-items: center; gap: 10px; height: 50px; margin-top: 6px; padding: 0 2px; color: var(--muted); font-size: calc(16px * var(--ts)); border-top: 0.5px solid var(--line-soft); }
 .m-add-picker .p-time span { flex: 1; color: var(--text); }
 .m-add-picker .p-time input { min-width: 92px; height: 36px; padding: 0 10px; border-radius: 9px; background: var(--hover); color: var(--text); font: inherit; font-size: max(16px, calc(16px * var(--ts))); text-align: center; }
@@ -1194,7 +1225,9 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile .date-pop .mini-cal-head .icon-btn { width: 30px; height: 30px; border-radius: 50%; }
 .is-mobile .date-pop .mini-cal-grid { gap: 0; }
 .is-mobile .date-pop .mini-cal-dow { font-size: calc(11px * var(--ts)); padding: 1px 0 2px; }
-.is-mobile .date-pop .mini-cal-day { width: 32px; height: 32px; font-size: calc(14.5px * var(--ts)); }
+.is-mobile .date-pop .mini-cal-grid { --day: 32px; }
+.is-mobile .date-pop .mini-cal-day { font-size: calc(14.5px * var(--ts)); }
+.is-mobile .date-pop .week-pick { height: 30px; border-radius: var(--r-hl); font-size: calc(13.5px * var(--ts)); }
 .is-mobile .date-pop-foot { margin-top: 6px; padding-top: 6px; }
 .is-mobile .date-pop .foot-pill { height: 30px; border-radius: 15px; font-size: calc(13.5px * var(--ts)); }
 .is-mobile .date-pop .foot-pill > .time-trigger, .is-mobile .date-pop .foot-pill > .repeat-trigger { padding: 0 12px; }

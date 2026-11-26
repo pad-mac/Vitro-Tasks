@@ -17,6 +17,7 @@ import {
 import { parseShortcuts, type Shortcuts } from "./lib/shortcuts";
 import { moveInOrder, orderKey, parseRanks, positionsFor, ranksFor } from "./lib/order";
 import { readTickTick, readVitroCsv, writeVitroCsv } from "./lib/transfer";
+import { separateWhen } from "./lib/horizon";
 import { repeatStep as makeRepeatStep, stepRows, type RepeatStep } from "./lib/complete";
 import { colorForNew, defaultPalette } from "./lib/palettes";
 import {
@@ -71,6 +72,23 @@ export interface TrashItem {
   kids: Task[];
   /** When it was deleted (its last change). */
   at: number;
+}
+
+export type SplitLayer = "tasks" | "calendar";
+export type Splits = Record<SplitLayer, SplitLayer | null>;
+export type TaskViewRef = Exclude<ViewRef, { kind: "calendar" }>;
+
+/** Splits as kept in meta: { tasks, calendar, view }; anything unreadable is no split. */
+function readSplits(raw: string | null): { splits: Splits; splitView: TaskViewRef } | Record<string, never> {
+  try {
+    const x = JSON.parse(raw ?? "null") as { tasks?: unknown; calendar?: unknown; view?: { kind?: unknown; id?: unknown } } | null;
+    if (!x) return {};
+    const side = (v: unknown) => (v === "tasks" || v === "calendar" ? v : null);
+    const view = x.view && (x.view.kind === "smart" || x.view.kind === "list") && typeof x.view.id === "string" ? (x.view as TaskViewRef) : ({ kind: "smart", id: "today" } as TaskViewRef);
+    return { splits: { tasks: side(x.tasks), calendar: side(x.calendar) }, splitView: view };
+  } catch {
+    return {};
+  }
 }
 
 /** The views (All, Today, …) hidden from the sidebar. The trash is hidden unless it was turned on ("sidebar:trash"). */
@@ -197,6 +215,12 @@ interface State {
   textSize: number;
   /** Week view: long titles wrap onto more lines (else one line that fades out). */
   calWrap: boolean;
+  /** Desktop: what each layer shows beside it, split (one each; kept per device). */
+  splits: Splits;
+  /** The tasks view of a split's second tasks pane. */
+  splitView: TaskViewRef;
+  setSplit(layer: SplitLayer, side: SplitLayer | null): void;
+  setSplitView(view: TaskViewRef): void;
   /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
   calMonthLike: "month" | "multiweek";
   /** Bumped to make the calendar jump to today. */
@@ -550,6 +574,8 @@ export const useStore = create<State>((set, get) => {
     calMode: "month",
     calWeeks: 4,
     calDays: 3,
+    splits: { tasks: null, calendar: null },
+    splitView: { kind: "smart", id: "today" },
     trash: null,
     textSize: TEXT_SIZE_DEFAULT,
     calWrap: false,
@@ -585,7 +611,7 @@ export const useStore = create<State>((set, get) => {
         const calWrap = (await getMeta(db, "cal_wrap")) === "1";
         const textSize = clampTextSize(Number(await getMeta(db, "text_size")));
         applyTextSize(textSize);
-        set({ calWeeks, calDays, calMonthLike, calWrap, textSize });
+        set({ calWeeks, calDays, calMonthLike, calWrap, textSize, ...readSplits(await getMeta(db, "splits")) });
         set({ theme, shortcut, servers, defaultServer, showDetails, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
@@ -773,6 +799,15 @@ export const useStore = create<State>((set, get) => {
       set({ calWeeks });
       void setMeta(db, "cal_weeks", String(calWeeks));
     },
+    setSplit(layer, side) {
+      const splits = { ...get().splits, [layer]: side };
+      set({ splits });
+      void setMeta(db, "splits", JSON.stringify({ ...splits, view: get().splitView }));
+    },
+    setSplitView(view) {
+      set({ splitView: view });
+      void setMeta(db, "splits", JSON.stringify({ ...get().splits, view }));
+    },
     setCalDays(n) {
       const calDays = Math.max(1, Math.min(6, n));
       set({ calDays });
@@ -904,7 +939,8 @@ export const useStore = create<State>((set, get) => {
         updated_at: now,
         deleted: 0,
         repeat: null,
-        ...patch,
+        horizon: null,
+        ...separateWhen(patch),
       } as Task;
       const saved = await save("tasks", task);
       set({ tasks: [...get().tasks, saved] });
@@ -934,7 +970,8 @@ export const useStore = create<State>((set, get) => {
         updated_at: now,
         deleted: 0,
         repeat: null,
-        ...patch,
+        horizon: null,
+        ...separateWhen(patch),
       } as Task;
       set({ tasks: [...get().tasks, task] });
       // Only the timestamp comes back: the line may already have been written in.
@@ -942,7 +979,8 @@ export const useStore = create<State>((set, get) => {
       return task;
     },
 
-    async updateTask(id, patch) {
+    async updateTask(id, change) {
+      const patch = separateWhen(change);
       const cur = get().tasks.find((t) => t.id === id);
       if (!cur) return;
       // Into a list on another server (or the Inbox of the default one): the task moves there.
@@ -966,7 +1004,8 @@ export const useStore = create<State>((set, get) => {
       }
     },
 
-    previewTask(id, patch) {
+    previewTask(id, change) {
+      const patch = separateWhen(change);
       set({ tasks: get().tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
     },
 

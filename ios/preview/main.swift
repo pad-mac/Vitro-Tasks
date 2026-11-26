@@ -77,5 +77,7 @@ MainActor.assumeIsolated {
   renderLock("lock-next", lock, NextView(entry: NextEntry.make(snap, date: now, done: [])))
   let late = Day.calendar.date(bySettingHour: 23, minute: 30, second: 0, of: now)!
   renderLock("lock-next-empty", lock, NextView(entry: NextEntry.make(snap, date: late, done: [])))
+  renderLock("lock-upcoming", lock, UpcomingView(entry: UpcomingEntry.make(snap, date: now, done: [])))
+  renderLock("lock-upcoming-late", lock, UpcomingView(entry: UpcomingEntry.make(snap, date: late, done: [])))
   print("rendered into \(out.path)")
 }

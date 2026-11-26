@@ -29,7 +29,7 @@ describe("widget snapshot", () => {
     const doneKid = task({ list_id: "work", parent_id: a.id, title: "A2", status: 1 });
     const b = task({ list_id: "sub", title: "B" });
     const snap = buildSnapshot({ lists, sections: [], tasks: [a, kid, doneKid, b], settings: {} }, prefsOf(lists), TODAY, 1);
-    expect(snap.views.map((v) => v.id)).toEqual(["today", "next7", "all", "inbox", "deadlines", "work", "sub", "home"]);
+    expect(snap.views.map((v) => v.id)).toEqual(["today", "next7", "thisweek", "all", "inbox", "deadlines", "work", "sub", "home"]);
     const work = snap.views.find((v) => v.id === "work")!;
     expect(work.depth).toBe(0);
     expect(snap.views.find((v) => v.id === "sub")!.depth).toBe(1);

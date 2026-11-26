@@ -107,6 +107,8 @@ export function SelectBar({ view }: { view: ViewRef }) {
               date={chosen.length === 1 ? chosen[0].start_date : null}
               time={null}
               onChange={(d, t) => each({ start_date: d, start_time: d ? t : null, end_date: null, end_time: null })}
+              horizon={chosen.length === 1 ? chosen[0].horizon : null}
+              onHorizon={(h) => each({ horizon: h })}
               onDone={() => {
                 close();
                 done();
