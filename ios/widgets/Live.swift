@@ -41,13 +41,13 @@ actor Live {
     return result
   }
 
-  private static var millis: Double { Date().timeIntervalSince1970 * 1000 }
+  private static var millis: Double { (Date().timeIntervalSince1970 * 1000).rounded() }
 
   /// What to draw: the app's data with what was pulled and ticked here on top (else the app's own snapshot).
   func snapshot(at date: Date = Date()) -> Snapshot? {
     let state = Store.read("state.json")
     if !state.isEmpty,
-      let json = call("snapshot", [state, Store.read("pulled.json"), Store.read("changes.json"), Day.key(date), date.timeIntervalSince1970 * 1000])?.toString(),
+      let json = call("snapshot", [state, Store.read("pulled.json"), Store.read("changes.json"), Day.key(date), (date.timeIntervalSince1970 * 1000).rounded()])?.toString(),
       let snap = try? JSONDecoder().decode(Snapshot.self, from: Data(json.utf8))
     {
       return snap
@@ -72,7 +72,7 @@ actor Live {
     let now = Date()
     guard
       let changes = call(
-        "complete", [Store.read("state.json"), Store.read("pulled.json"), Store.read("changes.json"), id, now.timeIntervalSince1970 * 1000, Day.key(now)])?.toString()
+        "complete", [Store.read("state.json"), Store.read("pulled.json"), Store.read("changes.json"), id, (now.timeIntervalSince1970 * 1000).rounded(), Day.key(now)])?.toString()
     else { return }
     Store.write("changes.json", changes)
     await sync()

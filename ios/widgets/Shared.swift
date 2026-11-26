@@ -112,7 +112,7 @@ enum Store {
     guard let url = folder?.appendingPathComponent("actions.json") else { return }
     var all = actions()
     guard !all.contains(where: { $0.kind == "complete" && $0.id == id }) else { return }
-    all.append(Action(kind: "complete", id: id, at: Date().timeIntervalSince1970 * 1000))
+    all.append(Action(kind: "complete", id: id, at: (Date().timeIntervalSince1970 * 1000).rounded()))
     if let data = try? JSONEncoder().encode(all) { try? data.write(to: url, options: .atomic) }
   }
 

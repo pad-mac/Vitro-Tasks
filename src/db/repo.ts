@@ -3,6 +3,7 @@ import {
   ENTITY_NAMES,
   colNames,
   sqliteDdl,
+  roundInts,
   withDefaults,
   type ChangeSet,
   type EntityName,
@@ -224,7 +225,7 @@ export async function adoptRows(db: Db, changes: AdoptedChange[]): Promise<numbe
     const local = await db.all<{ updated_at: number }>(`SELECT updated_at FROM ${c.entity} WHERE id = $1`, [c.row.id]);
     if (local.length && local[0].updated_at >= Number(c.row.updated_at)) continue;
     const { sql, cols } = upsertSql(c.entity, ["dirty", "origin"], ["origin"]);
-    const full = withDefaults(c.entity, c.row);
+    const full = roundInts(c.entity, withDefaults(c.entity, c.row));
     await db.exec(
       sql,
       cols.map((col) => (col === "dirty" ? (c.pushed ? 0 : 1) : col === "origin" ? c.origin : ((full[col] ?? null) as Param))),

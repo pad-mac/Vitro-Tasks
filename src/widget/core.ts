@@ -13,7 +13,7 @@
 import { completionRows } from "../lib/complete";
 import { computePrefs } from "../lib/views";
 import { buildSnapshot } from "../lib/widgets";
-import { ENTITY_NAMES, colNames, withDefaults, type ChangeSet, type EntityName, type List, type Row, type Section, type SyncRequest, type SyncResponse, type Task } from "../shared/schema";
+import { ENTITY_NAMES, colNames, roundInts, withDefaults, type ChangeSet, type EntityName, type List, type Row, type Section, type SyncRequest, type SyncResponse, type Task } from "../shared/schema";
 
 export interface WidgetServer {
   id: string;
@@ -72,7 +72,7 @@ const uid = () =>
     const r = (Math.random() * 16) | 0;
     return (c === "x" ? r : (r & 3) | 8).toString(16);
   });
-const pick = (name: EntityName, row: Row): Row => Object.fromEntries(colNames(name).map((c) => [c, row[c] ?? null]));
+const pick = (name: EntityName, row: Row): Row => roundInts(name, Object.fromEntries(colNames(name).map((c) => [c, row[c] ?? null])));
 
 /** The app's state with what the widget pulled and changed on top, newest version of each row winning. */
 function load(stateJson: string, pulledJson: string, changesJson: string) {
@@ -112,7 +112,10 @@ function load(stateJson: string, pulledJson: string, changesJson: string) {
     const have = list?.find((r) => r.id === c.row.id);
     return !!have && Number(have.updated_at) >= Number(c.row.updated_at);
   };
-  const changes = (parse<Change[]>(changesJson) ?? []).filter((c) => !(c.pushed && inState(c)));
+  // Whole-number times: widgets of 0.15.0 queued some with fractions of a millisecond, which servers refuse.
+  const changes = (parse<Change[]>(changesJson) ?? [])
+    .map((c) => (ENTITY_NAMES.includes(c.entity) && c.row ? { ...c, row: roundInts(c.entity, c.row) } : c))
+    .filter((c) => !(c.pushed && inState(c)));
   for (const c of changes) apply(c.entity, c.row, c.origin);
   return { state, pulled, changes, rows, settings };
 }
@@ -131,12 +134,14 @@ function data(w: Loaded) {
 
 /** What the widgets show (the same as the app's own snapshot, src/lib/widgets.ts). */
 export function snapshot(stateJson: string, pulledJson: string, changesJson: string, today: string, now: number): string {
+  now = Math.round(now);
   const d = data(load(stateJson, pulledJson, changesJson));
   return JSON.stringify(buildSnapshot(d, (v) => computePrefs(v, d.lists, d.settings), today, now));
 }
 
 /** Ticks a task off (repeating: on to its next date, with a done copy). Returns the new changes. */
 export function complete(stateJson: string, pulledJson: string, changesJson: string, id: string, now: number, today: string): string {
+  now = Math.round(now);
   const w = load(stateJson, pulledJson, changesJson);
   const task = w.rows.tasks.get(id) as unknown as (Task & Origin) | undefined;
   if (!task || task.status !== 0) return JSON.stringify(w.changes);

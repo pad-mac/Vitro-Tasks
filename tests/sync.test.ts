@@ -135,6 +135,36 @@ describe.skipIf(!url)("sync", () => {
     expect(back.changes.tasks.find((t: { id: string }) => t.id === "x")).toMatchObject({ title: "edited", later_field: "y" });
   });
 
+  it("rounds times with fractions of a millisecond (iPhone widgets of 0.15.0) instead of failing the whole sync", async () => {
+    const post = (body: unknown) =>
+      fetch(`${cfg.url}/v1/sync`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const at = 1795684086868.844;
+    const res = await post({ since: 0, changes: { tasks: [{ id: "frac", title: "ticked in a widget", status: 1, completed_at: at, updated_at: at, created_at: 12.5, priority: 2.4 }] } });
+    expect(res.status).toBe(200);
+    const row = (await pool.query("SELECT completed_at, updated_at, created_at, priority FROM tasks WHERE id = 'frac'")).rows[0];
+    expect(row).toEqual({ completed_at: 1795684086869, updated_at: 1795684086869, created_at: 13, priority: 2 });
+    // A device gets it as whole numbers.
+    const b = await memoryDb();
+    await syncOnce(b, cfg);
+    expect((await loadAll<Task>(b, "tasks")).find((t) => t.id === "frac")).toMatchObject({ status: 1, completed_at: 1795684086869, updated_at: 1795684086869 });
+  });
+
+  it("answers 400, not 500, for a whole-number column that holds no number, and the app does not take it for an old server", async () => {
+    const post = (row: Record<string, unknown>) =>
+      fetch(`${cfg.url}/v1/sync`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: JSON.stringify({ since: 0, changes: { tasks: [{ id: "nan", updated_at: 1, ...row }] } }) });
+    for (const bad of [{ completed_at: "soon" }, { priority: { x: 1 } }, { pinned: true }, { completed_at: 1e300 }]) {
+      const res = await post(bad);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/bad number in a tasks row/);
+    }
+    // Nothing of it was kept (the sync is one transaction).
+    expect((await pool.query("SELECT 1 FROM tasks WHERE id = 'nan'")).rowCount).toBe(0);
+    const refuse: typeof fetch = async () => new Response(JSON.stringify({ error: "bad number in a tasks row: completed_at" }), { status: 400 });
+    const a = await memoryDb();
+    await put(a, "tasks", task("nan2", "x"), 1);
+    await expect(syncOnce(a, cfg, refuse)).rejects.not.toBeInstanceOf(OutdatedServerError);
+  });
+
   it("an older app's row without a field leaves that field as it is", async () => {
     const a = await memoryDb();
     await put(a, "tasks", task("keep-r", "weekly", { start_date: "2026-11-24", repeat: "FREQ=WEEKLY" }), 5100);

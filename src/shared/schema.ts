@@ -108,6 +108,28 @@ export function withDefaults(name: EntityName, row: Row): Row {
   return out;
 }
 
+/** A synced row's whole-number columns (timestamps, flags, status, priority). */
+export function intCols(name: EntityName): string[] {
+  return [...entity(name).cols, ...SYNC_COLS].filter((c) => c.type === "int").map((c) => c.name);
+}
+
+/**
+ * The row with its whole-number columns rounded: an iPhone widget (0.15.0)
+ * made times with fractions of a millisecond, which a BIGINT column refuses.
+ * Anything that is not a finite number is left as it is.
+ */
+export function roundInts(name: EntityName, row: Row): Row {
+  let out = row;
+  for (const c of intCols(name)) {
+    const v = row[c];
+    if (typeof v === "number" && Number.isFinite(v) && !Number.isInteger(v)) {
+      if (out === row) out = { ...row };
+      out[c] = Math.round(v);
+    }
+  }
+  return out;
+}
+
 const SQLITE_TYPES: Record<ColType, string> = { text: "TEXT", int: "INTEGER", real: "REAL" };
 const PG_TYPES: Record<ColType, string> = { text: "TEXT", int: "BIGINT", real: "DOUBLE PRECISION" };
 

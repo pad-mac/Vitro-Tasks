@@ -7,6 +7,7 @@ import {
   LOCAL_COLS,
   SYNC_PROTOCOL,
   colNames,
+  intCols,
   postgresDdl,
   withDefaults,
   type ChangeSet,
@@ -48,6 +49,14 @@ function rowWrite(name: EntityName, row: Row): { sql: string; params: unknown[] 
   if (extraJson.length > EXTRA_LIMIT) throw new HttpError(400, `too much in a ${name} row`);
   const present = cols.filter((c) => c !== "id" && c in row);
   const full = withDefaults(name, row);
+  // Whole numbers only (BIGINT): fractions are rounded, anything else is the client's error.
+  for (const c of intCols(name)) {
+    const v = full[c];
+    if (v === null || v === undefined) continue;
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+    if (!Number.isFinite(n) || Math.abs(n) > Number.MAX_SAFE_INTEGER) throw new HttpError(400, `bad number in a ${name} row: ${c}`);
+    full[c] = Math.round(n);
+  }
   const set = [...present.map((c) => `${c} = EXCLUDED.${c}`), `extra = ${name}.extra || EXCLUDED.extra`, "seq = EXCLUDED.seq"];
   return {
     sql:

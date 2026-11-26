@@ -113,6 +113,22 @@ describe("widget core", () => {
     expect(receive(s3, "", JSON.stringify(out.changes), "s1", "{}", JSON.stringify({ cursor: 9, changes: {} }), NOW).changes).toHaveLength(0);
   });
 
+  it("ticks with whole-millisecond times, and cleans up changes 0.15.0 queued with fractions", () => {
+    const a = task({ title: "A" });
+    const s = state([a]);
+    const ticked = JSON.parse(core.complete(s, "", "", a.id, NOW + 0.844, TODAY)) as core.Change[];
+    expect([ticked[0].row.completed_at, ticked[0].row.updated_at]).toEqual([NOW + 1, NOW + 1]);
+    // What a 0.15.0 widget left in changes.json.
+    const at = 1795684086868.844;
+    const stuck = JSON.stringify([{ entity: "tasks", row: { ...task({ id: "stuck", status: 1 }), completed_at: at, updated_at: at }, origin: "s1", pushed: false }]);
+    const [req] = JSON.parse(core.requests(s, "", stuck));
+    const sent = JSON.parse(req.body).changes.tasks[0];
+    expect([sent.completed_at, sent.updated_at]).toEqual([1795684086869, 1795684086869]);
+    // The server took it: marked as sent, and the file is written back with whole numbers.
+    const out = receive(s, "", stuck, "s1", req.body, JSON.stringify({ cursor: 9, changes: {} }), NOW);
+    expect(out.changes.map((c) => [c.pushed, c.row.completed_at, c.row.updated_at])).toEqual([[true, 1795684086869, 1795684086869]]);
+  });
+
   it("pulls after a while, not on every refresh, and not without servers", () => {
     const s = state([task({})]);
     expect(core.needsSync(s, "", "", NOW)).toBe(false);
@@ -191,5 +207,29 @@ describe.skipIf(!dbUrl)("widget core against the server", () => {
     expect([rep.status, rep.start_date, rep.notes]).toEqual([0, "2026-12-01", "keep me"]);
     expect(after.filter((t) => t.title === "Weekly" && t.status === 1).map((t) => t.start_date)).toEqual([TODAY]);
     expect(after.find((t) => t.id === "one")!.status).toBe(1);
+  });
+
+  it("a tick 0.15.0 queued with a fractional time goes through, and the app stores it as whole numbers", async () => {
+    const app = await memoryDb();
+    const cfg = { id: "s1", url: base, token: TOKEN };
+    await put(app, "lists", { ...work, origin: "s1" } as never);
+    await put(app, "tasks", { ...task({ id: "late", title: "Stuck" }) } as never, 100);
+    const first = await syncOnce(app, cfg);
+    const s = state(await loadAll<Task & { origin: string }>(app, "tasks"), { servers: [{ id: "s1", url: base, token: TOKEN, cursor: first.cursor }], lists: [{ ...work, origin: "s1" }] });
+    const at = NOW + 0.844;
+    const stuck = JSON.stringify([{ entity: "tasks", row: { ...task({ id: "late", title: "Stuck", status: 1 }), completed_at: at, updated_at: at }, origin: "s1", pushed: false }]);
+    // The app took it over unsent before this release, as 0.15.0 did: it syncs too.
+    const { adoptRows } = await import("../src/db/repo");
+    await adoptRows(app, JSON.parse(stuck));
+    const mine = (await loadAll<Task>(app, "tasks")).find((t) => t.id === "late")!;
+    expect([mine.completed_at, mine.updated_at]).toEqual([NOW + 1, NOW + 1]);
+    expect((await syncOnce(app, cfg)).pushed).toBe(1);
+    // The widget sends its copy as well.
+    const [req] = JSON.parse(core.requests(s, "", stuck));
+    const res = await fetch(req.url, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${req.token}` }, body: req.body });
+    expect(res.status).toBe(200);
+    expect(receive(s, "", stuck, "s1", req.body, await res.text(), NOW).changes.every((c) => c.pushed)).toBe(true);
+    const row = (await pool.query("SELECT status, completed_at, updated_at FROM tasks WHERE id = 'late'")).rows[0];
+    expect(row).toEqual({ status: 1, completed_at: NOW + 1, updated_at: NOW + 1 });
   });
 });
