@@ -21,6 +21,8 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
   private var bar: GlassBar?
   private let haptics = Haptics()
   private var greeted = false
+  /// The page's widget bridge listens (it asked for the widgets' changes once).
+  private var bridged = false
   private var dark: Bool?
   private var background: UIColor?
   private var raised: UIColor?
@@ -44,7 +46,27 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     focusGate.install(on: webview)
     ScrollLock.install(webview.scrollView)
     watchKeyboard()
+    NotificationCenter.default.addObserver(self, selector: #selector(linkWaiting), name: Self.pendingLinkNote, object: nil)
     attach(0)
+  }
+
+  // MARK: Links from the controls
+
+  /// Where a control's link waits (ios/shared/OpenLink.swift writes it, in this app's process).
+  private static let pendingLinkKey = "vitro.pendingLink"
+  private static let pendingLinkNote = Notification.Name("VitroPendingLink")
+
+  private func takeLink() -> String? {
+    let defaults = UserDefaults.standard
+    guard let link = defaults.string(forKey: Self.pendingLinkKey) else { return nil }
+    defaults.removeObject(forKey: Self.pendingLinkKey)
+    return link
+  }
+
+  /// A control was tapped while the page listens: it opens the link now (else it takes it with the widgets' changes).
+  @objc private func linkWaiting() {
+    guard bridged, let link = takeLink() else { return }
+    emit("openLink", ["url": link])
   }
 
   /// The bar sits on the view that holds the web view (not on the web view,
@@ -98,8 +120,9 @@ final class NativeUIPlugin: Plugin, WKScriptMessageHandler {
     case "widgets":
       if let json = body["json"] as? String { WidgetStore.write(json, state: body["state"] as? String) }
     case "widgetsTake":
+      bridged = true
       let taken = WidgetStore.take()
-      emit("widgetActions", ["actions": taken.actions, "changes": taken.changes])
+      emit("widgetActions", ["actions": taken.actions, "changes": taken.changes, "links": takeLink().map { [$0] } ?? []])
     case "allowFocus":
       focusGate.allow()
     default:

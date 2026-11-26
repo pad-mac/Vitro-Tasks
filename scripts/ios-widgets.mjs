@@ -43,6 +43,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: ../../../ios/widgets
+      # The controls' intent (it runs in the app, so the app has it too).
+      - path: ../../../ios/shared
       - path: VitroWidgets/core.js
         buildPhase: resources
     info:
@@ -80,9 +82,16 @@ targets:
     sources:
       # Links that start the app reach it (ios/app/LaunchLinks.m).
       - path: ../../../ios/app
+      # The controls' intent: iOS runs it in the app, which must have it as well (ios/shared/OpenLink.swift).
+      - path: ../../../ios/shared
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
     dependencies:
       - target: VitroWidgets
       - sdk: WidgetKit.framework
+      - sdk: AppIntents.framework
+        weak: true
 `;
 writeFileSync(join(apple, "widgets.yml"), widgets);
 

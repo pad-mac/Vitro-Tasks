@@ -13,6 +13,7 @@ import {
   startOfWeek,
   todayKey,
 } from "../lib/dates";
+import { horizonLabel, horizonWeek, thisWeek } from "../lib/horizon";
 import { openExternal } from "../lib/platform";
 import { describeRepeat } from "../lib/repeat";
 import { RepeatPanel, dateForRule } from "./RepeatPicker";
@@ -78,6 +79,14 @@ const PATHS: Record<string, ReactNode> = {
     <>
       <rect x="2.5" y="3.5" width="11" height="9" rx="1.8" />
       <path d="M6.2 3.5v9M9.8 3.5v9" />
+    </>
+  ),
+  // This Week: a calendar with one week's row as a band.
+  horizon: (
+    <>
+      <rect x="2.5" y="3.5" width="11" height="10" rx="1.8" />
+      <path d="M2.5 6.8h11M5.5 2.2v2.6M10.5 2.2v2.6" />
+      <rect x="4.7" y="8.9" width="6.6" height="2.4" rx="1.2" />
     </>
   ),
   layers: <path d="M8 2.5L2.5 5.5 8 8.5l5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3" />,
@@ -175,6 +184,13 @@ const PATHS20: Record<string, ReactNode> = {
     <>
       <rect x="3.2" y="4.4" width="13.6" height="12" rx="2.2" />
       <path d="M3.2 7.9h13.6M7 2.9v2.8M13 2.9v2.8M6.6 12.3h2.6M7.9 11v2.6M11.2 10.6h2.6l-1.7 3.8" />
+    </>
+  ),
+  thisweek: (
+    <>
+      <rect x="3.2" y="4.4" width="13.6" height="12" rx="2.2" />
+      <path d="M3.2 7.9h13.6M7 2.9v2.8M13 2.9v2.8" />
+      <rect x="5.7" y="10.6" width="8.6" height="3" rx="1.5" />
     </>
   ),
   pickdate: (
@@ -553,17 +569,22 @@ export function MiniCalendar({
         {WEEKDAYS.map((w) => (
           <span key={w} className="mini-cal-dow">{w.slice(0, 2)}</span>
         ))}
-        {days.map((d) => (
-          <button
-            type="button"
-            key={d}
-            className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected" : ""} ${range && d !== value && d >= range[0] && d <= range[1] ? "in-range" : ""}`}
-            disabled={!!min && d < min}
-            onClick={() => onPick(d)}
-          >
-            {+d.slice(8)}
-          </button>
-        ))}
+        {days.map((d, i) => {
+          // A span is one band: rounded where it starts and ends, and where a week row breaks it.
+          const inRange = !!range && range[1] > range[0] && d >= range[0] && d <= range[1];
+          const band = inRange ? `in-range ${d === range![0] || i % 7 === 0 ? "band-start" : ""} ${d === range![1] || i % 7 === 6 ? "band-end" : ""}` : "";
+          return (
+            <button
+              type="button"
+              key={d}
+              className={`mini-cal-day ${d.slice(0, 7) !== month.slice(0, 7) ? "is-out" : ""} ${d === today ? "is-today" : ""} ${d === value ? "is-selected" : ""} ${band}`}
+              disabled={!!min && d < min}
+              onClick={() => onPick(d)}
+            >
+              <span>{+d.slice(8)}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -616,11 +637,16 @@ export function DatePickerPanel({
   picks,
   repeat,
   onRepeat,
+  horizon,
+  onHorizon,
   clearLabel = "Clear",
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
+  /** With `onHorizon`, the top offers This Week (a horizon instead of a day) in place of the quick picks. */
+  horizon?: string | null;
+  onHorizon?: (horizon: string | null) => void;
   /** The last pill in the footer, which takes the date away. */
   clearLabel?: string;
   /** Called after a day was picked or the value cleared. */
@@ -657,15 +683,32 @@ export function DatePickerPanel({
     ["Tomorrow", addDays(today, 1)],
     ["Next week", addDays(today, 7)],
   ];
+  const week = thisWeek(today);
   return (
     <div className={`date-pop ${onRepeat ? "has-repeat" : ""}`} ref={box}>
-      <div className="quick-picks">
-        {quick.map(([label, d]) => (
-          <button type="button" key={label} className="chip-btn" disabled={!!min && d < min} onClick={() => pick(d)}>
-            {label}
+      {onHorizon ? (
+        <div className="quick-picks">
+          <button
+            type="button"
+            className={`week-pick ${horizon === week && !date ? "is-active" : ""}`}
+            onClick={() => {
+              onHorizon(week);
+              onDone();
+            }}
+          >
+            <Icon name="horizon" size={15} />
+            This week
           </button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="quick-picks">
+          {quick.map(([label, d]) => (
+            <button type="button" key={label} className="chip-btn" disabled={!!min && d < min} onClick={() => pick(d)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <MiniCalendar value={date} onPick={pick} min={min} range={range} />
       <div className="date-pop-foot">
         <span className={`foot-pill ${time ? "" : "is-empty"} ${open?.what === "time" ? "is-open" : ""}`}>
@@ -695,9 +738,10 @@ export function DatePickerPanel({
         <button
           type="button"
           className="foot-pill is-clear"
-          disabled={!date}
+          disabled={!date && !horizonWeek(horizon)}
           onClick={() => {
-            onChange(null, null);
+            if (date) onChange(null, null);
+            if (horizon) onHorizon?.(null);
             // No date, no series.
             if (repeat) onRepeat?.(null);
             onDone();
@@ -724,12 +768,17 @@ export function DateField({
   className = "",
   repeat,
   onRepeat,
+  horizon,
+  onHorizon,
   clearLabel,
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
   clearLabel?: string;
+  /** A horizon (This Week) the field shows while there is no date, and offers in its picker. */
+  horizon?: string | null;
+  onHorizon?: (horizon: string | null) => void;
   /** Offers the repeat choices beside the time; the trigger shows the repeat mark once set. */
   repeat?: string | null;
   onRepeat?: (repeat: string | null) => void;
@@ -742,14 +791,15 @@ export function DateField({
   className?: string;
 }) {
   const today = todayKey();
+  const weekSet = !date && !!horizonWeek(horizon);
   return (
     <Popover
       align={align}
       className={`date-field ${className}`}
       trigger={
-        <span className={`date-trigger ${date ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""} ${ghost ? "is-ghost" : ""}`}>
-          {icon && <Icon name={icon} size={14} />}
-          <span>{date ? formatDateTime(date, time, today) : placeholder}</span>
+        <span className={`date-trigger ${date || weekSet ? "" : "is-empty"} ${tone ? `tone-${tone}` : ""} ${ghost ? "is-ghost" : ""}`}>
+          {icon && <Icon name={!date && weekSet ? "horizon" : icon} size={14} />}
+          <span>{date ? formatDateTime(date, time, today) : weekSet ? horizonLabel(horizon, today) : placeholder}</span>
           {repeat && date && (
             <span className="repeat-mark" title={describeRepeat(repeat, date, true)}>
               <Icon name="repeat" size={12} />
@@ -758,7 +808,7 @@ export function DateField({
         </span>
       }
     >
-      {(close) => <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} repeat={repeat} onRepeat={onRepeat} clearLabel={clearLabel} />}
+      {(close) => <DatePickerPanel date={date} time={time} onChange={onChange} onDone={close} repeat={repeat} onRepeat={onRepeat} horizon={horizon} onHorizon={onHorizon} clearLabel={clearLabel} />}
     </Popover>
   );
 }

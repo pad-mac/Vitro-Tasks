@@ -64,7 +64,7 @@ describe("groupTasks", () => {
     const view = { kind: "smart", id: "all" } as const;
     const g = groupTasks(tasksForView(view, data, false, TODAY), { group_by: "date", sort_by: "priority" }, view, data, TODAY);
     expect(g.map((x) => `${x.key}:${ids(x.tasks)}`)).toEqual(["overdue:a", "today:b", "tomorrow:", "week:c", "later:h", "none:de"]);
-    expect(g[2].patch).toEqual({ start_date: "2026-11-17" });
+    expect(g[2].patch).toEqual({ start_date: "2026-11-17", horizon: null });
   });
   it("groups by deadline", () => {
     const view = { kind: "smart", id: "deadlines" } as const;

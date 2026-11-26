@@ -9,7 +9,7 @@ import { SelectBar, SelectHead, UndoButton } from "./components/Select";
 import { setBackdrop } from "./lib/backdrop";
 import { watchPress } from "./lib/press";
 import { Settings } from "./components/Settings";
-import { Sidebar } from "./components/Sidebar";
+import { SMART_ICONS, Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
 import { TimelineView } from "./components/TimelineView";
 import { EmptyTrashButton, TrashView } from "./components/TrashView";
@@ -17,9 +17,9 @@ import { Icon, MenuItem, Popover } from "./components/ui";
 import { isMobile, isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
 import { orderKey, parseRanks } from "./lib/order";
-import { SMART_VIEWS, groupTasks, hiddenLists, tasksForView, type Group, type ViewRef } from "./lib/views";
+import { SMART_VIEWS, groupTasks, hiddenLists, orderedLists, tasksForView, type Group, type ViewRef } from "./lib/views";
 import type { GroupBy, SortBy, Task, ViewMode } from "./shared/schema";
-import { computePrefs, useStore, viewKey } from "./store";
+import { computePrefs, useStore, viewKey, type TaskViewRef } from "./store";
 
 /** Windows narrower than this get the drawer sidebar and a full-width side pane. */
 const NARROW = 720;
@@ -65,7 +65,54 @@ function groupOptions(view: ViewRef): { value: GroupBy; label: string }[] {
 }
 
 // Memoised: App re-renders for the sheet, the drawer, the quick add and the keyboard; the lists under them need not.
-const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { kind: "calendar" }> }) {
+/** A split's second tasks pane: its title picks what it shows, the × closes the split. */
+function SplitLead({ view, title }: { view: TaskViewRef; title: string }) {
+  const lists = useStore((s) => s.lists);
+  const setSplitView = useStore((s) => s.setSplitView);
+  const same = (v: TaskViewRef) => v.kind === view.kind && v.id === view.id;
+  return (
+    <Popover
+      className="split-pick"
+      title="Show in this pane"
+      trigger={
+        <span className="split-title">
+          <h1>{title}</h1>
+          <Icon name="chevron" size={13} />
+        </span>
+      }
+    >
+      {(close) => (
+        <div className="menu menu-scroll">
+          {SMART_VIEWS.filter((v) => v.id !== "trash").map((v) => (
+            <MenuItem key={v.id} active={same({ kind: "smart", id: v.id })} onClick={() => { setSplitView({ kind: "smart", id: v.id }); close(); }}>
+              <Icon name={SMART_ICONS[v.id]} size={15} /> {v.name}
+            </MenuItem>
+          ))}
+          {lists.length > 0 && <div className="cm-sep" />}
+          {orderedLists(lists).map((l) => (
+            <MenuItem key={l.id} active={same({ kind: "list", id: l.id })} onClick={() => { setSplitView({ kind: "list", id: l.id }); close(); }}>
+              <span style={{ paddingLeft: l.depth * 14 }} className="menu-label">
+                <i className="dot" style={{ background: l.color }} /> {l.name}
+              </span>
+            </MenuItem>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function CloseSplit() {
+  const layer = useStore((s) => (s.view.kind === "calendar" ? "calendar" : "tasks"));
+  const setSplit = useStore((s) => s.setSplit);
+  return (
+    <button type="button" className="icon-btn icon-btn-lg" title="Close the split view" onClick={() => setSplit(layer, null)}>
+      <Icon name="x" size={16} />
+    </button>
+  );
+}
+
+const TaskViews = memo(function TaskViews({ view, split = false }: { view: TaskViewRef; split?: boolean }) {
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
   const tasks = useStore((s) => s.tasks);
@@ -97,24 +144,33 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
   const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : SMART_VIEWS.find((v) => v.id === view.id)!.name;
   const sectioned = view.kind === "list" && prefs.group_by === "section";
   const effectiveGroup: GroupBy = prefs.group_by === "section" && view.kind !== "list" ? "none" : prefs.group_by;
+  const lead = split ? (
+    <SplitLead view={view} title={title} />
+  ) : (
+    <>
+      <button type="button" className="icon-btn icon-btn-lg" title="Show or hide the lists" onClick={toggleSidebar}>
+        <Icon name="sidebar" size={20} />
+      </button>
+      <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
+    </>
+  );
 
   if (view.kind === "smart" && view.id === "trash")
     return (
       <>
         <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
-          <button type="button" className="icon-btn icon-btn-lg" title="Show or hide the lists" onClick={toggleSidebar}>
-            <Icon name="sidebar" size={20} />
-          </button>
-          <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
+          {lead}
           <div className="head-tools">
             <EmptyTrashButton />
+            {split && <CloseSplit />}
           </div>
         </header>
         <TrashView />
       </>
     );
 
-  const canSelect = !completedView && (mode === "list" || mode === "kanban");
+  // Selecting works in the main pane (one selection bar).
+  const canSelect = !split && !completedView && (mode === "list" || mode === "kanban");
   if (selecting && canSelect)
     return (
       <>
@@ -128,13 +184,11 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
   return (
     <>
       <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
-        <button type="button" className="icon-btn icon-btn-lg" title="Show or hide the lists" onClick={toggleSidebar}>
-          <Icon name="sidebar" size={20} />
-        </button>
-        <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
+        {lead}
         {completedView && (
           <div className="head-tools">
             <FoldAllButton groups={groups} completed />
+            {split && <CloseSplit />}
           </div>
         )}
         {!completedView && (
@@ -220,6 +274,7 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
                 </div>
               )}
             </Popover>
+            {split && <CloseSplit />}
           </div>
         )}
       </header>
@@ -306,6 +361,10 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
   const setView = useStore((s) => s.setView);
   const lastTaskView = useStore((s) => s.lastTaskView);
   const openMenu = useStore((s) => s.openMenu);
+  // What the current layer shows beside it (outlined in the bar).
+  const split = useStore((s) => s.splits[s.view.kind === "calendar" ? "calendar" : "tasks"]);
+  // A window too narrow for two panes shows one (the split comes back when it is wider).
+  const side = useNarrow() ? null : split;
   const layerMenu = (layer: "tasks" | "calendar") => (e: RMouseEvent) => {
     e.preventDefault();
     openMenu({ kind: "layer", id: layer, x: e.clientX, y: e.clientY });
@@ -328,10 +387,10 @@ function Titlebar({ onSettings }: { onSettings: () => void }) {
   return (
     <header className="titlebar" data-tauri-drag-region>
       <nav className="tb-nav">
-        <button type="button" className={`tb-btn ${view.kind !== "calendar" ? "is-active" : ""}`} title="Tasks (right-click: open in a new window)" onClick={() => setView(lastTaskView)} onContextMenu={layerMenu("tasks")}>
+        <button type="button" className={`tb-btn ${view.kind !== "calendar" ? "is-active" : ""} ${side === "tasks" ? "is-split" : ""}`} title="Tasks (right-click: split view or a new window)" onClick={() => setView(lastTaskView)} onContextMenu={layerMenu("tasks")}>
           <Icon name="tasks" size={17} /> <span>Tasks</span>
         </button>
-        <button type="button" className={`tb-btn ${view.kind === "calendar" ? "is-active" : ""}`} title="Calendar (right-click: open in a new window)" onClick={() => setView({ kind: "calendar" })} onContextMenu={layerMenu("calendar")}>
+        <button type="button" className={`tb-btn ${view.kind === "calendar" ? "is-active" : ""} ${side === "calendar" ? "is-split" : ""}`} title="Calendar (right-click: split view or a new window)" onClick={() => setView({ kind: "calendar" })} onContextMenu={layerMenu("calendar")}>
           <Icon name="calendar" size={17} /> <span>Calendar</span>
         </button>
       </nav>
@@ -451,6 +510,8 @@ export function App() {
   const drawerOpen = useStore((s) => s.drawerOpen);
   const setDrawerOpen = useStore((s) => s.setDrawerOpen);
   const detached = useStore((s) => s.detached);
+  const splits = useStore((s) => s.splits);
+  const splitView = useStore((s) => s.splitView);
   // Phones always open a task full screen.
   const editMode = useStore((s) => (isMobile ? "pane" : s.editMode(s.view)));
   const shortcut = useStore((s) => s.shortcut);
@@ -564,6 +625,8 @@ export function App() {
   if (!ready) return <div className="boot"><span className="micro">loading</span></div>;
 
   const taskLayer = view.kind !== "calendar";
+  // Desktop main window: each layer may show the other one (or itself again) beside it.
+  const side = !isMobile && !detached && !narrow ? splits[taskLayer ? "tasks" : "calendar"] : null;
   // On the phone a task opens in a sheet instead of the side pane.
   const pane = selected && editMode === "pane" && !isMobile ? selected : null;
   const popup = selected && editMode === "popup" ? selected : null;
@@ -594,10 +657,15 @@ export function App() {
       )}
       <div className="workspace" onMouseDown={onWorkspaceDown}>
         {taskLayer && !narrow && sidebarOpen && <Sidebar />}
-        <main className="main">
+        <main className={`main ${side ? "is-split" : ""}`}>
           {view.kind === "calendar" ? <CalendarView /> : <TaskViews view={view} />}
           <UndoButton />
         </main>
+        {side && (
+          <section className="main split-pane" aria-label={side === "calendar" ? "Calendar, split" : "Tasks, split"}>
+            {side === "calendar" ? <CalendarView key="split-cal" /> : <TaskViews view={splitView} split />}
+          </section>
+        )}
         {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
         {(taskLayer || isMobile) && narrow && drawerOpen && (
           <>

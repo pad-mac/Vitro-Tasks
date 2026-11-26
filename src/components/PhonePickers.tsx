@@ -2,6 +2,7 @@
 // priority), and the pull gesture for sheets.
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { addDays, todayKey } from "../lib/dates";
+import { horizonWeek, thisWeek } from "../lib/horizon";
 import { haptic } from "../lib/platform";
 import { PRIORITY_LABELS } from "../lib/views";
 import { describeRepeat } from "../lib/repeat";
@@ -98,10 +99,15 @@ export function DayPicker({
   clearLabel = "Remove date",
   repeat,
   onRepeat,
+  horizon,
+  onHorizon,
 }: {
   date: string | null;
   time: string | null;
   onChange: (date: string | null, time: string | null) => void;
+  /** With `onHorizon`, the top offers This Week (a horizon instead of a day) in place of the quick picks. */
+  horizon?: string | null;
+  onHorizon?: (horizon: string | null) => void;
   min?: string | null;
   range?: [string, string] | null;
   picks?: DayPick[];
@@ -117,15 +123,25 @@ export function DayPicker({
     ["Tomorrow", addDays(today, 1)],
     ["Next week", addDays(today, 7)],
   ];
+  const week = thisWeek(today);
   return (
     <>
-      <div className="p-quick">
-        {quick.map(([label, d]) => (
-          <button type="button" key={label} className={`p-chip ${d === date ? "is-on" : ""}`} disabled={!!min && d < min} onClick={() => onChange(d, time)}>
-            {label}
+      {onHorizon ? (
+        <div className="p-quick">
+          <button type="button" className={`week-pick ${!date && horizon === week ? "is-active" : ""}`} onClick={() => onHorizon(week)}>
+            <Icon name="horizon" size={16} />
+            This week
           </button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="p-quick">
+          {quick.map(([label, d]) => (
+            <button type="button" key={label} className={`p-chip ${d === date ? "is-on" : ""}`} disabled={!!min && d < min} onClick={() => onChange(d, time)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <MiniCalendar key={(date ?? min ?? today).slice(0, 7)} value={date} onPick={(d) => onChange(d, time)} min={min} range={range} />
       <label className="p-time">
         <Icon name="clock" size={17} />
@@ -150,9 +166,16 @@ export function DayPicker({
           )}
         </>
       )}
-      {date && (
-        <button type="button" className="p-clear" onClick={() => onChange(null, null)}>
-          {clearLabel}
+      {(date || (onHorizon && horizonWeek(horizon))) && (
+        <button
+          type="button"
+          className="p-clear"
+          onClick={() => {
+            if (date) onChange(null, null);
+            else onHorizon?.(null);
+          }}
+        >
+          {date ? clearLabel : "Remove This week"}
         </button>
       )}
     </>
@@ -170,6 +193,7 @@ export interface PropValues {
   list_id?: string | null;
   section_id?: string | null;
   repeat?: string | null;
+  horizon?: string | null;
 }
 
 /** Start and end of a task: a Start / End switch over one picker. */
@@ -182,6 +206,8 @@ export function SpanPicker({ v, onChange }: { v: PropValues; onChange: (patch: P
     onChange({
       start_date: d,
       start_time: d ? t : null,
+      // A day replaces This Week.
+      ...(d ? { horizon: null } : {}),
       ...(d && end && end >= d ? {} : { end_date: null, end_time: null }),
       // No date, no series.
       ...(d ? {} : { repeat: null }),
@@ -223,6 +249,8 @@ export function SpanPicker({ v, onChange }: { v: PropValues; onChange: (patch: P
           time={v.start_time ?? null}
           range={start && end ? [start, end] : null}
           onChange={setStart}
+          horizon={v.horizon ?? null}
+          onHorizon={(h) => onChange(h ? { horizon: h, start_date: null, start_time: null, end_date: null, end_time: null } : { horizon: null })}
           repeat={v.repeat ?? null}
           onRepeat={(r, d) => onChange({ repeat: r, ...(d !== start ? { start_date: d, ...(d && end && end >= d ? {} : { end_date: null, end_time: null }) } : {}) })}
         />

@@ -4,6 +4,7 @@
 // the menu and its placement.
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { addDays, deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
+import { thisWeek } from "../lib/horizon";
 import { haptic } from "../lib/platform";
 import { PRIORITY_LABELS } from "../lib/views";
 import { useStore } from "../store";
@@ -208,8 +209,9 @@ function run(id: string, key: string, rect: DOMRect) {
     const r = taskRect(id) ?? rect;
     st.openMenu({ kind: "task", id, x: r.left + 12, y: r.top - 4, h: r.height + 8, page: name });
   };
-  const day = { today, tomorrow: addDays(today, 1), nextweek: addDays(today, 7) }[key.slice(5)];
+  const day = { today, tomorrow: addDays(today, 1) }[key.slice(5)];
   if (key.startsWith("date:") && day) void st.updateTask(id, { start_date: day, end_date: null, end_time: null });
+  else if (key === "date:thisweek") void st.updateTask(id, { horizon: thisWeek(today) });
   else if (key === "date:pick") later(page("date"));
   else if (key.startsWith("prio:")) void st.updateTask(id, { priority: Number(key.slice(5)) });
   else if (key === "pin") void st.updateTask(id, { pinned: task.pinned ? 0 : 1 });
@@ -289,7 +291,7 @@ export function HoldMenu() {
   const dates: [string, string, string, string | null][] = [
     ["date:today", "today", "Today", today],
     ["date:tomorrow", "tomorrow", "Tomorrow", addDays(today, 1)],
-    ["date:nextweek", "nextweek", "Next Week", addDays(today, 7)],
+    ["date:thisweek", "thisweek", "This Week", null],
     ["date:pick", "pickdate", "Pick Date", null],
   ];
   const cls = (key: string, extra = "") => `${extra} ${hot === key ? "is-hot" : ""}`;
@@ -300,14 +302,14 @@ export function HoldMenu() {
       {extra}
     </button>
   );
-  const active = (d: string | null) => !!d && task.start_date === d && !task.end_date;
+  const active = (key: string, d: string | null) => (key === "date:thisweek" ? !task.start_date && task.horizon === thisWeek(today) : !!d && task.start_date === d && !task.end_date);
   return (
     <div className={`hold-layer ${h.closing ? "is-closing" : ""} ${h.shown ? "" : "is-waiting"}`}>
       <div className="hold-scrim" />
       <div ref={ref} className="hold-menu" role="menu">
         <div className="hm-row">
           {dates.map(([key, icon, label, d]) => (
-            <button type="button" key={key} data-hm={key} aria-label={label} className={cls(key, `hm-cell ${active(d) ? "is-active" : ""}`)} onClick={() => holdMenu.act(key)}>
+            <button type="button" key={key} data-hm={key} aria-label={label} className={cls(key, `hm-cell ${active(key, d) ? "is-active" : ""}`)} onClick={() => holdMenu.act(key)}>
               <Icon name={icon} size={22} />
             </button>
           ))}

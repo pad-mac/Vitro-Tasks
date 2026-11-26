@@ -178,6 +178,21 @@ describe.skipIf(!url)("sync", () => {
     expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "keep-r")).toMatchObject({ title: "renamed elsewhere", repeat: "FREQ=WEEKLY" });
   });
 
+  it("carries This Week (the horizon) between devices, in its own column, and a day set elsewhere replaces it", async () => {
+    const a = await memoryDb();
+    const b = await memoryDb();
+    await put(a, "tasks", task("h1", "this week", { horizon: "week:2026-11-23" }), 7000);
+    await syncOnce(a, cfg);
+    expect((await pool.query("SELECT horizon, extra FROM tasks WHERE id = 'h1'")).rows[0]).toEqual({ horizon: "week:2026-11-23", extra: {} });
+    await syncOnce(b, cfg);
+    const onB = (await loadAll<Task>(b, "tasks")).find((t) => t.id === "h1")!;
+    expect(onB.horizon).toBe("week:2026-11-23");
+    await put(b, "tasks", { ...onB, start_date: "2026-11-27", horizon: null } as never, 7100);
+    await syncOnce(b, cfg);
+    await syncOnce(a, cfg);
+    expect((await loadAll<Task>(a, "tasks")).find((t) => t.id === "h1")).toMatchObject({ start_date: "2026-11-27", horizon: null });
+  });
+
   it("carries repeat rules between devices", async () => {
     const a = await memoryDb();
     const b = await memoryDb();

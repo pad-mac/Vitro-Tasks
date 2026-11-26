@@ -10,7 +10,7 @@ import type { SmartId, ViewRef } from "./views";
 import { buildSnapshot } from "./widgets";
 import type { AdoptedChange } from "../db/repo";
 
-const SMART_IDS: SmartId[] = ["all", "today", "next7", "inbox", "deadlines", "completed"];
+const SMART_IDS: SmartId[] = ["all", "today", "next7", "thisweek", "inbox", "deadlines", "completed"];
 const WAIT_MS = 1500;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -123,14 +123,21 @@ export async function startWidgetBridge() {
     const changes = Array.isArray(payload.changes) ? (payload.changes as AdoptedChange[]) : [];
     const actions = Array.isArray(payload.actions) ? (payload.actions as { kind?: string; id?: string }[]) : [];
     const ids = actions.filter((a) => a.kind === "complete" && typeof a.id === "string").map((a) => a.id!);
+    // A control tapped while the app was closed or starting (ios/shared/OpenLink.swift).
+    const links = Array.isArray(payload.links) ? (payload.links as unknown[]).filter((l): l is string => typeof l === "string") : [];
     void (async () => {
       try {
         await useStore.getState().adoptWidgetChanges(changes);
         if (ids.length) await useStore.getState().completeTasks(ids, { silent: true });
       } finally {
+        for (const link of links) openLink(link);
         await flush();
       }
     })();
+  });
+  // A control tapped while the page runs.
+  onNative("openLink", (payload) => {
+    if (typeof payload.url === "string") openLink(payload.url);
   });
   // The native side greets the page again after a reload: ask once more then.
   onNative("ready", () => postNative({ type: "widgetsTake" }));

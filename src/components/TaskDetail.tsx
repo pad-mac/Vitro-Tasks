@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { SubtaskList, useEditorScroll } from "./EditorParts";
 import { formatDateTime, todayKey } from "../lib/dates";
+import { horizonOverdue } from "../lib/horizon";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { dateForRule } from "./RepeatPicker";
 import { PRIORITY_LABELS, orderedLists, subtasksOf } from "../lib/views";
@@ -205,7 +206,9 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
         date={task.start_date}
         time={task.start_time}
         placeholder="Date"
-        tone={open && task.start_date !== null && task.start_date < today ? "overdue" : undefined}
+        tone={open && ((task.start_date !== null && task.start_date < today) || (!task.start_date && horizonOverdue(task.horizon, today))) ? "overdue" : undefined}
+        horizon={task.horizon}
+        onHorizon={(h) => void update(task.id, { horizon: h })}
         repeat={task.parent_id ? undefined : task.repeat}
         onRepeat={task.parent_id ? undefined : (r) => void update(task.id, { repeat: r })}
         onChange={(d, t) =>

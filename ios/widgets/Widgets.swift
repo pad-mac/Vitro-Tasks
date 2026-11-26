@@ -14,6 +14,7 @@ struct VitroWidgets: WidgetBundle {
     WeekWidget()
     LockListWidget()
     NextWidget()
+    UpcomingWidget()
     if #available(iOS 18.0, *) {
       AddControl()
       TodayControl()
