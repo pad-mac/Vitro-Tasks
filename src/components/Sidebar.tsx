@@ -12,6 +12,7 @@ export const SMART_ICONS: Record<SmartId, string> = {
   deadlines: "deadline",
   inbox: "inbox",
   completed: "done",
+  trash: "trash",
 };
 
 function sameView(a: ViewRef, b: ViewRef) {
@@ -35,7 +36,7 @@ function SmartRow({ id, name, count }: { id: SmartId; name: string; count: numbe
     >
       <Icon name={SMART_ICONS[id]} />
       <span className="nav-name">{name}</span>
-      {id !== "completed" && count > 0 && <span className="count">{count}</span>}
+      {id !== "completed" && id !== "trash" && count > 0 && <span className="count">{count}</span>}
     </button>
   );
 }
@@ -236,7 +237,8 @@ export function Sidebar({ drawer = false, onSettings }: { drawer?: boolean; onSe
   const [adding, setAdding] = useState(false);
   const listsBox = useRef<HTMLDivElement>(null);
   const hiddenRaw = useStore((s) => s.settings["sidebar:hidden"]);
-  const hiddenSmart = useMemo(() => hiddenSmartViews({ "sidebar:hidden": hiddenRaw ?? "[]" }), [hiddenRaw]);
+  const trashRaw = useStore((s) => s.settings["sidebar:trash"]);
+  const hiddenSmart = useMemo(() => hiddenSmartViews({ "sidebar:hidden": hiddenRaw ?? "[]", "sidebar:trash": trashRaw ?? "" }), [hiddenRaw, trashRaw]);
   const reorder = useListReorder(listsBox);
   const data = useMemo(() => ({ lists, sections, tasks, hidden: hiddenLists(settings) }), [lists, sections, tasks, settings]);
   const counts = useMemo(() => {

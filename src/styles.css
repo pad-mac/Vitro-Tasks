@@ -1576,5 +1576,29 @@ html:not(.is-mobile) .week-event .cal-chip { background: color-mix(in srgb, var(
 .toggle-row:hover { background: var(--hover); }
 .toggle-row > span { flex: 1; }
 .toggle-row > .icon { color: var(--muted); }
+/* A row that also opens its view: the name is one button, the switch another; the row's padding moves into them
+   so both are full-height targets and the row reads the same as before. */
+.toggle-row.has-go { padding: 0; gap: 0; }
+.toggle-row.has-go:hover { background: none; }
+.toggle-go { flex: 1; display: flex; align-items: center; gap: 10px; height: 100%; padding: 0 10px; border-radius: var(--r); text-align: left; transition: background var(--fast); }
+.toggle-go:hover { background: var(--hover); }
+.toggle-go > .icon { color: var(--muted); }
+.toggle-go > span { flex: 1; }
+.toggle-switch { display: grid; place-items: center; height: 100%; padding: 0 10px; border-radius: var(--r); }
+
+/* ---------- Trash ---------- */
+.trash-view { padding-top: 4px; }
+.trash-row { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 10px; border-radius: 10px; }
+.trash-row + .trash-row { box-shadow: 0 -0.5px 0 var(--line); }
+.trash-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.trash-title, .trash-meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.trash-meta { font-size: calc(12px * var(--ts)); color: var(--muted); }
+.is-mobile .trash-row { min-height: 60px; padding: 8px 12px; gap: 10px; }
+.is-mobile .trash-row .btn { height: 36px; border-radius: 10px; }
+.is-mobile .trash-row .btn-square, .is-mobile .trash-restore { width: 36px; padding: 0; justify-content: center; }
+/* On the phone the title gets the room: Restore is its icon, like the delete beside it. */
+.is-mobile .trash-restore > span { display: none; }
+.is-mobile .view-head .head-tools .btn { height: 36px; border-radius: 10px; }
+
 /* The phone's hold menu: a set deadline's mark is red too. */
 .hold-menu .hm-item:has(.hm-deadline) > .icon { color: var(--red); }

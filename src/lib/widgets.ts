@@ -8,6 +8,7 @@
 import type { List, Section, Task } from "../shared/schema";
 import { addDays, minutesOf, startOfWeek, todayKey } from "./dates";
 import { parseRanks, orderKey } from "./order";
+import { plainText } from "./rich";
 import {
   entriesForDay,
   groupTasks,
@@ -61,6 +62,8 @@ export interface WidgetEntry {
   start: number | null;
   end: number | null;
   deadline?: 1;
+  /** The description's first line (the lock screen's next-up widget shows it, e.g. a place). */
+  note?: string;
 }
 
 export interface WidgetSnapshot {
@@ -72,6 +75,12 @@ export interface WidgetSnapshot {
   to: string;
   views: WidgetView[];
   days: Record<string, WidgetEntry[]>;
+}
+
+/** The first line of a description, as plain text (nothing when there is none). */
+function noteOf(notes: string | null | undefined): { note?: string } {
+  const line = plainText(notes ?? "").split("\n").map((l) => l.trim()).find(Boolean);
+  return line ? { note: line.slice(0, 80) } : {};
 }
 
 const SMART: { id: SmartId; name: string }[] = [
@@ -165,6 +174,7 @@ export function buildSnapshot(src: Source, prefsOf: (view: ViewRef) => ViewPrefs
         start,
         end,
         ...(deadline ? { deadline: 1 as const } : {}),
+        ...noteOf(t.notes),
       };
     });
   }

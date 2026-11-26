@@ -4,7 +4,7 @@ import { occurrences, parseRule } from "./repeat";
 import { applyRanks, type Ranks } from "./order";
 import type { GroupBy, List, Section, SortBy, Task, ViewMode } from "../shared/schema";
 
-export type SmartId = "all" | "today" | "next7" | "inbox" | "deadlines" | "completed";
+export type SmartId = "all" | "today" | "next7" | "inbox" | "deadlines" | "completed" | "trash";
 
 export type ViewRef =
   | { kind: "smart"; id: SmartId }
@@ -24,6 +24,8 @@ export const SMART_VIEWS: { id: SmartId; name: string }[] = [
   { id: "deadlines", name: "Deadlines" },
   { id: "inbox", name: "Inbox" },
   { id: "completed", name: "Completed" },
+  // Hidden by default (Settings → Sidebar shows it, or opens it from there).
+  { id: "trash", name: "Trash" },
 ];
 
 export const SMART_DEFAULTS: Record<SmartId, ViewPrefs> = {
@@ -33,6 +35,7 @@ export const SMART_DEFAULTS: Record<SmartId, ViewPrefs> = {
   deadlines: { view_mode: "list", group_by: "deadline", sort_by: "deadline" },
   inbox: { view_mode: "list", group_by: "none", sort_by: "manual" },
   completed: { view_mode: "list", group_by: "none", sort_by: "date" },
+  trash: { view_mode: "list", group_by: "none", sort_by: "date" },
 };
 
 /** View mode, grouping and sorting for a view: stored on the list, or in settings for smart views. */
@@ -115,6 +118,8 @@ export function tasksForView(view: ViewRef, data: Data, showCompleted: boolean, 
   const shown = (t: Task) => showCompleted || t.status === 0 || !!data.lingering?.[t.id];
   if (view.kind === "calendar") return roots.filter((t) => shown(t) && shownIn("calendar")(t));
   if (view.kind === "smart" && view.id === "completed") return roots.filter((t) => t.status !== 0);
+  // Deleted tasks are not loaded with the rest: the trash reads them itself (see the store).
+  if (view.kind === "smart" && view.id === "trash") return [];
   const open = roots.filter(shown);
   if (view.kind === "list") {
     const ids = new Set(listWithDescendants(data.lists, view.id));

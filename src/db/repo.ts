@@ -35,6 +35,19 @@ export async function loadAll<T>(db: Db, name: EntityName): Promise<T[]> {
   return db.all<T>(`SELECT ${colNames(name).join(", ")}, origin FROM ${name} WHERE deleted = 0`);
 }
 
+/** Tasks in the trash (deleted, not yet deleted forever), with their server. */
+export async function loadDeletedTasks<T>(db: Db): Promise<T[]> {
+  return db.all<T>(`SELECT ${colNames("tasks").join(", ")}, origin FROM tasks WHERE deleted = 1`);
+}
+
+/**
+ * Deletes a task forever: it leaves the trash on every device (deleted = 2) and its text is
+ * cleared, so nothing of it is kept anywhere. The row itself stays, so the deletion still travels.
+ */
+export async function purgeTask(db: Db, id: string, now = Date.now()): Promise<void> {
+  await db.exec(`UPDATE tasks SET deleted = 2, title = '', notes = '', dirty = 1, updated_at = MAX($1, updated_at + 1) WHERE id = $2`, [now, id]);
+}
+
 /** `keep`: columns written for a new row but left as they are on an existing one. */
 function upsertSql(name: EntityName, extra: string[], keep: string[] = []): { sql: string; cols: string[] } {
   const cols = [...colNames(name), ...extra];

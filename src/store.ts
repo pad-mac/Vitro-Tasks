@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { openDb, type Db } from "./db/driver";
-import { adoptRows, assignOrigin, getMeta, loadAll, migrate, purgeOrigin, put, remove, setMeta, uid, type AdoptedChange } from "./db/repo";
+import { adoptRows, assignOrigin, getMeta, loadAll, loadDeletedTasks, migrate, purgeOrigin, purgeTask, put, remove, setMeta, uid, type AdoptedChange } from "./db/repo";
 import { getDefaultServer, getServers, hostName, resetServer, setDefaultServer, setServers, OutdatedServerError, syncOnce, type SyncServer } from "./db/sync";
 import {
   announceChange,
@@ -65,14 +65,24 @@ export interface DropHint {
   y: number | null;
 }
 
-/** The views (All, Today, …) hidden from the sidebar. */
+export interface TrashItem {
+  task: Task;
+  /** Subtasks deleted with it. */
+  kids: Task[];
+  /** When it was deleted (its last change). */
+  at: number;
+}
+
+/** The views (All, Today, …) hidden from the sidebar. The trash is hidden unless it was turned on ("sidebar:trash"). */
 export function hiddenSmartViews(settings: Record<string, string>): SmartId[] {
+  let v: SmartId[] = [];
   try {
-    const v = JSON.parse(settings["sidebar:hidden"] ?? "[]");
-    return Array.isArray(v) ? v : [];
+    const x = JSON.parse(settings["sidebar:hidden"] ?? "[]");
+    if (Array.isArray(x)) v = x.filter((id) => id !== "trash");
   } catch {
-    return [];
+    /* none hidden */
   }
+  return settings["sidebar:trash"] === "1" ? v : [...v, "trash"];
 }
 
 
@@ -272,6 +282,13 @@ interface State {
   /** Completes open tasks (and their open subtasks) as one step the undo button takes back. */
   completeTasks(ids: string[], opts?: { quiet?: boolean; silent?: boolean }): Promise<void>;
   deleteTask(id: string): Promise<void>;
+  /** The trash: deleted tasks (subtasks deleted with their task travel with it), last deleted first; null until read. */
+  trash: TrashItem[] | null;
+  loadTrash(): Promise<void>;
+  /** Back where it was (with the subtasks deleted with it); into the Inbox if its list is gone too. */
+  restoreTask(id: string): Promise<void>;
+  /** Out of the trash for good, on every device. */
+  purgeTasks(ids: string[]): Promise<void>;
 
   addList(name: string, parentId?: string | null): Promise<List>;
   updateList(id: string, patch: Partial<List>): Promise<void>;
@@ -533,6 +550,7 @@ export const useStore = create<State>((set, get) => {
     calMode: "month",
     calWeeks: 4,
     calDays: 3,
+    trash: null,
     textSize: TEXT_SIZE_DEFAULT,
     calWrap: false,
     calMonthLike: "month",
@@ -786,9 +804,15 @@ export const useStore = create<State>((set, get) => {
       await save("settings", { id: "palette", value: palette, updated_at: 0, deleted: 0 } as Setting);
     },
     async setSmartShown(smart, shown) {
+      if (smart === "trash") {
+        const value = shown ? "1" : "";
+        set({ settings: { ...get().settings, "sidebar:trash": value } });
+        await save("settings", { id: "sidebar:trash", value, updated_at: 0, deleted: 0 } as Setting);
+        return;
+      }
       const id = "sidebar:hidden";
       const hidden = hiddenSmartViews(get().settings).filter((x) => x !== smart);
-      const value = JSON.stringify(shown ? hidden : [...hidden, smart]);
+      const value = JSON.stringify((shown ? hidden : [...hidden, smart]).filter((x) => x !== "trash"));
       set({ settings: { ...get().settings, [id]: value } });
       await save("settings", { id, value, updated_at: 0, deleted: 0 } as Setting);
     },
@@ -997,6 +1021,44 @@ export const useStore = create<State>((set, get) => {
         selectedId: ids.includes(get().selectedId ?? "") ? null : get().selectedId,
       });
       for (const x of ids) await remove(db, "tasks", x);
+      void announceChange();
+      scheduleSync();
+    },
+
+    async loadTrash() {
+      const rows = await loadDeletedTasks<Task>(db);
+      const deleted = new Set(rows.map((t) => t.id));
+      const kidsOf = new Map<string, Task[]>();
+      for (const t of rows) if (t.parent_id && deleted.has(t.parent_id)) kidsOf.set(t.parent_id, [...(kidsOf.get(t.parent_id) ?? []), t]);
+      const trash = rows
+        .filter((t) => !t.parent_id || !deleted.has(t.parent_id))
+        .map((task) => ({ task, kids: kidsOf.get(task.id) ?? [], at: task.updated_at }))
+        .sort((a, b) => b.at - a.at);
+      set({ trash });
+    },
+
+    async restoreTask(id) {
+      const item = get().trash?.find((x) => x.task.id === id);
+      if (!item) return;
+      const { lists, sections, tasks } = get();
+      const listLive = !item.task.list_id || lists.some((l) => l.id === item.task.list_id);
+      const list_id = listLive ? item.task.list_id : null;
+      const sectionLive = !!item.task.section_id && listLive && sections.some((x) => x.id === item.task.section_id);
+      const section_id = sectionLive ? item.task.section_id : null;
+      // A subtask deleted on its own goes back under its task (which is still there: else it travelled with it).
+      const parent_id = item.task.parent_id && tasks.some((t) => t.id === item.task.parent_id) ? item.task.parent_id : null;
+      await put(db, "tasks", { ...item.task, deleted: 0, list_id, section_id, parent_id } as unknown as Row);
+      for (const k of item.kids) await put(db, "tasks", { ...k, deleted: 0, list_id, section_id } as unknown as Row);
+      set({ trash: get().trash!.filter((x) => x.task.id !== id) });
+      await get().reload();
+      void announceChange();
+      scheduleSync();
+    },
+
+    async purgeTasks(ids) {
+      const items = (get().trash ?? []).filter((x) => ids.includes(x.task.id));
+      for (const x of items) for (const t of [x.task, ...x.kids]) await purgeTask(db, t.id);
+      set({ trash: (get().trash ?? []).filter((x) => !ids.includes(x.task.id)) });
       void announceChange();
       scheduleSync();
     },
