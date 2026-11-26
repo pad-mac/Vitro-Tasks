@@ -11,11 +11,14 @@ import type { SyncServer } from "../db/sync";
 import { Icon } from "./ui";
 
 
-/** Which of All, Today, Next 7 Days, … the sidebar shows. */
-function SidebarSection() {
+/** Which of All, Today, Next 7 Days, … the sidebar shows. Tapping a name opens that view (also a hidden one, like the trash). */
+function SidebarSection({ onClose }: { onClose: () => void }) {
   const raw = useStore((s) => s.settings["sidebar:hidden"]);
+  const trashRaw = useStore((s) => s.settings["sidebar:trash"]);
   const setShown = useStore((s) => s.setSmartShown);
-  const hidden = useMemo(() => hiddenSmartViews({ "sidebar:hidden": raw ?? "[]" }), [raw]);
+  const setView = useStore((s) => s.setView);
+  const setDrawerOpen = useStore((s) => s.setDrawerOpen);
+  const hidden = useMemo(() => hiddenSmartViews({ "sidebar:hidden": raw ?? "[]", "sidebar:trash": trashRaw ?? "" }), [raw, trashRaw]);
   return (
     <section>
       <span className="micro">Sidebar</span>
@@ -23,11 +26,24 @@ function SidebarSection() {
         {SMART_VIEWS.map((v) => {
           const on = !hidden.includes(v.id);
           return (
-            <button type="button" key={v.id} className="toggle-row" role="switch" aria-checked={on} onClick={() => void setShown(v.id, !on)}>
-              <Icon name={SMART_ICONS[v.id]} size={16} />
-              <span>{v.name}</span>
-              <i className={`switch ${on ? "is-on" : ""}`} />
-            </button>
+            <div key={v.id} className="toggle-row has-go">
+              <button
+                type="button"
+                className="toggle-go"
+                title={`Open ${v.name}`}
+                onClick={() => {
+                  setView({ kind: "smart", id: v.id });
+                  setDrawerOpen(false);
+                  onClose();
+                }}
+              >
+                <Icon name={SMART_ICONS[v.id]} size={16} />
+                <span>{v.name}</span>
+              </button>
+              <button type="button" className="toggle-switch" role="switch" aria-checked={on} aria-label={`Show ${v.name} in the sidebar`} onClick={() => void setShown(v.id, !on)}>
+                <i className={`switch ${on ? "is-on" : ""}`} />
+              </button>
+            </div>
           );
         })}
       </div>
@@ -411,7 +427,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
           <PaletteChoice />
         </section>
 
-        <SidebarSection />
+        <SidebarSection onClose={onClose} />
 
         {!isMobile && (
         <>

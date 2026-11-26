@@ -1,6 +1,7 @@
 // The app's side of the iOS widgets: keeps their snapshot current, takes over
 // what was ticked in them, and opens what was tapped in them (vitrotasks://
 // links, which iOS hands to the app and Rust passes on as "vitro:opened").
+import { todayKey } from "./dates";
 import { useStore } from "../store";
 import { computePrefs } from "./views";
 import { hasNative, onNative, postNative } from "./native";
@@ -101,7 +102,8 @@ export function openLink(raw: string) {
     case "calendar": {
       s.select(null);
       s.setView({ kind: "calendar" });
-      const day = q.get("day");
+      // "today": the control's link (it can't know the date it is tapped on).
+      const day = q.get("day") === "today" ? todayKey() : q.get("day");
       if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) s.goCalDay(day);
       break;
     }

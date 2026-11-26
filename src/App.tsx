@@ -12,6 +12,7 @@ import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Composer, TaskDetail, TaskPopup } from "./components/TaskDetail";
 import { TimelineView } from "./components/TimelineView";
+import { EmptyTrashButton, TrashView } from "./components/TrashView";
 import { Icon, MenuItem, Popover } from "./components/ui";
 import { isMobile, isTauri, onOpenTask, windowAction, windowLabel } from "./lib/platform";
 import { comboFromEvent, hasModifier, isTyping, shortcutRecording, type ActionId } from "./lib/shortcuts";
@@ -96,6 +97,22 @@ const TaskViews = memo(function TaskViews({ view }: { view: Exclude<ViewRef, { k
   const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : SMART_VIEWS.find((v) => v.id === view.id)!.name;
   const sectioned = view.kind === "list" && prefs.group_by === "section";
   const effectiveGroup: GroupBy = prefs.group_by === "section" && view.kind !== "list" ? "none" : prefs.group_by;
+
+  if (view.kind === "smart" && view.id === "trash")
+    return (
+      <>
+        <header className="view-head" data-tauri-drag-region={detached ? true : undefined}>
+          <button type="button" className="icon-btn icon-btn-lg" title="Show or hide the lists" onClick={toggleSidebar}>
+            <Icon name="sidebar" size={20} />
+          </button>
+          <h1 data-tauri-drag-region={detached ? true : undefined}>{title}</h1>
+          <div className="head-tools">
+            <EmptyTrashButton />
+          </div>
+        </header>
+        <TrashView />
+      </>
+    );
 
   const canSelect = !completedView && (mode === "list" || mode === "kanban");
   if (selecting && canSelect)

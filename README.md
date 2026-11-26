@@ -25,6 +25,7 @@ Every task has two independent dates:
 | Right-click | Own menus for tasks (date with a full picker and a Start / End switch for spans, deadline, priority, subtask, pin, won't do, move, duplicate, delete), for lists, and for the Tasks/Calendar buttons in the title bar. |
 | Window | Own title bar with the Tasks/Calendar switch, sync, settings and the window buttons. Right-click Tasks or Calendar to open that view in its own frameless window (drag it by its top area, close it with Alt+F4 or right-click on the top area). Works down to 300 px wide: the lists become a drawer, the board shows one lane, the side pane fills the window. |
 | Text size | Settings → Appearance → Text size: a slider with four stops (two smaller, the original, one larger) that scales the text of the whole app, on Windows and on the phone. Kept per device. On the phone, fields you type in never go below 16 px (iOS would zoom in). |
+| Trash | Deleted tasks (with the subtasks deleted with them) wait in the Trash, last deleted first, with their list and when they were deleted: Restore puts one back where it was (into the Inbox if its list is gone too), the bin deletes it forever after a second tap, Empty trash does all. A restore or a deletion syncs like any change; deleted forever, its text is cleared everywhere. The Trash is hidden from the sidebar by default: Settings → Sidebar opens any of these views by tapping its name (the switch shows or hides it). |
 | Updates | The app checks the releases of this repository and installs a newer version on request (Settings → Updates, or the button in the title bar). |
 | Quick add | A small bar opened from anywhere with `Ctrl+Space` (changeable in Settings). `Enter` adds the task; `Ctrl+Enter` adds it and opens it in the app, inside the list (or Inbox) it went to. |
 | Import / export | Settings → Data. Export writes every list, section, task and view setting to one CSV file that can be imported again. Import also reads a TickTick backup CSV (see below). |
@@ -91,6 +92,15 @@ Three widgets, added from the home screen's widget gallery after the app has run
 - **List** (medium, large): a list or view of your choice (Today, Next 7 Days, All, Inbox, Deadlines or any list; long-press → Edit Widget) with its open tasks in the app's order, subtasks indented, the date on the right (red when overdue). Tick a checkbox to complete the task; + opens the app with the quick add for that list; a row opens the task inside that list.
 - **Day** (large): today and tomorrow by the hour side by side, or (Edit Widget → Layout) today in two halves, morning and afternoon. All-day entries on top with "+N" for more, a red line at the current time. 08–22 unless something starts earlier or ends later. An entry opens its task in the calendar at that day.
 - **Week** (medium, large): seven columns reaching out to the sides, headed by letter and date on one line ("M 24"), with the day's entries as chips (all day tinted, at a set time with a colour bar, deadlines outlined; titles cut at the edge, without "…") and "+N" for more. The arrows in the top corners page a week back or up to four ahead (back at this week after half an hour, or tap the month name between them); a day opens it in the calendar.
+
+### Lock screen widgets and controls
+
+Two widgets for the rectangle under the clock (lock screen → Customize → add widgets), drawn in the system's tint like the clock:
+
+- **List**: the first three open tasks of a list or view of your choice (as the home screen's List widget), subtasks indented; tick one off right there, a row opens the task.
+- **Next today**: what comes next today with a time: the time (a deadline with its target), the title and the first line of its description (a place, say). It moves on as each entry ends; when nothing with a time is left today it says "Nothing more scheduled today".
+
+Three controls (iOS 18 or later) for Control Center, the lock screen's two corner buttons or the Action button: **New Task** (opens the quick add), **Today** and **Calendar** (at today).
 
 Taps open the app at the right place, also when it was closed.
 

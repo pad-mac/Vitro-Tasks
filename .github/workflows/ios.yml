@@ -39,7 +39,7 @@ jobs:
         run: |
           w=ios/widgets
           xcrun --sdk macosx swiftc -swift-version 5 -D PREVIEW -target arm64-apple-macos14.0 \
-            $w/Shared.swift $w/Live.swift $w/Intents.swift $w/ListWidget.swift $w/DayWidget.swift $w/WeekWidget.swift \
+            $w/Shared.swift $w/Live.swift $w/Intents.swift $w/ListWidget.swift $w/DayWidget.swift $w/WeekWidget.swift $w/LockWidgets.swift \
             ios/preview/main.swift -o "$RUNNER_TEMP/render"
           "$RUNNER_TEMP/render" ios/preview/sample.json previews
       - uses: actions/upload-artifact@v4

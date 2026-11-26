@@ -43,6 +43,8 @@ struct Entry: Decodable, Identifiable {
   var start: Int?
   var end: Int?
   var deadline: Int?
+  /// The description's first line (a place, say).
+  var note: String?
 
   var timed: Bool { start != nil }
 }
