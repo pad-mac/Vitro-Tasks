@@ -1,7 +1,8 @@
 // Building blocks shared by the list, board, timeline and calendar views.
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { deadlineCountdown, formatDateTime, todayKey } from "../lib/dates";
 import { horizonLabel, horizonOverdue, horizonWeek } from "../lib/horizon";
+import { withLocation } from "../lib/markdown";
 import { matchList, parseQuick } from "../lib/quickparse";
 import { dateForRule } from "./RepeatPicker";
 import { describeRepeat } from "../lib/repeat";
@@ -11,6 +12,7 @@ import type { Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
 import { Check, Icon, Rich } from "./ui";
+import { firstLineOf } from "../lib/markdown";
 import { SelectCircle, selectTap } from "./Select";
 
 export const DRAG_TYPE = "application/x-vitro-task";
@@ -119,6 +121,9 @@ function tickLine(key: string, shown: boolean) {
   haptic("selection");
 }
 
+/** Which pane a view is drawn in ("main", "split", "bubble"): keeps their drop lines apart. */
+export const PaneKey = createContext("main");
+
 /** Touch drags (phone) send these to the group under the finger. */
 export interface TouchDragDetail {
   id: string;
@@ -130,7 +135,9 @@ export interface TouchDragDetail {
  * shows where the task would land and hands the drop to `onDrop` with the
  * index among the group's other tasks. Works for mouse drags and touch drags.
  */
-export function useReorderTarget(groupKey: string, selector: string, onDrop: (taskId: string, index: number) => void, enabled = true) {
+export function useReorderTarget(key: string, selector: string, onDrop: (taskId: string, index: number) => void, enabled = true) {
+  // Two panes may show the same groups (a split, the phone's list bubble): each has its own line.
+  const groupKey = `${useContext(PaneKey)}/${key}`;
   const ref = useRef<HTMLElement>(null);
   const setHint = useStore((s) => s.setDropHint);
   const hint = useStore((s) => (s.dropHint?.group === groupKey ? s.dropHint : null));
@@ -245,6 +252,8 @@ export function useCreateTask() {
     if (p.deadline_date) patch.deadline_date = p.deadline_date;
     if (p.deadline_time) patch.deadline_time = p.deadline_time;
     if (p.priority) patch.priority = p.priority;
+    // A typed place goes into the description as a location.
+    if (p.location) patch.notes = withLocation(base.notes, p.location);
     if (list) {
       patch.list_id = list.id;
       if (base.list_id !== list.id) patch.section_id = null;
@@ -267,7 +276,7 @@ export function AddBar({ base, placeholder = "Add task" }: { base: Partial<Task>
       <input
         ref={input}
         value={value}
-        placeholder={`${placeholder}   ·   tomorrow 14:00   ^fri   !high   #list`}
+        placeholder={`${placeholder}   ·   tomorrow 14:00   ^fri   !high   #list   at Place`}
         {...suggest.inputProps}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -413,7 +422,7 @@ export function TaskRow({ task, showList, depth = 0, parent }: { task: Task; sho
             </span>
             <TaskMeta task={task} showList={showList} />
           </span>
-          {showDetails && task.notes && <span className="task-notes"><Rich text={task.notes.split("\n")[0]} /></span>}
+          {showDetails && task.notes && <span className="task-notes"><Rich text={firstLineOf(task.notes)} format /></span>}
         </span>
         {children.length > 0 && (
           <button

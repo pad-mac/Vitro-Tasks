@@ -18,6 +18,7 @@ import { openExternal } from "../lib/platform";
 import { describeRepeat } from "../lib/repeat";
 import { RepeatPanel, dateForRule } from "./RepeatPicker";
 import { richParts } from "../lib/rich";
+import { locationLink, parseInline, type Inline } from "../lib/markdown";
 
 // ---------- Icons ----------
 
@@ -79,6 +80,40 @@ const PATHS: Record<string, ReactNode> = {
     <>
       <rect x="2.5" y="3.5" width="11" height="9" rx="1.8" />
       <path d="M6.2 3.5v9M9.8 3.5v9" />
+    </>
+  ),
+  // The description's formatting bar.
+  "fmt-text": <path d="M3.5 3.5h9M8 3.5v9" />,
+  "fmt-h1": <path d="M2.5 3.5v9M7.5 3.5v9M2.5 8h5M10.6 9.2l1.6-1.2v4.5" />,
+  "fmt-h2": <path d="M2.5 3.5v9M7.5 3.5v9M2.5 8h5M10.3 9.1a1.4 1.4 0 0 1 2.7.5c0 1.3-2.8 2-2.8 2.9h2.9" />,
+  "fmt-h3": <path d="M2.5 3.5v9M7.5 3.5v9M2.5 8h5M10.4 8.3h2.6l-1.4 1.6a1.3 1.3 0 1 1-1.3 2" />,
+  "fmt-ul": (
+    <>
+      <path d="M6.5 4.5h7M6.5 8h7M6.5 11.5h7" />
+      <circle cx="3.2" cy="4.5" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="3.2" cy="8" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="3.2" cy="11.5" r=".8" fill="currentColor" stroke="none" />
+    </>
+  ),
+  "fmt-ol": <path d="M6.5 4.5h7M6.5 8h7M6.5 11.5h7M2.6 3.6l.9-.6v3M2.5 9.3a.9.9 0 0 1 1.7.4c0 .7-1.7 1.2-1.7 1.9h1.8" />,
+  "fmt-quote": <path d="M3.5 3.5v9M6.5 5h7M6.5 8h7M6.5 11h4.5" />,
+  "fmt-b": <path d="M5 3.2h3.4a2.3 2.3 0 0 1 0 4.6H5zM5 7.8h3.9a2.5 2.5 0 0 1 0 5H5z" />,
+  "fmt-i": <path d="M7 3.2h5M4 12.8h5M9.5 3.2l-3 9.6" />,
+  "fmt-s": <path d="M11.2 4.6c-.5-.9-1.7-1.5-3.2-1.5-1.9 0-3.3.9-3.3 2.3 0 1.1.8 1.8 2.2 2.2M2.8 8h10.4M5 11.3c.5 1 1.7 1.6 3.2 1.6 2 0 3.4-.9 3.4-2.4 0-.5-.2-1-.5-1.3" />,
+  "fmt-u": <path d="M4.8 3v4.7a3.2 3.2 0 0 0 6.4 0V3M3.8 13.3h8.4" />,
+  link: <path d="M6.8 9.2a2.5 2.5 0 0 0 3.6 0l2-2a2.5 2.5 0 0 0-3.6-3.6l-.6.6M9.2 6.8a2.5 2.5 0 0 0-3.6 0l-2 2a2.5 2.5 0 0 0 3.6 3.6l.6-.6" />,
+  // The phone's floating task list: a bubble with lines.
+  bubble: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="2.6" />
+      <path d="M5.4 6.4h5.2M5.4 9.6h3.4" />
+    </>
+  ),
+  // A place: the map pin of location pills.
+  place: (
+    <>
+      <path d="M8 14s4.6-4.1 4.6-7.6a4.6 4.6 0 0 0-9.2 0C3.4 9.9 8 14 8 14z" />
+      <circle cx="8" cy="6.4" r="1.6" />
     </>
   ),
   // This Week: a calendar with one week's row as a band.
@@ -503,8 +538,65 @@ export function Check({
 
 // ---------- Links in text ----------
 
-/** Text with clickable URLs and [markdown](links). Clicking a link never selects the task. */
-export function Rich({ text }: { text: string }) {
+const openLink = (href: string) => (e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  void openExternal(href);
+};
+
+/** Inline markdown (bold, italic, struck, underlined, links, locations), as a description's preview shows it. */
+function InlineNodes({ nodes }: { nodes: Inline[] }) {
+  return (
+    <>
+      {nodes.map((n, i) => {
+        switch (n.t) {
+          case "text":
+            return <Fragment key={i}>{n.text}</Fragment>;
+          case "link":
+            return (
+              <a key={i} className="link" href={n.href} title={n.href} draggable={false} onMouseDown={(e) => e.stopPropagation()} onClick={openLink(n.href)}>
+                {n.text}
+              </a>
+            );
+          case "loc":
+            return <LocationPill key={i} place={n.place} text={n.text} />;
+          default: {
+            const Tag = n.t;
+            return (
+              <Tag key={i}>
+                <InlineNodes nodes={n.kids} />
+              </Tag>
+            );
+          }
+        }
+      })}
+    </>
+  );
+}
+
+/** A place in a description: a pill with a pin that opens Google Maps there. */
+export function LocationPill({ place, text }: { place: string; text: string }) {
+  return (
+    <a
+      className="loc-pill"
+      href={locationLink(place)}
+      title={`Open “${place}” in Google Maps`}
+      draggable={false}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={openLink(locationLink(place))}
+    >
+      <Icon name="place" size={12} />
+      <span>{text}</span>
+    </a>
+  );
+}
+
+/**
+ * Text with clickable URLs and [markdown](links). Clicking a link never selects the task.
+ * `format`: also bold, italic, struck, underlined and locations (a description's line).
+ */
+export function Rich({ text, format = false }: { text: string; format?: boolean }) {
+  if (format) return <InlineNodes nodes={parseInline(text)} />;
   return (
     <>
       {richParts(text).map((p, i) =>

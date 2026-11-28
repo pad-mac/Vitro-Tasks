@@ -44,6 +44,11 @@ export function ParsedChips({ value, typedListOnly }: { value: string; typedList
         </span>
       )}
       {parsed.priority > 0 && <span className={`qa-chip p${parsed.priority}`}>{PRIORITY_LABELS[parsed.priority]}</span>}
+      {parsed.location && (
+        <span className="qa-chip">
+          <Icon name="place" size={12} /> {parsed.location}
+        </span>
+      )}
     </span>
   );
 }
@@ -130,7 +135,7 @@ export function QuickAdd() {
           ) : value.trim() ? (
             <ParsedChips value={value} />
           ) : (
-            <span className="qa-hint">tomorrow 14:00 · every mon · ^fri deadline · !high · #list · Ctrl+Enter adds and opens</span>
+            <span className="qa-hint">tomorrow 14:00 · every mon · ^fri deadline · !high · #list · at Place · Ctrl+Enter adds and opens</span>
           )}
         </div>
       )}

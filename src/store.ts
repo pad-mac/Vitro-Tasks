@@ -75,17 +75,44 @@ export interface TrashItem {
 }
 
 export type SplitLayer = "tasks" | "calendar";
+export interface CalPrefs {
+  mode: CalMode;
+  weeks: number;
+  days: number;
+  monthLike: "month" | "multiweek";
+  wrap: boolean;
+}
+
+function readSplitCal(raw: string | null): { splitCal: CalPrefs } | Record<string, never> {
+  try {
+    const x = JSON.parse(raw ?? "null") as Partial<CalPrefs> | null;
+    if (!x) return {};
+    const mode = (["month", "week", "multiweek", "days"] as const).find((m) => m === x.mode) ?? "month";
+    return {
+      splitCal: {
+        mode,
+        weeks: Math.max(2, Math.min(6, Number(x.weeks) || 4)),
+        days: Math.max(1, Math.min(6, Number(x.days) || 3)),
+        monthLike: x.monthLike === "multiweek" ? "multiweek" : "month",
+        wrap: x.wrap === true,
+      },
+    };
+  } catch {
+    return {};
+  }
+}
 export type Splits = Record<SplitLayer, SplitLayer | null>;
 export type TaskViewRef = Exclude<ViewRef, { kind: "calendar" }>;
 
 /** Splits as kept in meta: { tasks, calendar, view }; anything unreadable is no split. */
-function readSplits(raw: string | null): { splits: Splits; splitView: TaskViewRef } | Record<string, never> {
+function readSplits(raw: string | null): { splits: Splits; splitView: TaskViewRef; splitRatio?: number } | Record<string, never> {
   try {
-    const x = JSON.parse(raw ?? "null") as { tasks?: unknown; calendar?: unknown; view?: { kind?: unknown; id?: unknown } } | null;
+    const x = JSON.parse(raw ?? "null") as { tasks?: unknown; calendar?: unknown; view?: { kind?: unknown; id?: unknown }; ratio?: unknown } | null;
     if (!x) return {};
+    const ratio = typeof x.ratio === "number" && x.ratio >= 0.2 && x.ratio <= 0.8 ? x.ratio : 0.5;
     const side = (v: unknown) => (v === "tasks" || v === "calendar" ? v : null);
     const view = x.view && (x.view.kind === "smart" || x.view.kind === "list") && typeof x.view.id === "string" ? (x.view as TaskViewRef) : ({ kind: "smart", id: "today" } as TaskViewRef);
-    return { splits: { tasks: side(x.tasks), calendar: side(x.calendar) }, splitView: view };
+    return { splits: { tasks: side(x.tasks), calendar: side(x.calendar) }, splitView: view, splitRatio: ratio };
   } catch {
     return {};
   }
@@ -220,6 +247,24 @@ interface State {
   /** The tasks view of a split's second tasks pane. */
   splitView: TaskViewRef;
   setSplit(layer: SplitLayer, side: SplitLayer | null): void;
+  /** The second pane's share of the two panes' width (0.2–0.8). */
+  splitRatio: number;
+  setSplitRatio(r: number): void;
+  /** The split's calendar has settings of its own (mode, weeks, days, wrap). */
+  splitCal: CalPrefs;
+  setSplitCal(patch: Partial<CalPrefs>): void;
+  /** The phone's floating task list (null: closed) and what it shows (This Week to begin with). */
+  bubble: boolean;
+  bubbleView: TaskViewRef;
+  setBubble(open: boolean): void;
+  setBubbleView(view: TaskViewRef): void;
+  /** The phone calendar's open day (its day list under the week), for the add button. */
+  calOpenDay: string | null;
+  /** A task opened from its popup in the side pane, for as long as it stays open there (then popups again). */
+  paneOnce: boolean;
+  openInPane(id: string): void;
+  /** Where the last pointer went down: a task picked in a split's second pane opens in a popup. */
+  pointerIn: "main" | "split";
   setSplitView(view: TaskViewRef): void;
   /** Month or Multi-Week, whichever was chosen last (the target of the M shortcut). */
   calMonthLike: "month" | "multiweek";
@@ -360,6 +405,11 @@ let foundUpdate: FoundUpdate | null = null;
 const nextPos = (rows: { position: number }[]) => rows.reduce((m, r) => Math.max(m, r.position), 0) + 1;
 
 export const useStore = create<State>((set, get) => {
+  /** The splits, the second pane's view and its width, kept per device. */
+  function saveSplits() {
+    const { splits, splitView, splitRatio } = get();
+    void setMeta(db, "splits", JSON.stringify({ ...splits, view: splitView, ratio: splitRatio }));
+  }
   /** Writes a row locally, mirrors it in memory, and queues a sync. */
   /**
    * The database's timestamp, taken back into the row that was saved, without a
@@ -575,6 +625,13 @@ export const useStore = create<State>((set, get) => {
     calWeeks: 4,
     calDays: 3,
     splits: { tasks: null, calendar: null },
+    splitRatio: 0.5,
+    splitCal: { mode: "month", weeks: 4, days: 3, monthLike: "month", wrap: false },
+    paneOnce: false,
+    bubble: false,
+    bubbleView: { kind: "smart", id: "thisweek" },
+    calOpenDay: null,
+    pointerIn: "main",
     splitView: { kind: "smart", id: "today" },
     trash: null,
     textSize: TEXT_SIZE_DEFAULT,
@@ -611,7 +668,7 @@ export const useStore = create<State>((set, get) => {
         const calWrap = (await getMeta(db, "cal_wrap")) === "1";
         const textSize = clampTextSize(Number(await getMeta(db, "text_size")));
         applyTextSize(textSize);
-        set({ calWeeks, calDays, calMonthLike, calWrap, textSize, ...readSplits(await getMeta(db, "splits")) });
+        set({ calWeeks, calDays, calMonthLike, calWrap, textSize, ...readSplits(await getMeta(db, "splits")), ...readSplitCal(await getMeta(db, "split_cal")) });
         set({ theme, shortcut, servers, defaultServer, showDetails, sidebarWidth, shortcuts, calMode, sync: { status: servers.some((x) => x.enabled) ? "idle" : "off" } });
         // A detached window starts on the view it was opened from.
         const handoff = get().detached ? takeHandoff<ViewRef>() : null;
@@ -743,7 +800,17 @@ export const useStore = create<State>((set, get) => {
       set({ selecting: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
     },
     select(id, anchor = null) {
-      set({ selectedId: id, anchor: id ? anchor : null, composer: null, focusSubtask: false });
+      // The side pane was only for that task: anything else opens as usual again.
+      set({ selectedId: id, anchor: id ? anchor : null, composer: null, focusSubtask: false, paneOnce: false });
+    },
+    setBubble(open) {
+      set({ bubble: open });
+    },
+    setBubbleView(view) {
+      set({ bubbleView: view });
+    },
+    openInPane(id) {
+      set({ selectedId: id, composer: null, focusSubtask: false, paneOnce: true });
     },
     openComposer(base, anchor) {
       set({ composer: { base, anchor }, selectedId: null, anchor: null });
@@ -800,13 +867,24 @@ export const useStore = create<State>((set, get) => {
       void setMeta(db, "cal_weeks", String(calWeeks));
     },
     setSplit(layer, side) {
-      const splits = { ...get().splits, [layer]: side };
-      set({ splits });
-      void setMeta(db, "splits", JSON.stringify({ ...splits, view: get().splitView }));
+      set({ splits: { ...get().splits, [layer]: side } });
+      saveSplits();
     },
     setSplitView(view) {
       set({ splitView: view });
-      void setMeta(db, "splits", JSON.stringify({ ...get().splits, view }));
+      saveSplits();
+    },
+    setSplitRatio(r) {
+      set({ splitRatio: Math.max(0.2, Math.min(0.8, r)) });
+      saveSplits();
+    },
+    setSplitCal(patch) {
+      const next = { ...get().splitCal, ...patch };
+      if (patch.mode === "month" || patch.mode === "multiweek") next.monthLike = patch.mode;
+      next.weeks = Math.max(2, Math.min(6, next.weeks));
+      next.days = Math.max(1, Math.min(6, next.days));
+      set({ splitCal: next });
+      void setMeta(db, "split_cal", JSON.stringify(next));
     },
     setCalDays(n) {
       const calDays = Math.max(1, Math.min(6, n));
@@ -980,9 +1058,15 @@ export const useStore = create<State>((set, get) => {
     },
 
     async updateTask(id, change) {
-      const patch = separateWhen(change);
       const cur = get().tasks.find((t) => t.id === id);
       if (!cur) return;
+      // A repeating task keeps its date (its series moves on from it): This Week is not for it.
+      if (change.horizon && (change.repeat === undefined ? cur.repeat : change.repeat)) {
+        const { horizon: _h, ...rest } = change;
+        change = rest;
+        if (!Object.keys(change).length) return;
+      }
+      const patch = separateWhen(change);
       // Into a list on another server (or the Inbox of the default one): the task moves there.
       if (patch.list_id !== undefined && patch.list_id !== cur.list_id && !cur.parent_id) {
         const to = patch.list_id ? get().lists.find((l) => l.id === patch.list_id)?.origin : homeServer();

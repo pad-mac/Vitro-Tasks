@@ -1,4 +1,5 @@
 // Thin wrappers around Tauri so the same UI also runs in a plain browser tab.
+import { safeLink } from "./markdown";
 import { isTauri } from "../db/driver";
 import { hasNative, postNative } from "./native";
 
@@ -76,7 +77,7 @@ export async function windowAction(action: "minimize" | "toggleMaximize" | "clos
 
 /** Opens a link in the default browser (or mail program). */
 export async function openExternal(url: string): Promise<void> {
-  if (!/^(https?:\/\/|mailto:)/i.test(url)) return;
+  if (!safeLink(url)) return;
   if (!isTauri()) {
     window.open(url, "_blank", "noopener");
     return;

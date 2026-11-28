@@ -7,7 +7,7 @@ Put this file at the root of the repo as `CLAUDE.md`. Claude Code reads it at th
 The repo is `pad-mac/Vitro-Tasks` (public). Vitro Tasks is Patrick's own task and calendar app. It started as a rebuild of TickTick's functions (TickTick is the reference app) and is growing toward a **unified task/event system**: appointments and to-dos in one list, appointments linked to what has to be done for them, and enough freedom per item to work both as a task list and as a calendar.
 
 - **Windows:** a Tauri 2 desktop exe. It has its own frame bar (the menus sit in the top bar with the window controls), a global quick-add bar on Ctrl+Space, a tray icon, and updates from GitHub Releases.
-- **iPhone:** an IPA built on GitHub's macOS runners and installed with SideStore (iOS 26). The screens are the same web UI as on Windows. Native parts: the bottom bar (Liquid Glass), the widgets and the controls.
+- **iPhone:** an IPA built on GitHub's macOS runners and installed with SideStore (iOS 26). The screens are the same web UI as on Windows, the bottom bar included (frosted web bubbles since 0.17.0, so it can run as a web page). Native parts: the widgets, the controls, haptics and the keyboard handling.
 - **Sync:** a self-hosted server (Node + Postgres) running on his VPS. Every device has its own SQLite database.
 
 ## Stack and layout
@@ -76,6 +76,8 @@ The repo is `pad-mac/Vitro-Tasks` (public). Vitro Tasks is Patrick's own task an
 - The sql.js driver binds positionally, so SQL `$n` placeholders must each appear **once and in order**. Out of order, an update silently does nothing; this happened once.
 - Deletes are soft: `deleted = 1` is in the trash, `deleted = 2` is deleted forever (text cleared). The row stays so the deletion syncs.
 
+**Descriptions** are markdown, one line per block (`src/lib/markdown.ts`); the editor (`NotesEditor.tsx`) is a contenteditable that writes that markdown back. A place is a link to a Google Maps search. Plain descriptions must round-trip unchanged.
+
 **Device settings** (calendar days, text size) live in `meta`, per device (see `cal_days` and `text_size` in `store.ts`). Synced settings live in the `settings` table, e.g. `sidebar:hidden` and `sidebar:trash`.
 
 **Text size:** `--ts` multiplies every font size in `styles.css` (`calc(Npx * var(--ts))`). Phone inputs must stay ≥ 16 px, otherwise iOS zooms in.
@@ -123,7 +125,7 @@ The repo is `pad-mac/Vitro-Tasks` (public). Vitro Tasks is Patrick's own task an
 
 ## Open items (as of v0.15.0)
 
-- **Controls** (New Task, Today, Calendar, iOS 18) use `OpenURLIntent`. They compile, but are **untested on the phone**. If tapping one doesn't open the app, wire the intent into the app target as well.
+- **Controls** (New Task, Today, Calendar, iOS 18): since 0.16.0 an `OpenLink` intent with `openAppWhenRun`, built into the app and the widgets (`ios/shared/`); it leaves the link for the page (native-ui plugin → `openLink`). `OpenURLIntent` did nothing (custom schemes aren't opened from controls). **Untested on the phone.**
 - **Settings on the phone:** content scrolls under the status bar with nothing behind it (the "Text size" heading overlaps the clock). Reported in a screenshot, not fixed yet.
 - **Shortcuts/Siri actions** ("Add task", etc.) aren't built. They'd need App Intents in the app target. Still unanswered: is his Apple developer account the paid kind? Free accounts are limited in app IDs.
 - **Calendar tiebreak across lists** is position, which is close to arbitrary between two lists. Offered: sidebar order, then position, or alphabetical. Not decided.

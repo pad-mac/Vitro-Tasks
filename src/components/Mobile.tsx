@@ -1,24 +1,27 @@
 // Phone layout pieces: the bottom bar, the add sheet, and touch gestures
 // (long press for the menu, long press and drag to reorder).
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { haptic, isMobile } from "../lib/platform";
-import { hasNative, onNative, postNative } from "../lib/native";
+import { hasNative } from "../lib/native";
 import { setBackdropRising } from "../lib/backdrop";
 import { holdMenu, hideTask, taskRect } from "./HoldMenu";
 import { parseQuick } from "../lib/quickparse";
 import { isTyping } from "../lib/shortcuts";
-import { PRIORITY_LABELS, defaultsForView, orderedLists } from "../lib/views";
+import { PRIORITY_LABELS, SMART_VIEWS, defaultsForView, groupTasks, hiddenLists, orderedLists, tasksForView } from "../lib/views";
+import { orderKey, parseRanks } from "../lib/order";
+import { ListView } from "./ListView";
+import { SMART_ICONS } from "./Sidebar";
 import { ParsedChips } from "../QuickAdd";
-import { formatDateTime, todayKey } from "../lib/dates";
+import { addDays, diffDays, formatDateTime, todayKey } from "../lib/dates";
 import { horizonLabel } from "../lib/horizon";
 import type { Task } from "../shared/schema";
-import { useStore } from "../store";
+import { computePrefs, useStore, viewKey, type TaskViewRef } from "../store";
 import { SuggestList, useListSuggest } from "./ListSuggest";
-import { useCreateTask, type TouchDragDetail } from "./tasks";
+import { PaneKey, useCreateTask, type TouchDragDetail } from "./tasks";
 import { DayPicker, SpanPicker, useSheetGesture, type PropValues } from "./PhonePickers";
 import { TaskDetail } from "./TaskDetail";
-import { Flag, Icon, usePresence } from "./ui";
+import { Flag, Icon, MenuItem, Popover, usePresence } from "./ui";
 
 /**
  * The bottom bar. In the iOS app the native glass bar draws it (and handles
@@ -53,41 +56,42 @@ export function MobileBar({
       setView({ kind: "calendar" });
     },
   };
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
-  useEffect(
-    () =>
-      onNative("tab", (p) => {
-        holdMenu.close();
-        tabsRef.current[p.id as keyof typeof tabs]?.();
-      }),
-    [],
-  );
+  const bubble = useStore((s) => s.bubble);
+  const setBubble = useStore((s) => s.setBubble);
   // Settings (opened from the sidebar) show only a round back button, bottom left: no tabs, no +.
-  useEffect(() => postNative({ type: "bar", visible: !hidden, active, back: settingsOpen }), [hidden, active, settingsOpen]);
-  const press = (down: boolean) => () => postNative({ type: "press", down });
-  const pressProps = { onTouchStart: press(true), onTouchEnd: press(false), onTouchCancel: press(false) };
   return (
     <nav className={`m-bar ${hidden ? "is-hidden" : ""} ${settingsOpen ? "is-back" : ""}`} aria-hidden={hidden}>
       {settingsOpen ? (
-        <button type="button" className="m-back" aria-label="Back" onClick={onCloseSettings} {...pressProps}>
-          <Icon name="chevron" size={22} />
+        <button type="button" className="m-round m-back" aria-label="Back" onClick={onCloseSettings}>
+          <Icon name="chevron" size={21} />
         </button>
       ) : (
         <>
           <div className="m-tabs">
             <button type="button" className={active === "tasks" ? "is-active" : ""} onClick={tabs.tasks}>
-              <Icon name="tasks" size={21} />
+              <Icon name="tasks" size={19} />
               <span>Tasks</span>
             </button>
             <button type="button" className={active === "calendar" ? "is-active" : ""} onClick={tabs.calendar}>
-              <Icon name="calendar" size={21} />
+              <Icon name="calendar" size={19} />
               <span>Calendar</span>
             </button>
           </div>
+          <button
+            type="button"
+            className={`m-round m-list ${bubble ? "is-on" : ""}`}
+            aria-label={bubble ? "Close the task list" : "Open a task list over this view"}
+            aria-pressed={bubble}
+            onClick={() => {
+              haptic("light");
+              setBubble(!bubble);
+            }}
+          >
+            <Icon name="bubble" size={21} />
+          </button>
           {/* Focus has to happen inside the tap itself, or iOS keeps the keyboard closed. */}
-          <button type="button" className="m-add" aria-label="Add task" onClick={onAdd} {...pressProps}>
-            <Icon name="plus" size={24} />
+          <button type="button" className="m-round m-add" aria-label="Add task" onClick={onAdd}>
+            <Icon name="plus" size={22} />
           </button>
         </>
       )}
@@ -158,7 +162,7 @@ export function MobileAdd({
   const suggest = useListSuggest(value, setValue, inputRef as RefObject<HTMLInputElement>, { lists: false });
   const parsed = parseQuick(value);
   const title = parsed.title;
-  const typed = !!(parsed.start_date || parsed.deadline_date || parsed.priority || parsed.listQuery || parsed.repeat);
+  const typed = !!(parsed.start_date || parsed.deadline_date || parsed.priority || parsed.listQuery || parsed.repeat || parsed.location);
   useEffect(() => {
     openAddImpl = onOpen;
     return () => {
@@ -217,7 +221,9 @@ export function MobileAdd({
       clearTimeout(done);
     };
   }, [open]);
-  const base: Partial<Task> = { ...(preset ?? (view.kind === "calendar" ? { start_date: todayKey() } : defaultsForView(view))), ...picked };
+  // In the calendar, the day that is open (its list under the week), else today.
+  const openDay = useStore((s) => s.calOpenDay);
+  const base: Partial<Task> = { ...(preset ?? (view.kind === "calendar" ? { start_date: openDay ?? todayKey() } : defaultsForView(view))), ...picked };
   const close = () => {
     inputRef.current?.blur();
     onClose();
@@ -495,7 +501,8 @@ const SLOP = 8;
 // Subtasks are held (menu, reorder) in the full-screen editor.
 const SHEET_SUB = ".m-task-sheet.is-full .subtask[data-id]";
 const LONG_PRESS = `.task-row, .card, .cal-chip, .nav-row, .tl-item, .tl-title, .m-week .cal-cell, ${SHEET_SUB}`;
-const DRAGGABLE = `.task-row[data-depth="0"], .card, ${SHEET_SUB}`;
+// Calendar entries too: onto another day, or into the list bubble (repeats' later dates have no id and stay put).
+const DRAGGABLE = `.task-row[data-depth="0"], .card, .cal-chip[data-id], ${SHEET_SUB}`;
 // Items that get the task menu.
 const TASK_ITEM = `.task-row[data-id], .card[data-id], .cal-chip[data-id], .tl-item[data-id], ${SHEET_SUB}`;
 
@@ -556,7 +563,7 @@ export function useTouchGestures() {
     const dragHeld = (from: { x: number; y: number }, x: number, y: number, keep: boolean) => {
       const d = holdMenu.toDrag();
       if (!d) return;
-      drag = dragCopy(d.el, d.id, from, keep ? d.shift : 0, x, y);
+      drag = dragCopy(d.el, d.id, from, keep ? d.shift : 0, x, y, d.el.classList.contains("is-deadline") ? "deadline" : "planned");
     };
     const onStart = (e: TouchEvent) => {
       reset();
@@ -585,7 +592,7 @@ export function useTouchGestures() {
         if (!el) return;
         if (el.matches(TASK_ITEM)) {
           held = { draggable: el.matches(DRAGGABLE), mode: "wait", at: start };
-          holdMenu.open(el);
+          holdMenu.open(el, false, el.matches(DRAGGABLE) && useStore.getState().bubble);
           el = null;
           // A menu that needs the task moved aside comes out once the finger rests (moving first drags).
           revealTimer = window.setTimeout(() => holdMenu.reveal(), REVEAL_MS);
@@ -740,6 +747,16 @@ export function useTouchGestures() {
   }, []);
 }
 
+/** A task dropped on a calendar day: its planned span (or its deadline) moves there, times and length kept. */
+function moveToDay(id: string, kind: "planned" | "deadline", day: string) {
+  const st = useStore.getState();
+  const t = st.tasks.find((x) => x.id === id);
+  if (!t) return;
+  if (kind === "deadline") return void st.updateTask(id, { deadline_date: day });
+  const shift = t.start_date ? diffDays(t.start_date, day) : 0;
+  void st.updateTask(id, { start_date: day, end_date: t.end_date && t.start_date ? addDays(t.end_date, shift) : null });
+}
+
 interface DragDriver {
   move(x: number, y: number): void;
   drop(): void;
@@ -752,8 +769,8 @@ interface DragDriver {
  * it would land, and near the edges the list (or the board, sideways) scrolls
  * along. On the drop the copy glides into the task's new place.
  */
-function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number }, shift: number, x: number, y: number): DragDriver {
-  const sources = [...document.querySelectorAll<HTMLElement>(`:is(.task-row, .card, .subtask)[data-id="${CSS.escape(id)}"]`)];
+function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number }, shift: number, x: number, y: number, kind: "planned" | "deadline" = "planned"): DragDriver {
+  const sources = [...document.querySelectorAll<HTMLElement>(`:is(.task-row, .card, .subtask, .cal-chip)[data-id="${CSS.escape(id)}"]`)];
   sources.forEach((s) => s.classList.add("is-dragging"));
   document.documentElement.classList.add("is-touch-dragging");
   copy.classList.add("drag-ghost", "is-catching");
@@ -761,6 +778,17 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
   const origin = { left: parseFloat(copy.style.left), top: parseFloat(copy.style.top) };
   let last: { x: number; y: number } | null = null;
   let group: Element | null = null;
+  // A calendar day under the finger (when no group is): the task moves to it.
+  let day: HTMLElement | null = null;
+  const setDay = (el: HTMLElement | null) => {
+    if (el === day) return;
+    day?.classList.remove("is-drop-day");
+    day = el;
+    if (day) {
+      day.classList.add("is-drop-day");
+      haptic("selection");
+    }
+  };
   let raf = 0;
   let done = false;
 
@@ -768,7 +796,19 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
     last && target.dispatchEvent(new CustomEvent<TouchDragDetail>(name, { detail: { id, y: last.y } }));
   const hover = () => {
     if (!last) return;
-    const under = document.elementFromPoint(last.x, last.y)?.closest("[data-drop-group]") ?? null;
+    const at = document.elementFromPoint(last.x, last.y);
+    const under = at?.closest("[data-drop-group]") ?? null;
+    const dayEl = under ? null : (at?.closest<HTMLElement>(".calendar [data-day], .calendar [data-drop-day]") ?? null);
+    if (dayEl) {
+      // A day takes over from a list's group.
+      if (group) {
+        group = null;
+        useStore.getState().setDropHint(null);
+      }
+      setDay(dayEl);
+      return;
+    }
+    if (under) setDay(null);
     // Gaps between groups keep the last group, so its line does not blink; another
     // group takes over only once the finger is clearly inside it (no flicker on the border).
     if (under && under !== group) {
@@ -809,6 +849,7 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
     document.querySelectorAll(":is(.task-row, .card, .subtask).is-dragging").forEach((s) => s.classList.remove("is-dragging"));
     document.documentElement.classList.remove("is-touch-dragging");
     useStore.getState().setDropHint(null);
+    setDay(null);
   };
   const end = (glide: boolean) => {
     if (done) return;
@@ -846,7 +887,9 @@ function dragCopy(copy: HTMLElement, id: string, from: { x: number; y: number },
     },
     drop() {
       hover();
-      if (group) send("vitro:touchdrop", group);
+      const target = day?.dataset.day ?? day?.dataset.dropDay;
+      if (target) moveToDay(id, kind, target);
+      else if (group) send("vitro:touchdrop", group);
       end(true);
     },
     cancel: () => end(false),
@@ -937,6 +980,92 @@ export function useEdgeSwipe() {
  * transform: switching between the two heights keeps it where the finger
  * left it and glides from there.
  */
+/**
+ * The phone's floating task list: a third of the screen above the bar, over
+ * whatever view is open, which stays usable under it. Both scroll and take taps
+ * on their own, and tasks are dragged between them (into the view's groups, or
+ * onto a calendar day, and back). It starts on This Week; its title switches it.
+ */
+export function ListBubble({ hidden }: { hidden: boolean }) {
+  const open = useStore((s) => s.bubble);
+  const [shown, closing] = usePresence(open ? true : null, 160);
+  useEffect(() => {
+    document.documentElement.classList.toggle("has-bubble", open);
+    return () => document.documentElement.classList.remove("has-bubble");
+  }, [open]);
+  if (!shown) return null;
+  return (
+    <section className={`m-bubble ${closing ? "is-closing" : ""} ${hidden ? "is-hidden" : ""}`} aria-label="Task list">
+      <BubbleBody />
+    </section>
+  );
+}
+
+function BubbleBody() {
+  const view = useStore((s) => s.bubbleView);
+  const setView = useStore((s) => s.setBubbleView);
+  const setBubble = useStore((s) => s.setBubble);
+  const lists = useStore((s) => s.lists);
+  const sections = useStore((s) => s.sections);
+  const tasks = useStore((s) => s.tasks);
+  const settings = useStore((s) => s.settings);
+  const lingering = useStore((s) => s.lingering);
+  const prefs = useMemo(() => computePrefs(view, lists, settings), [view, lists, settings]);
+  const groups = useMemo(() => {
+    const data = { lists, sections, tasks, hidden: hiddenLists(settings), lingering };
+    const visible = tasksForView(view, data, false);
+    return groupTasks(visible, prefs, view, data, undefined, parseRanks(settings[orderKey(viewKey(view), prefs.sort_by)]));
+  }, [view, lists, sections, tasks, settings, prefs, lingering]);
+  // A list that was deleted meanwhile: back to This Week.
+  useEffect(() => {
+    if (view.kind === "list" && !lists.some((l) => l.id === view.id)) setView({ kind: "smart", id: "thisweek" });
+  }, [view, lists, setView]);
+  const title = view.kind === "list" ? (lists.find((l) => l.id === view.id)?.name ?? "") : (SMART_VIEWS.find((v) => v.id === view.id)?.name ?? "");
+  const same = (v: TaskViewRef) => v.kind === view.kind && v.id === view.id;
+  const count = groups.reduce((n, g) => n + g.tasks.length, 0);
+  return (
+    <>
+      <header className="m-bubble-head">
+        <Popover
+          className="m-bubble-pick"
+          trigger={
+            <span className="m-bubble-title">
+              <b>{title}</b>
+              <Icon name="chevron" size={12} />
+            </span>
+          }
+        >
+          {(close) => (
+            <div className="menu menu-scroll">
+              {SMART_VIEWS.filter((v) => v.id !== "trash" && v.id !== "completed").map((v) => (
+                <MenuItem key={v.id} active={same({ kind: "smart", id: v.id })} onClick={() => { setView({ kind: "smart", id: v.id }); close(); }}>
+                  <Icon name={SMART_ICONS[v.id]} size={15} /> {v.name}
+                </MenuItem>
+              ))}
+              {lists.length > 0 && <div className="cm-sep" />}
+              {orderedLists(lists).map((l) => (
+                <MenuItem key={l.id} active={same({ kind: "list", id: l.id })} onClick={() => { setView({ kind: "list", id: l.id }); close(); }}>
+                  <span style={{ paddingLeft: l.depth * 14 }} className="menu-label">
+                    <i className="dot" style={{ background: l.color }} /> {l.name}
+                  </span>
+                </MenuItem>
+              ))}
+            </div>
+          )}
+        </Popover>
+        <span className="count">{count}</span>
+        <span className="push" />
+        <button type="button" className="icon-btn" aria-label="Close the task list" onClick={() => setBubble(false)}>
+          <Icon name="x" size={15} />
+        </button>
+      </header>
+      <PaneKey.Provider value="bubble">
+        <ListView view={view} groups={groups} sectioned={view.kind === "list" && prefs.group_by === "section"} sort={prefs.sort_by} />
+      </PaneKey.Provider>
+    </>
+  );
+}
+
 export function MobileTaskSheet({ task }: { task: Task | null }) {
   const select = useStore((s) => s.select);
   const [shown, closing] = usePresence(task, 220);

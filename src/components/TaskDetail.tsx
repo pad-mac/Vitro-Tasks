@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { SubtaskList, useEditorScroll } from "./EditorParts";
+import { NotesEditor } from "./NotesEditor";
+import { withLocation } from "../lib/markdown";
 import { formatDateTime, todayKey } from "../lib/dates";
 import { horizonOverdue } from "../lib/horizon";
 import { matchList, parseQuick } from "../lib/quickparse";
@@ -179,6 +181,8 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
   const duplicate = useStore((s) => s.duplicateTask);
   const wontDo = useStore((s) => s.setWontDo);
   const select = useStore((s) => s.select);
+  const paneOnce = useStore((s) => s.paneOnce);
+  const openInPane = useStore((s) => s.openInPane);
   const showDetails = useStore((s) => s.showDetails);
   const setShowDetails = useStore((s) => s.setShowDetails);
   const today = todayKey();
@@ -208,7 +212,7 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
         placeholder="Date"
         tone={open && ((task.start_date !== null && task.start_date < today) || (!task.start_date && horizonOverdue(task.horizon, today))) ? "overdue" : undefined}
         horizon={task.horizon}
-        onHorizon={(h) => void update(task.id, { horizon: h })}
+        onHorizon={task.repeat ? undefined : (h) => void update(task.id, { horizon: h })}
         repeat={task.parent_id ? undefined : task.repeat}
         onRepeat={task.parent_id ? undefined : (r) => void update(task.id, { repeat: r })}
         onChange={(d, t) =>
@@ -314,13 +318,13 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
       </header>
       <div className="detail-body" ref={bodyRef}>
         {parent && (
-          <button type="button" className="crumb" onClick={() => select(parent.id, anchor)}>
+          <button type="button" className="crumb" onClick={() => (paneOnce ? openInPane(parent.id) : select(parent.id, anchor))}>
             <span className="flip"><Icon name="chevron" size={12} /></span> {parent.title}
           </button>
         )}
         <RichField draft={title} className="detail-title" rows={1} placeholder="What would you like to do?" singleLine />
-        <RichField draft={notes} className="detail-notes" rows={1} placeholder="Description" />
-        {!task.parent_id && <SubtaskList parent={task} subs={subs} onOpen={(id) => select(id, anchor)} />}
+        <NotesEditor draft={notes} className="detail-notes" placeholder="Description" />
+        {!task.parent_id && <SubtaskList parent={task} subs={subs} onOpen={(id) => (paneOnce ? openInPane(id) : select(id, anchor))} />}
       </div>
 
       {variant === "sheet" && (
@@ -337,6 +341,11 @@ export function TaskDetail({ task, variant, full = false }: { task: Task; varian
         <footer className="detail-foot">
           {listPart}
           <span className="push" />
+          {variant === "popup" && (
+            <button type="button" className="icon-btn" title="Open in the side pane" aria-label="Open in the side pane" onClick={() => openInPane(task.id)}>
+              <Icon name="expand" size={15} />
+            </button>
+          )}
           {more}
         </footer>
       )}
@@ -388,6 +397,7 @@ export function Composer() {
       ...(p.start_time && !d.start_time ? { start_time: p.start_time } : {}),
       ...(p.repeat ? { repeat: p.repeat, start_date: dateForRule(p.repeat, d.start_date ?? null) } : {}),
       ...(list ? { list_id: list.id } : {}),
+      ...(p.location ? { notes: withLocation(d.notes, p.location) } : {}),
     });
     close();
   };

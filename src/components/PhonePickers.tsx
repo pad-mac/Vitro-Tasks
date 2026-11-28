@@ -250,7 +250,7 @@ export function SpanPicker({ v, onChange }: { v: PropValues; onChange: (patch: P
           range={start && end ? [start, end] : null}
           onChange={setStart}
           horizon={v.horizon ?? null}
-          onHorizon={(h) => onChange(h ? { horizon: h, start_date: null, start_time: null, end_date: null, end_time: null } : { horizon: null })}
+          onHorizon={v.repeat ? undefined : (h) => onChange(h ? { horizon: h, start_date: null, start_time: null, end_date: null, end_time: null } : { horizon: null })}
           repeat={v.repeat ?? null}
           onRepeat={(r, d) => onChange({ repeat: r, ...(d !== start ? { start_date: d, ...(d && end && end >= d ? {} : { end_date: null, end_time: null }) } : {}) })}
         />

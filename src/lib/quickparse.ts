@@ -4,6 +4,7 @@
 //   ^fri  ^24.12.  ^2026-12-24  (any date token with a ^ prefix)     -> hard deadline
 //   !1 !2 !3  or  !low !med !high  or  ! !! !!!  or  p1 p2 p3       -> priority (low … high)
 //   #listname                                                        -> list (prefix match)
+//   at Café Central / @home                                          -> location (see below)
 //   daily / weekly / every day / every other week / every 2 months /
 //   every mon and thu / every weekday / every 15th / every last fri  -> repeat
 // German words work too (heute, morgen, mo..so, täglich, jeden Montag,
@@ -24,6 +25,8 @@ export interface QuickParse {
   listQuery: string | null;
   /** Repeat rule (see lib/repeat); the planned date is then its first day (implied when none was typed). */
   repeat: string | null;
+  /** A place: "at" before a capitalised word, or "@" right before one (the description gets it as a location). */
+  location: string | null;
 }
 
 const WEEKDAY_WORDS: Record<string, number> = {
@@ -89,13 +92,58 @@ export function parseQuick(input: string, today = todayKey()): QuickParse {
     priority: 0,
     listQuery: null,
     repeat: null,
+    location: null,
   };
   const words = input.trim().split(/\s+/).filter(Boolean);
   const keep: string[] = [];
   let lastDateTarget: "start" | "deadline" | null = null;
 
+  /** Whether word `k` is a token of its own (it ends a place). */
+  const isToken = (k: number): boolean => {
+    const w = words[k];
+    if (/^(!{1,3}|![a-z0-9]+|p[1-3]|#\S+|\^\S+|@\S+)$/i.test(w)) return true;
+    if (parseTimeWord(w) || matchRepeat(words, k)) return true;
+    if (w.toLowerCase() === "in" && /^\d+$/.test(words[k + 1] ?? "")) return true;
+    const ambiguous = /^(mo|di|mi|do|fr|sa|so)$/i.test(w) && k !== words.length - 1;
+    return !!parseDateWord(w, today) && !ambiguous;
+  };
+  /** A place from word `k` on: until a token, a comma, or a joining word ("with", "for", …); returns the next word's index. */
+  const readPlace = (first: string, k: number): number => {
+    const parts: string[] = [];
+    // In quotes, the place runs to the closing quote, whatever comes between.
+    const quoted = /^["“„']/.test(first);
+    let w = quoted ? first.slice(1) : first;
+    let j = k;
+    for (;;) {
+      const closed = quoted && /["”“']$/.test(w);
+      const comma = !quoted && /,$/.test(w);
+      parts.push(closed || comma ? w.slice(0, -1) : w);
+      j++;
+      if (closed || comma || j >= words.length) break;
+      if (!quoted && (isToken(j) || PLACE_ENDS.has(words[j].toLowerCase()))) break;
+      w = words[j];
+    }
+    const place = parts.join(" ").trim();
+    if (place) out.location = place;
+    return j;
+  };
+
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
+
+    // "at 14:00": the time (the "at" goes). "at Café Central": a place (a capital letter, so "look at it" stays).
+    if (word.toLowerCase() === "at" && i + 1 < words.length) {
+      if (parseTimeWord(words[i + 1])) continue;
+      if (/^["“„']?\p{Lu}/u.test(words[i + 1]) && !isToken(i + 1)) {
+        i = readPlace(words[i + 1], i + 1) - 1;
+        continue;
+      }
+    }
+    // "@home", "@Café Central": a place, whatever its case.
+    if (word.startsWith("@") && word.length > 1) {
+      i = readPlace(word.slice(1), i) - 1;
+      continue;
+    }
 
     // !1 !2 !3, !low !med !high, ! !! !!!, p1 p2 p3: low, medium, high.
     if (/^!{1,3}$/.test(word)) {
@@ -183,6 +231,9 @@ export function parseQuick(input: string, today = todayKey()): QuickParse {
   }
   return out;
 }
+
+/** Words that end a place and go on with the title: "Lunch at Luigi's with Anna". */
+const PLACE_ENDS = new Set(["with", "for", "about", "to", "and", "re", "mit", "für", "wegen", "zum", "zur", "und"]);
 
 // ---------- Repeats ----------
 

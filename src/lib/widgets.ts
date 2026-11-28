@@ -8,7 +8,7 @@
 import type { List, Section, Task } from "../shared/schema";
 import { addDays, minutesOf, startOfWeek, todayKey } from "./dates";
 import { parseRanks, orderKey } from "./order";
-import { plainText } from "./rich";
+import { plainMarkdown } from "./markdown";
 import {
   entriesForDay,
   groupTasks,
@@ -79,7 +79,7 @@ export interface WidgetSnapshot {
 
 /** The first line of a description, as plain text (nothing when there is none). */
 function noteOf(notes: string | null | undefined): { note?: string } {
-  const line = plainText(notes ?? "").split("\n").map((l) => l.trim()).find(Boolean);
+  const line = plainMarkdown(notes ?? "").split("\n").map((l) => l.trim()).find(Boolean);
   return line ? { note: line.slice(0, 80) } : {};
 }
 

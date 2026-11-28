@@ -1,13 +1,17 @@
-// Finds links in task text: [markdown](https://links) and bare URLs.
+// Finds links in task text: [markdown](https://links) (also to apps, see APP_SCHEMES) and bare URLs.
+import { APP_SCHEMES } from "./markdown";
 
 export interface RichPart {
   text: string;
   href?: string;
 }
 
-const SAFE = /^(https?:\/\/|mailto:)/i;
+const SAFE = new RegExp(`^(https?://|mailto:|(?:${APP_SCHEMES.join("|")}):)`, "i");
 // [label](url) | bare http(s) URL | www. address
-const TOKEN = /\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)|((?:https?:\/\/|www\.)[^\s<>()"]*[^\s<>()".,;:!?'])/gi;
+const TOKEN = new RegExp(
+  `\\[([^\\]\\n]+)\\]\\(((?:https?:\\/\\/|mailto:|(?:${APP_SCHEMES.join("|")}):)[^\\s)]+)\\)|((?:https?:\\/\\/|www\\.)[^\\s<>()"]*[^\\s<>()".,;:!?'])`,
+  "gi",
+);
 
 export function richParts(text: string): RichPart[] {
   const out: RichPart[] = [];
