@@ -122,7 +122,7 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
             time={task.start_time}
             range={span}
             horizon={task.horizon}
-            onHorizon={(h) => void update(id, { horizon: h })}
+            onHorizon={task.repeat ? undefined : (h) => void update(id, { horizon: h })}
             repeat={task.parent_id ? undefined : task.repeat}
             onRepeat={task.parent_id ? undefined : (r) => void update(id, { repeat: r })}
             onChange={(d, t) =>
@@ -173,7 +173,8 @@ function TaskMenu({ id, at, page: initial, close }: { id: string; at: { x: numbe
         ))}
         <button
           type="button"
-          title="This week"
+          title={task.repeat ? "This week (not for a repeating task)" : "This week"}
+          disabled={!!task.repeat}
           className={`cm-icon ${!task.start_date && task.horizon === week ? "is-active" : ""}`}
           onClick={run(() => update(id, { horizon: week }))}
         >

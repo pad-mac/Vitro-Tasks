@@ -23,6 +23,7 @@ interface Hold {
   shown: boolean;
   /** Opened without a finger down (back from a picker): the menu comes out at once, making room if needed. */
   now: boolean;
+  wait: boolean;
   closing: boolean;
   seq: number;
 }
@@ -114,7 +115,8 @@ export const holdMenu = {
   },
   heldId: () => (hold && !hold.closing ? hold.id : null),
   /** Lifts the task and opens its menu. */
-  open(source: HTMLElement, now = false) {
+  /** `wait`: the menu comes only once the finger rests (with the list bubble open, a hold is mostly the start of a drag). */
+  open(source: HTMLElement, now = false, wait = false) {
     const id = source.dataset.id;
     if (!id) return;
     if (hold) finish(hold);
@@ -122,7 +124,7 @@ export const holdMenu = {
     const lift = floatingCopy(source);
     lift.classList.add("hold-lift");
     hideTask(id);
-    hold = { id, rect, lift, shift: 0, shown: false, now, closing: false, seq: ++seq };
+    hold = { id, rect, lift, shift: 0, shown: false, now, wait, closing: false, seq: ++seq };
     hot = null;
     haptic("medium");
     changed();
@@ -280,7 +282,7 @@ export function HoldMenu() {
     el.style.top = `${Math.round(menuTop)}px`;
     el.style.transformOrigin = below ? "50% 0" : "50% 100%";
     // It fits beside the task: out right away. Otherwise it waits (see isWaiting).
-    if ((!shift || h.now) && !h.shown) {
+    if ((!shift || h.now) && !h.shown && !h.wait) {
       h.shown = true;
       h.lift.style.setProperty("--shift", `${shift}px`);
       changed();
@@ -309,7 +311,15 @@ export function HoldMenu() {
       <div ref={ref} className="hold-menu" role="menu">
         <div className="hm-row">
           {dates.map(([key, icon, label, d]) => (
-            <button type="button" key={key} data-hm={key} aria-label={label} className={cls(key, `hm-cell ${active(key, d) ? "is-active" : ""}`)} onClick={() => holdMenu.act(key)}>
+            <button
+              type="button"
+              key={key}
+              data-hm={key}
+              aria-label={label}
+              disabled={key === "date:thisweek" && !!task.repeat}
+              className={cls(key, `hm-cell ${active(key, d) ? "is-active" : ""}`)}
+              onClick={() => holdMenu.act(key)}
+            >
               <Icon name={icon} size={22} />
             </button>
           ))}

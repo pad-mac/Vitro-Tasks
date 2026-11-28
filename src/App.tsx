@@ -4,8 +4,9 @@ import { ContextMenu } from "./components/ContextMenu";
 import { HoldMenu } from "./components/HoldMenu";
 import { KanbanView } from "./components/KanbanView";
 import { ListView } from "./components/ListView";
-import { MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
+import { ListBubble, MobileAdd, MobileBar, MobileTaskSheet, useEdgeSwipe, useTouchGestures } from "./components/Mobile";
 import { SelectBar, SelectHead, UndoButton } from "./components/Select";
+import { PaneKey } from "./components/tasks";
 import { setBackdrop } from "./lib/backdrop";
 import { watchPress } from "./lib/press";
 import { Settings } from "./components/Settings";
@@ -65,6 +66,48 @@ function groupOptions(view: ViewRef): { value: GroupBy; label: string }[] {
 }
 
 // Memoised: App re-renders for the sheet, the drawer, the quick add and the keyboard; the lists under them need not.
+/** The split's divider: drag it to share the width between the two panes differently. */
+function SplitHandle() {
+  const setRatio = useStore((s) => s.setSplitRatio);
+  const [dragging, setDragging] = useState(false);
+  return (
+    <div
+      className={`split-handle ${dragging ? "is-dragging" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the split"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const split = (e.currentTarget as HTMLElement).parentElement!;
+        const main = split.parentElement!.querySelector<HTMLElement>(":scope > .main:not(.split-pane)");
+        if (!main) return;
+        const a = main.getBoundingClientRect();
+        const b = split.getBoundingClientRect();
+        // Between the two panes' outer edges, less the side pane if it sits in the middle.
+        const total = a.width + b.width;
+        const right = b.right;
+        const min = Math.min(0.45, 320 / total);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        setDragging(true);
+        const move = (ev: PointerEvent) => {
+          const r = (right - ev.clientX) / total;
+          useStore.setState({ splitRatio: Math.max(Math.max(0.2, min), Math.min(Math.min(0.8, 1 - min), r)) });
+        };
+        const up = () => {
+          setDragging(false);
+          setRatio(useStore.getState().splitRatio);
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      }}
+      onDoubleClick={() => setRatio(0.5)}
+    />
+  );
+}
+
 /** A split's second tasks pane: its title picks what it shows, the × closes the split. */
 function SplitLead({ view, title }: { view: TaskViewRef; title: string }) {
   const lists = useStore((s) => s.lists);
@@ -193,7 +236,7 @@ const TaskViews = memo(function TaskViews({ view, split = false }: { view: TaskV
         )}
         {!completedView && (
           <div className="head-tools">
-            <EditModeToggle view={view} />
+            {!split && <EditModeToggle view={view} />}
             <Popover align="right" title="Group and sort" trigger={<span className="icon-btn icon-btn-lg"><Icon name="sort" size={18} /></span>}>
               {() => (
                 <div className="menu menu-two">
@@ -512,8 +555,21 @@ export function App() {
   const detached = useStore((s) => s.detached);
   const splits = useStore((s) => s.splits);
   const splitView = useStore((s) => s.splitView);
-  // Phones always open a task full screen.
-  const editMode = useStore((s) => (isMobile ? "pane" : s.editMode(s.view)));
+  const splitRatio = useStore((s) => s.splitRatio);
+  // Which pane the pointer went down in (a task picked in the second one opens in a popup).
+  useEffect(() => {
+    if (isMobile) return;
+    const down = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      const where = t.closest?.(".split-pane") ? "split" : t.closest?.(".main") ? "main" : null;
+      if (where && useStore.getState().pointerIn !== where) useStore.setState({ pointerIn: where });
+    };
+    document.addEventListener("pointerdown", down, true);
+    return () => document.removeEventListener("pointerdown", down, true);
+  }, []);
+  // Phones always open a task full screen. A task picked in a split's second pane opens in a popup;
+  // one opened from its popup in the side pane stays there until it closes.
+  const editMode = useStore((s) => (isMobile || s.paneOnce ? "pane" : s.pointerIn === "split" && s.splits[s.view.kind === "calendar" ? "calendar" : "tasks"] ? "popup" : s.editMode(s.view)));
   const shortcut = useStore((s) => s.shortcut);
   const shortcutError = useStore((s) => s.shortcutError);
   const narrow = useNarrow();
@@ -657,16 +713,18 @@ export function App() {
       )}
       <div className="workspace" onMouseDown={onWorkspaceDown}>
         {taskLayer && !narrow && sidebarOpen && <Sidebar />}
-        <main className={`main ${side ? "is-split" : ""}`}>
+        <main className={`main ${side ? "is-split" : ""}`} style={side ? { flexGrow: 1 - splitRatio } : undefined}>
           {view.kind === "calendar" ? <CalendarView /> : <TaskViews view={view} />}
           <UndoButton />
         </main>
+        {/* With a split, the side pane sits between the two panes. */}
+        {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
         {side && (
-          <section className="main split-pane" aria-label={side === "calendar" ? "Calendar, split" : "Tasks, split"}>
-            {side === "calendar" ? <CalendarView key="split-cal" /> : <TaskViews view={splitView} split />}
+          <section className="main split-pane" style={{ flexGrow: splitRatio }} aria-label={side === "calendar" ? "Calendar, split" : "Tasks, split"}>
+            <SplitHandle />
+            <PaneKey.Provider value="split">{side === "calendar" ? <CalendarView key="split-cal" split /> : <TaskViews view={splitView} split />}</PaneKey.Provider>
           </section>
         )}
-        {pane && <TaskDetail key="pane" task={pane} variant="pane" />}
         {(taskLayer || isMobile) && narrow && drawerOpen && (
           <>
             <div className="drawer-scrim" onMouseDown={() => setDrawerOpen(false)} />
@@ -696,6 +754,7 @@ export function App() {
             onCloseSettings={() => setSettingsOpen(false)}
             onAdd={() => openAdd(null)}
           />
+          <ListBubble hidden={settingsOpen || drawerOpen || addOpen || !!selected || !!composer || typing || !!selecting} />
           <MobileTaskSheet task={selected} />
           <MobileAdd open={addOpen} onClose={() => setAddOpen(false)} inputRef={addInput} onOpen={openAdd} preset={addPreset} />
           <HoldMenu />

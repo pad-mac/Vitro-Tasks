@@ -158,3 +158,27 @@ describe("priority shorthands", () => {
     expect(parseQuick("Read p4 and p12", "2026-11-16")).toMatchObject({ title: "Read p4 and p12", priority: 0 });
   });
 });
+
+describe("places in quick add", () => {
+  const q = (s: string) => {
+    const p = parseQuick(s, "2026-11-28");
+    return { title: p.title, location: p.location, start_date: p.start_date, start_time: p.start_time };
+  };
+  it("takes 'at' before a capitalised word as a place, up to the next token", () => {
+    expect(q("Dinner at Luigi's tomorrow 19:00 !high")).toEqual({ title: "Dinner", location: "Luigi's", start_date: "2026-11-29", start_time: "19:00" });
+    expect(q("Meet Anna at Café Central")).toMatchObject({ title: "Meet Anna", location: "Café Central" });
+    expect(parseQuick("Workshop at Room 3.12 #research", "2026-11-28")).toMatchObject({ title: "Workshop", location: "Room 3.12", listQuery: "research" });
+  });
+  it("ends a place at a comma or a joining word, which go on with the title", () => {
+    expect(q("Lunch at Luigi's with Anna")).toMatchObject({ title: "Lunch with Anna", location: "Luigi's" });
+    expect(q("Talk at University of Vienna, bring slides")).toMatchObject({ title: "Talk bring slides", location: "University of Vienna" });
+  });
+  it("keeps 'at' in titles where no place follows, and drops it before a time", () => {
+    expect(q("Look at the report")).toMatchObject({ title: "Look at the report", location: null });
+    expect(q("Call at 14:00")).toEqual({ title: "Call", location: null, start_date: "2026-11-28", start_time: "14:00" });
+  });
+  it("takes '@' as a place in any case, and quotes as one place", () => {
+    expect(q("Coffee @home fri")).toMatchObject({ title: "Coffee", location: "home", start_date: "2026-12-04" });
+    expect(q('Dinner at "Zum Schwarzen Kameel" 20:00')).toMatchObject({ title: "Dinner", location: "Zum Schwarzen Kameel", start_time: "20:00" });
+  });
+});

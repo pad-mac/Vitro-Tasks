@@ -12,6 +12,20 @@
     "sql:default",
     "sql:allow-execute",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "zotero:*" },
+        { "url": "obsidian:*" },
+        { "url": "notion:*" },
+        { "url": "things:*" },
+        { "url": "x-devonthink-item:*" },
+        { "url": "onenote:*" },
+        { "url": "tel:*" },
+        { "url": "sms:*" },
+        { "url": "facetime:*" }
+      ]
+    },
     "dialog:allow-save",
     "core:event:allow-emit-to"
   ]

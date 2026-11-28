@@ -5,6 +5,7 @@ import type { SortBy, Task } from "../shared/schema";
 import { anchorOf, useStore } from "../store";
 import { TaskMeta, dragProps, useCreateTask, useFold, useLeaving, useReorderTarget, useTaskMenu } from "./tasks";
 import { Check, Icon, InlineInput, MenuItem, Popover, Rich } from "./ui";
+import { firstLineOf } from "../lib/markdown";
 import { GroupSelect, SelectCircle, selectTap } from "./Select";
 
 /** A subtask inside a card: check and title; a tap opens it. */
@@ -83,7 +84,7 @@ function Card({ task, showList }: { task: Task; showList: boolean }) {
           </button>
         )}
       </div>
-      {showDetails && task.notes && <p className="card-notes"><Rich text={task.notes.split("\n")[0]} /></p>}
+      {showDetails && task.notes && <p className="card-notes"><Rich text={firstLineOf(task.notes)} format /></p>}
       <div className="card-foot">
         <TaskMeta task={task} showList={showList} dotList />
       </div>

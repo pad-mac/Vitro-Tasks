@@ -9,6 +9,7 @@ import type { Task } from "../shared/schema";
 import { useStore } from "../store";
 import { useReorderTarget } from "./tasks";
 import { Check, Icon, Rich } from "./ui";
+import { firstLineOf } from "../lib/markdown";
 
 /** Room kept below the line being written: clear of the fade at the body's bottom edge. */
 const MARGIN = 34;
@@ -129,7 +130,7 @@ function between(a: Task, b: Task): number {
 }
 
 /** The first line of a description, for previews. */
-const firstLine = (s: string) => s.split("\n").find((l) => l.trim()) ?? "";
+const firstLine = firstLineOf;
 
 /**
  * A subtask in the editor. Its title is text until tapped, then a field:
@@ -239,7 +240,7 @@ function SubtaskRow({
         )}
         {details && notes && (
           <span className="subtask-notes">
-            <Rich text={notes} />
+            <Rich text={notes} format />
           </span>
         )}
       </span>

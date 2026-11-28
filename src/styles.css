@@ -200,7 +200,13 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 /* Split view: two panes of equal width, a hairline between them. */
-.split-pane { border-left: 1px solid var(--line-soft); }
+.split-pane { position: relative; border-left: 1px solid var(--line-soft); flex-basis: 0; }
+.main.is-split { flex-basis: 0; }
+/* The divider: a wide grip on the pane's edge, a line where the pointer finds it. */
+.split-handle { position: absolute; left: -4px; top: 0; bottom: 0; z-index: 20; width: 8px; cursor: col-resize; touch-action: none; }
+.split-handle::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background var(--fast); }
+.split-handle:hover::after, .split-handle.is-dragging::after { background: var(--line); }
+.split-handle.is-dragging ~ * { pointer-events: none; }
 .split-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 6px; margin-left: -6px; border-radius: 6px; transition: background var(--fast); }
 .split-title h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-title .icon { flex: none; color: var(--faint); transform: rotate(90deg); }
@@ -346,7 +352,10 @@ html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-selec
 .add-bar { position: relative; display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px; background: var(--field); border: 1.5px solid transparent; border-radius: 10px; color: var(--faint); margin-bottom: 12px; transition: border-color var(--fast), background var(--fast); }
 .add-bar:focus-within { border-color: var(--text); background: transparent; }
 .add-bar input { flex: 1; color: var(--text); }
-.add-bar input::placeholder, .detail input::placeholder, textarea::placeholder { color: var(--faint); }
+/* Only the + until the pointer is on the bar (or it is being written in): then what to type. */
+.add-bar input::placeholder { color: transparent; transition: color var(--fast); }
+.add-bar:hover input::placeholder, .add-bar:focus-within input::placeholder { color: var(--faint); }
+.detail input::placeholder, textarea::placeholder { color: var(--faint); }
 .group { position: relative; border-radius: 10px; margin-top: 4px; transition: background var(--fast); }
 .group.is-drop { background: color-mix(in oklab, var(--hover) 60%, transparent); }
 /* On the phone the line alone shows where a task lands. */
@@ -604,6 +613,47 @@ html.is-resizing-days .cal-chip { pointer-events: none; }
 .crumb:hover { color: var(--text); }
 .detail-title { width: 100%; font-size: calc(20px * var(--ts)); font-weight: 700; line-height: 1.3; resize: none; overflow: hidden; letter-spacing: -0.015em; }
 .detail-notes { width: 100%; resize: none; overflow: hidden; min-height: 44px; line-height: 1.55; color: var(--text); }
+/* The description editor: formatted while written (lib/markdown keeps it as markdown). */
+.rich-editor { position: relative; outline: 0; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.rich-editor.is-empty::before { content: attr(data-placeholder); position: absolute; left: 0; top: 0; color: var(--faint); pointer-events: none; }
+.m-task-sheet .rich-editor.is-empty::before { top: 2px; }
+.rich-editor h1, .rich-editor h2, .rich-editor h3 { font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+.rich-editor h1 { font-size: 1.36em; line-height: 1.35; padding: 4px 0 2px; }
+.rich-editor h2 { font-size: 1.18em; line-height: 1.4; padding: 3px 0 1px; }
+.rich-editor h3 { font-size: 1.04em; line-height: 1.5; padding: 2px 0 0; }
+.rich-editor ul, .rich-editor ol { margin: 0; padding-left: 1.45em; }
+.rich-editor ul { list-style: disc; }
+.rich-editor ol { list-style: decimal; }
+.rich-editor li::marker { color: var(--muted); }
+.rich-editor blockquote { margin: 2px 0; padding-left: 11px; border-left: 2px solid var(--line); color: var(--muted); }
+.rich-editor b, .rich-editor strong { font-weight: 650; }
+.rich-editor a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); text-underline-offset: 2px; }
+/* A place: a pill with a pin, in the line's text (also in previews). */
+.loc-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0 8px 0 6px; margin: 0 1px; border-radius: 999px; background: var(--active); color: var(--text); font-size: 0.92em; line-height: 1.5; vertical-align: baseline; text-decoration: none; cursor: pointer; user-select: none; -webkit-user-select: none; transition: background var(--fast); }
+.loc-pill .icon { flex: none; width: 12px; height: 12px; color: var(--muted); }
+.loc-pill > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-pill:hover { background: var(--pick); }
+.task-notes .loc-pill, .card-notes .loc-pill, .subtask-notes .loc-pill { padding: 0 6px 0 4px; line-height: 1.35; }
+/* The bar over a selection in a description. */
+.fmt-bar { position: fixed; z-index: 95; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--float); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); animation: pop var(--fast); }
+.fmt-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 8px; color: var(--muted); transition: background var(--fast), color var(--fast); }
+.fmt-btn:hover, .fmt-btn.is-open { background: var(--hover); color: var(--text); }
+.fmt-btn.is-on { background: var(--active); color: var(--text); }
+.fmt-block { padding: 0 6px 0 7px; }
+.fmt-block .icon:last-child { transform: rotate(90deg); color: var(--faint); }
+.fmt-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
+.fmt-menu { position: absolute; top: calc(100% + 6px); left: 0; display: flex; flex-direction: column; min-width: 184px; padding: 5px; background: var(--float); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); animation: pop var(--fast); }
+.fmt-item { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 7px; text-align: left; white-space: nowrap; color: var(--text); transition: background var(--fast); }
+.fmt-item .icon { color: var(--muted); }
+.fmt-item:hover { background: var(--hover); }
+.fmt-item.is-on { background: var(--active); }
+.fmt-link { display: flex; align-items: center; gap: 6px; padding: 0 2px 0 8px; color: var(--muted); }
+.fmt-link input { width: 230px; height: 30px; color: var(--text); font-size: calc(13px * var(--ts)); }
+.fmt-link input::placeholder { color: var(--faint); }
+.fmt-bar.is-touch { padding: 5px; border-radius: 14px; }
+.fmt-bar.is-touch .fmt-btn { min-width: 38px; height: 38px; border-radius: 10px; }
+.fmt-bar.is-touch .fmt-item { height: 42px; font-size: calc(16px * var(--ts)); }
+.fmt-bar.is-touch .fmt-link input { font-size: max(16px, calc(16px * var(--ts))); width: min(230px, 56vw); }
 .deadline-row { display: flex; align-items: center; gap: 8px; }
 .countdown { font-size: calc(12.5px * var(--ts)); color: var(--signal); }
 .countdown.is-over { background: var(--signal); color: #fff; padding: 1px 8px; border-radius: 9px; }
@@ -857,6 +907,12 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-narrow .list-view { padding: 0 10px 30px; }
 .is-narrow .task-line { flex-wrap: wrap; row-gap: 2px; }
 .is-narrow .task-line .task-title { flex-basis: 100%; white-space: normal; }
+/* A narrow pane (a split, the side pane beside it) lays its rows out as a narrow window does. */
+html:not(.is-mobile) .list-view { container: tasks / inline-size; }
+@container tasks (max-width: 480px) {
+  .task-line { flex-wrap: wrap; row-gap: 2px; }
+  .task-line .task-title { flex-basis: 100%; white-space: normal; }
+}
 .is-narrow .kanban { padding: 0 10px 12px; gap: 10px; scroll-snap-type: x mandatory; scroll-padding: 0 10px; }
 .is-narrow .column { width: min(300px, calc(100vw - 20px)); scroll-snap-align: start; }
 .is-narrow .detail-pane { position: absolute; inset: 0; width: auto; z-index: 30; background: var(--bg); border-left: 0; animation: navin 170ms cubic-bezier(0.2, 0, 0, 1); }
@@ -888,7 +944,10 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .is-mobile {
   /* Where the bottom bar sits: low, in the home indicator's area like system apps. */
   --bar-gap: max(calc(env(safe-area-inset-bottom, 0px) - 14px), 10px);
-  --bar-h: calc(var(--bar-gap) + 66px);
+  --bar-h: calc(var(--bar-gap) + 58px);
+  /* Frosted: what floats over the page (the bar, its buttons, the back button, the lists' settings). */
+  --frost: color-mix(in oklab, var(--raised) 62%, transparent);
+  --frost-line: color-mix(in oklab, var(--text) 10%, transparent);
   /* The status bar keeps its room, but a little of the space under it is used. */
   --top-gap: max(calc(env(safe-area-inset-top, 0px) - 12px), 0px);
   -webkit-tap-highlight-color: transparent;
@@ -984,6 +1043,7 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .hm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 8px; }
 .hm-row + .hm-row { margin-top: 4px; }
 .hm-cell { height: 46px; display: grid; place-items: center; border-radius: var(--r-hl); color: var(--text); }
+.hm-cell:disabled, .cm-icon:disabled { opacity: 0.3; cursor: default; }
 .hm-cell .icon:not(.flag-icon) { color: var(--text); }
 .hm-cell.is-active { background: color-mix(in oklab, var(--text) 8%, transparent); }
 .hm-sep { height: 0.5px; margin: 6px 16px; background: color-mix(in oklab, var(--text) 16%, transparent); }
@@ -1004,22 +1064,21 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
   border: 0.5px solid var(--glass-line); border-radius: 20px;
 }
 
-/* Bottom bar: a frosted pill with the three places, and the add button beside it. */
+/* Bottom bar: a frosted pill with the two places, the list bubble's button and the add button beside it. */
 .m-bar { position: fixed; left: 16px; right: 16px; bottom: var(--bar-gap); z-index: 85; display: flex; align-items: center; gap: 10px; pointer-events: none; animation: fade var(--fast); transition: opacity 160ms, transform 160ms cubic-bezier(0.2, 0, 0, 1); }
 /* It steps aside for sheets, menus and the keyboard. */
 .m-bar.is-hidden { opacity: 0; transform: translateY(12px); }
 .m-bar.is-hidden .m-tabs, .m-bar.is-hidden .m-add { pointer-events: none; }
-/* Glass: mostly see-through, blurred, with a light rim and top edge. */
-.m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 58px; padding: 4px; border-radius: 29px; background: color-mix(in oklab, var(--raised) 46%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid color-mix(in oklab, var(--text) 14%, transparent); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), inset 0 1px 0 color-mix(in oklab, white 45%, transparent), inset 0 -1px 0 color-mix(in oklab, white 8%, transparent); }
-.m-tabs button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 26px; color: var(--muted); font-size: calc(10.5px * var(--ts)); font-weight: 500; letter-spacing: 0.01em; transition: background var(--fast), color var(--fast); }
+/* Frosted, nothing more: see-through, blurred, a hairline rim and a soft shadow (it runs as a web page too). */
+.m-tabs, .m-round { -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5); background: var(--frost); border: 0.5px solid var(--frost-line); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12); }
+.m-tabs { pointer-events: auto; flex: 1; display: flex; gap: 2px; height: 50px; padding: 4px; border-radius: 25px; }
+.m-tabs button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 21px; color: var(--muted); font-size: calc(10px * var(--ts)); font-weight: 500; letter-spacing: 0.01em; transition: background var(--fast), color var(--fast); }
+.m-tabs button .icon { width: 19px; height: 19px; }
 .m-tabs button.is-active { color: var(--text); background: color-mix(in oklab, var(--active) 85%, transparent); }
 .m-badge { position: absolute; top: 8px; left: calc(50% + 7px); width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
-.m-add { pointer-events: auto; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
-.m-add { background: var(--float); border: 1px solid var(--line-soft); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14); }
-/* iOS app: the glass bar is native. The page keeps an invisible + under the
-   native one (its tap has to happen here so the keyboard can open). */
-.is-native .m-tabs { visibility: hidden; }
-.is-native .m-add { opacity: 0; }
+.m-round { pointer-events: auto; flex: none; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; color: var(--text); transition: transform 140ms, background var(--fast); }
+.m-round:active { transform: scale(0.94); }
+.m-round.is-on { background: color-mix(in oklab, var(--active) 70%, var(--frost)); }
 /* Touch drags: the board must not snap back while it scrolls along. */
 .is-touch-dragging .kanban { scroll-snap-type: none; }
 
@@ -1430,18 +1489,32 @@ html.quickadd-window, html.quickadd-window body { background: var(--float); }
 .sidebar-wrap.is-drawer > .sidebar { min-height: 0; }
 /* Settings: a pill at the bottom left of the lists, where the tab bar sits (its back button appears in the same spot). */
 .is-mobile .sidebar-wrap.is-drawer { padding-bottom: 0; }
-.sidebar-foot { flex: none; display: flex; padding: 8px 16px var(--bar-gap, 12px); }
-.sidebar-foot .sidebar-settings.nav-row { flex: none; width: auto; height: 48px; min-height: 48px; gap: 10px; padding: 0 20px 0 15px; border-radius: 24px; font-weight: 500; background: color-mix(in oklab, var(--text) 7%, transparent); }
-.sidebar-foot .sidebar-settings.nav-row:hover, .sidebar-foot .sidebar-settings.nav-row.is-pressed { background: color-mix(in oklab, var(--text) 12%, transparent); }
+/* Settings float over the lists as a bubble (the lists scroll on under it). */
+.sidebar-foot { position: absolute; left: 0; bottom: 0; z-index: 2; display: flex; padding: 0 16px var(--bar-gap, 12px); pointer-events: none; }
+.sidebar-foot .sidebar-settings.nav-row { pointer-events: auto; flex: none; width: auto; height: 46px; min-height: 46px; gap: 10px; padding: 0 20px 0 15px; border-radius: 23px; font-weight: 500; background: var(--frost); border: 0.5px solid var(--frost-line); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12); -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5); }
+.sidebar-foot .sidebar-settings.nav-row:hover, .sidebar-foot .sidebar-settings.nav-row.is-pressed { background: color-mix(in oklab, var(--active) 70%, var(--frost)); }
+.sidebar-wrap.is-drawer:has(.sidebar-foot) > .sidebar { padding-bottom: calc(46px + var(--bar-gap, 12px) + 24px); }
 .sidebar-settings .icon { flex: none; color: var(--text); }
 .sidebar-settings .nav-name { flex: none; }
 .sidebar-settings .m-badge { position: static; margin-left: 2px; }
-.m-back { pointer-events: auto; flex: none; width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; color: var(--text); background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8); border: 0.5px solid var(--glass-line); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14); transition: transform 160ms; }
-.m-back:active { transform: scale(0.92); }
 .m-back .icon { display: block; transform: scaleX(-1); }
-.m-bar.is-hidden .m-back { pointer-events: none; }
-/* In the app the glass is drawn natively; the page's button takes the tap. */
-.is-native .m-back { opacity: 0; }
+/* The floating task list: a third of the screen over the view, which stays usable under it. */
+.m-bubble { --bubble-h: 34vh; position: fixed; left: 10px; right: 10px; bottom: calc(var(--bar-gap) + 58px); z-index: 84; display: flex; flex-direction: column; height: var(--bubble-h); border-radius: 22px; overflow: hidden; background: color-mix(in oklab, var(--float) 88%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); border: 0.5px solid var(--frost-line); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16); animation: bubble-in 180ms cubic-bezier(0.2, 0, 0, 1); transition: opacity 160ms, transform 160ms cubic-bezier(0.2, 0, 0, 1); }
+.m-bubble.is-closing, .m-bubble.is-hidden { opacity: 0; transform: translateY(14px) scale(0.985); pointer-events: none; }
+@keyframes bubble-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } }
+.m-bubble-head { flex: none; display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px 0 10px; }
+.m-bubble-title { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: var(--r-hl); font-size: calc(16px * var(--ts)); }
+.m-bubble-title .icon { color: var(--faint); transform: rotate(90deg); }
+.m-bubble-head .count { color: var(--faint); font-size: calc(13px * var(--ts)); }
+.m-bubble-head .icon-btn { width: 34px; height: 34px; border-radius: 50%; color: var(--muted); }
+.m-bubble .list-view { flex: 1; min-height: 0; overscroll-behavior: contain; padding: 0 4px 12px; }
+.m-bubble .list-inner { padding-top: 0; }
+/* With the bubble open, the views can scroll their last rows up above it. */
+.has-bubble .main .list-view { padding-bottom: calc(34vh + var(--bar-h) + 20px); }
+.has-bubble .main .column-body, .has-bubble .main .m-month-scroll { padding-bottom: calc(34vh + var(--bar-h)); }
+/* A calendar day a dragged task would land on. */
+.calendar .is-drop-day { background: color-mix(in oklab, var(--active) 80%, transparent); box-shadow: inset 0 0 0 1.5px var(--faint); border-radius: 8px; }
+.m-bar.is-hidden .m-round { pointer-events: none; }
 .is-mobile .modal [aria-label="Close"] { display: none; }
 
 /* ---------- Phone calendar: Today, dragged ranges ---------- */

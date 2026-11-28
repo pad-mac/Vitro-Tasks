@@ -1,5 +1,5 @@
 import { flushSync } from "react-dom";
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
+import { createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as RPointerEvent, type WheelEvent } from "react";
 import {
   MONTHS_LONG,
   WEEKDAYS,
@@ -18,7 +18,7 @@ import { plainText } from "../lib/rich";
 import { entriesForDay, hiddenLists, tasksForView, withRepeats, type DayEntry } from "../lib/views";
 import { describeRepeat } from "../lib/repeat";
 import type { Task } from "../shared/schema";
-import { anchorOf, useStore, type Anchor } from "../store";
+import { anchorOf, useStore, type Anchor, type CalMode } from "../store";
 import { dragProps, useDropTarget, useTaskMenu } from "./tasks";
 import { useSwipe } from "./Mobile";
 import { TaskRow } from "./tasks";
@@ -767,7 +767,7 @@ function WeekView({ start, n, tasks, onShift, onExpand }: { start: string; n: nu
   const [paneRef, paneW] = useElementWidth<HTMLDivElement>();
   const colW = (paneW || 700) / n;
   const tracks = useRef<(HTMLDivElement | null)[]>([]);
-  const wrap = useStore((s) => s.calWrap);
+  const { wrap } = useCalPrefs();
   // The hour grid with the later occurrences of repeating tasks (the all-day row adds its own).
   const first = days[0];
   const last = days[n + 1];
@@ -911,6 +911,11 @@ function PhoneMonth({
   const [split, setSplit] = useState(false);
   const splitRef = useRef(false);
   splitRef.current = split;
+  // The add button adds to the open day.
+  useEffect(() => {
+    useStore.setState({ calOpenDay: split ? focus : null });
+  }, [split, focus]);
+  useEffect(() => () => useStore.setState({ calOpenDay: null }), []);
   // Days being swept over (hold a day and move): they become a new task's span.
   const [sweep, setSweep] = useState<[string, string] | null>(null);
   // The week in view when weeks are added or dropped, and how far into it the view starts.
@@ -1142,7 +1147,7 @@ function PhoneMonth({
                 />
               </div>
               {focusWeek === ws && focus && (
-                <section className={`m-day-panel ${open ? "is-open" : ""}`} style={{ height: open ? panelH : 0 }}>
+                <section className={`m-day-panel ${open ? "is-open" : ""}`} style={{ height: open ? panelH : 0 }} data-drop-day={focus}>
                   <header>
                     <b>
                       {WEEKDAYS[(fromKey(focus).getDay() + 6) % 7]}, {fd}. {MONTHS_LONG[fm - 1]}
@@ -1210,15 +1215,52 @@ export function EditModeToggle({ view }: { view: import("../lib/views").ViewRef 
   );
 }
 
-function CalendarViewImpl() {
-  const today = todayKey();
+/** A split's second calendar: settings of its own, popups only, no shortcuts or widget jumps. */
+const SplitCalendar = createContext(false);
+
+/** The calendar's mode, weeks, days and wrapping: the main calendar's, or the split one's own. */
+function useCalPrefs() {
+  const split = useContext(SplitCalendar);
+  const own = useStore((s) => s.splitCal);
+  const setOwn = useStore((s) => s.setSplitCal);
   const mode = useStore((s) => s.calMode);
   const setMode = useStore((s) => s.setCalMode);
-  const todayTick = useStore((s) => s.calTodayTick);
+  const days = useStore((s) => s.calDays);
+  const setDays = useStore((s) => s.setCalDays);
+  const weeks = useStore((s) => s.calWeeks);
+  const setWeeks = useStore((s) => s.setCalWeeks);
+  const monthLike = useStore((s) => s.calMonthLike);
+  const wrap = useStore((s) => s.calWrap);
+  const setWrap = useStore((s) => s.setCalWrap);
+  if (split)
+    return {
+      split,
+      ...own,
+      setMode: (m: CalMode) => setOwn({ mode: m }),
+      setDays: (n: number) => setOwn({ days: n }),
+      setWeeks: (n: number) => setOwn({ weeks: n }),
+      setWrap: (on: boolean) => setOwn({ wrap: on }),
+    };
+  return { split, mode, days, weeks, monthLike, wrap, setMode, setDays, setWeeks, setWrap };
+}
+
+function CalendarViewImpl({ split = false }: { split?: boolean }) {
+  return (
+    <SplitCalendar.Provider value={split}>
+      <CalendarBody />
+    </SplitCalendar.Provider>
+  );
+}
+
+function CalendarBody() {
+  const today = todayKey();
+  const prefs = useCalPrefs();
+  const { split, mode, setMode } = prefs;
+  const mainTodayTick = useStore((s) => s.calTodayTick);
+  const todayTick = split ? 0 : mainTodayTick;
   const detached = useStore((s) => s.detached);
   // Week: the seven days (on phones too, in narrow columns). Multi-day: 1–6 days side by side.
-  const calDays = useStore((s) => s.calDays);
-  const setCalDays = useStore((s) => s.setCalDays);
+  const { days: calDays, setDays: setCalDays } = prefs;
   const n = mode === "days" ? calDays : 7;
   // Month: Monday of the first visible row. Week: first visible day. Multi-day: its first day (today to start with).
   const [top, setTop] = useState(() => startOfWeek(startOfMonth(today)));
@@ -1227,10 +1269,9 @@ function CalendarViewImpl() {
   const start = mode === "days" ? dayStart : weekStart;
   // Multi-week: Monday of the first row; starts with the current week.
   const [mwTop, setMwTop] = useState(() => startOfWeek(today));
-  const weeks = useStore((s) => s.calWeeks);
-  const setWeeks = useStore((s) => s.setCalWeeks);
+  const { weeks, setWeeks } = prefs;
   const shortcuts = useStore((s) => s.shortcuts);
-  const calMonthLike = useStore((s) => s.calMonthLike);
+  const calMonthLike = prefs.monthLike;
   const [expanded, setExpanded] = useState<{ day: string; anchor: Anchor } | null>(null);
   const lists = useStore((s) => s.lists);
   const sections = useStore((s) => s.sections);
@@ -1239,9 +1280,10 @@ function CalendarViewImpl() {
   const showCompleted = useStore((s) => s.showCompleted);
   const lingering = useStore((s) => s.lingering);
   const setShowCompleted = useStore((s) => s.setShowCompleted);
-  const calWrap = useStore((s) => s.calWrap);
-  const setCalWrap = useStore((s) => s.setCalWrap);
+  const { wrap: calWrap, setWrap: setCalWrap } = prefs;
   const openComposer = useStore((s) => s.openComposer);
+  const closeSplit = useStore((s) => s.setSplit);
+  const layer = useStore((s) => (s.view.kind === "calendar" ? "calendar" : "tasks"));
 
   const visible = useMemo(
     () => tasksForView({ kind: "calendar" }, { lists, sections, tasks, hidden: hiddenLists(settings), lingering }, showCompleted),
@@ -1269,7 +1311,8 @@ function CalendarViewImpl() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayTick]);
   // A day from a widget: every mode shows it (the phone's month opens it under its week).
-  const jump = useStore((s) => s.calJump);
+  const mainJump = useStore((s) => s.calJump);
+  const jump = split ? null : mainJump;
   useEffect(() => {
     if (!jump || jump.tick <= takenJump) return;
     takenJump = jump.tick;
@@ -1362,7 +1405,7 @@ function CalendarViewImpl() {
               <Icon name="chevron" size={14} />
             </button>
           </div>
-          <EditModeToggle view={{ kind: "calendar" }} />
+          {!split && <EditModeToggle view={{ kind: "calendar" }} />}
           <Popover align="right" title="Options" trigger={<span className="icon-btn icon-btn-lg"><Icon name="dots" size={18} /></span>}>
             {(close) => (
               <div className="menu">
@@ -1375,6 +1418,11 @@ function CalendarViewImpl() {
               </div>
             )}
           </Popover>
+          {split && (
+            <button type="button" className="icon-btn icon-btn-lg" title="Close the split view" onClick={() => closeSplit(layer, null)}>
+              <Icon name="x" size={16} />
+            </button>
+          )}
         </div>
       </header>
       {phoneMonth ? (

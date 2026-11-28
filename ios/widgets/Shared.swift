@@ -243,10 +243,17 @@ enum Palette {
   static func hairline(_ scheme: ColorScheme) -> Color { Color.primary.opacity(scheme == .dark ? 0.14 : 0.09) }
 }
 
-/// The widgets' own background, light or dark with the system.
+/// The widgets' own background, light or dark with the system. Light: a soft grey that
+/// deepens a little towards the bottom (the app's greys), not a flat white.
 struct WidgetBackground: View {
   @Environment(\.colorScheme) private var scheme
-  var body: some View { Palette.background(scheme) }
+  var body: some View {
+    if scheme == .dark {
+      Palette.background(scheme)
+    } else {
+      LinearGradient(colors: [Color(hex: "#f7f7f8")!, Color(hex: "#e8e8eb")!], startPoint: .top, endPoint: .bottom)
+    }
+  }
 }
 
 /// Shown until the app has written its first snapshot.

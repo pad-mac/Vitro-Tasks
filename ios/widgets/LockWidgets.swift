@@ -277,12 +277,13 @@ struct UpcomingView: View {
   }
 }
 
-/// A line where there is nothing to list.
+/// A line where there is nothing to list: light and subdued.
 private struct LockNote: View {
   let text: String
   var body: some View {
     Text(text)
-      .font(.system(size: lockFont, weight: .semibold))
+      .font(.system(size: lockFont, weight: .regular))
+      .foregroundStyle(.secondary)
       .lineLimit(2)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
   }
